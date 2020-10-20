@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: harvester-network-controller
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: harvester-network-controller
+    app.kubernetes.io/component: network
+spec:
+  selector:
+    matchLabels:
+      name: harvester-network
+  template:
+    metadata:
+      labels:
+        name: harvester-network
+    spec:
+      tolerations:
+        # this toleration is to have the daemonset runnable on master nodes
+        # remove it if your masters can't run pods
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+      containers:
+        - name: network
+          image: rancher/harvester-network-controller:latest
+          resources:
+            limits:
+              memory: 200Mi
+            requests:
+              cpu: 100m
+              memory: 200Mi
