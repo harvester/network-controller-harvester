@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	VERSION = "v0.0.1"
+	VERSION = "v0.0.0-dev"
 )
 
 func main() {
@@ -99,7 +99,9 @@ func run(c *cli.Context) error {
 
 	objectSetApply := apply.New(discoverClient, apply.NewClientFactory(cfg))
 
-	networkcontroller.Register(ctx, objectSetApply, harvesters.Harvester().V1alpha1().Setting())
+	if err := networkcontroller.Register(ctx, objectSetApply, harvesters.Harvester().V1alpha1().Setting()); err != nil {
+		klog.Fatalf("Error register network controller: %s", err.Error())
+	}
 
 	if err := start.All(ctx, threadiness, harvesters); err != nil {
 		klog.Fatalf("Error starting: %s", err.Error())
