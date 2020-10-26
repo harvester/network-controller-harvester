@@ -14,9 +14,8 @@ replace (
 )
 
 require (
-	github.com/rancher/harvester v0.0.1
+	github.com/rancher/harvester v0.0.2-0.20201026052331-8cbe186706f1
 	github.com/rancher/wrangler v0.6.2-0.20200622171942-7224e49a2407
-	github.com/rancher/wrangler-api v0.6.1-0.20200515193802-dcf70881b087
 	github.com/sirupsen/logrus v1.5.0
 	github.com/urfave/cli v1.22.2
 	k8s.io/api v0.18.6
