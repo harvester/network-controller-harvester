@@ -10,7 +10,6 @@ import (
 )
 
 type BridgeVLANController struct {
-	namespace     string
 	settingClient harvcontroller.SettingClient
 	settingsCache harvcontroller.SettingCache
 	apply         apply.Apply

@@ -3,7 +3,7 @@ package network
 import (
 	"encoding/json"
 
-	settingsv1 "github.com/rancher/harvester/pkg/apis/harvester.cattle.io/v1alpha1"
+	harvesterv1 "github.com/rancher/harvester/pkg/apis/harvester.cattle.io/v1alpha1"
 	harvcontroller "github.com/rancher/harvester/pkg/generated/controllers/harvester.cattle.io/v1alpha1"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -28,7 +28,7 @@ func initNetworkSettings(settingClient harvcontroller.SettingClient) error {
 				return err
 			}
 
-			setting := &settingsv1.Setting{
+			setting := &harvesterv1.Setting{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: networkSettingsName,
 				},

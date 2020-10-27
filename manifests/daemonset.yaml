@@ -1,31 +1,73 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: harvester-network-controller
+    app.kubernetes.io/component: network
+    app.kubernetes.io/version: 0.0.1
+  name: harvester-network-controller
+  namespace: harvester-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: harvester-network-controller
+rules:
+  - apiGroups: ["harvester.cattle.io"]
+    resources: ["settings"]
+    verbs: ["get", "watch", "list", "update", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: harvester-network-controller
+    app.kubernetes.io/component: network
+    app.kubernetes.io/version: 0.0.1
+  name: harvester-network-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: harvester-network-controller
+subjects:
+  - kind: ServiceAccount
+    name: harvester-network-controller
+    namespace: harvester-system
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: harvester-network-controller
-  namespace: kube-system
+  namespace: harvester-system
   labels:
     app.kubernetes.io/name: harvester-network-controller
     app.kubernetes.io/component: network
+    app.kubernetes.io/version: 0.0.1
 spec:
   selector:
     matchLabels:
-      name: harvester-network
+      name: harvester-network-controller
   template:
     metadata:
       labels:
-        name: harvester-network
+        name: harvester-network-controller
     spec:
       tolerations:
         # this toleration is to have the daemonset runnable on master nodes
         # remove it if your masters can't run pods
         - key: node-role.kubernetes.io/master
           effect: NoSchedule
+      serviceAccountName: harvester-network-controller
+      hostNetwork: true
       containers:
         - name: network
           image: rancher/harvester-network-controller:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
           resources:
             limits:
-              memory: 200Mi
+              memory: 100Mi
             requests:
-              cpu: 100m
-              memory: 200Mi
+              cpu: 10m
+              memory: 50Mi
