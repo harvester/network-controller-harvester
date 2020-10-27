@@ -1,9 +1,23 @@
-build: pkg/generated
-	go build
+TARGETS := $(shell ls scripts)
 
-pkg/generated:
-	go generate
+.dapper:
+	@echo Downloading dapper
+	@curl -sL https://releases.rancher.com/dapper/latest/dapper-`uname -s`-`uname -m` > .dapper.tmp
+	@@chmod +x .dapper.tmp
+	@./.dapper.tmp -v
+	@mv .dapper.tmp .dapper
 
-run: build
-	kubectl apply -f manifests/daemonset.yaml
-	./harvester-network-controller
+$(TARGETS): .dapper
+	./.dapper $@
+
+trash: .dapper
+	./.dapper -m bind trash
+
+trash-keep: .dapper
+	./.dapper -m bind trash -k
+
+deps: trash
+
+.DEFAULT_GOAL := ci
+
+.PHONY: $(TARGETS)
