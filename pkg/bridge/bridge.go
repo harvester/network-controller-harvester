@@ -8,31 +8,15 @@ import (
 	"k8s.io/klog"
 )
 
-type Link = netlink.Link
-
 type Bridge struct {
 	*netlink.Bridge
-}
-
-// GetLink by name
-func GetLink(name string) (Link, error) {
-	if name == "" {
-		return nil, nil
-	}
-
-	l, err := netlink.LinkByName(name)
-	if err != nil {
-		return nil, fmt.Errorf("could not lookup link, error: %w, link: %s", err, name)
-	}
-
-	return l, nil
 }
 
 func NewBridge(name string) *Bridge {
 	vlanFiltering := true
 	return &Bridge{
 		Bridge: &netlink.Bridge{
-			LinkAttrs: netlink.LinkAttrs{Name: name},
+			LinkAttrs:     netlink.LinkAttrs{Name: name},
 			VlanFiltering: &vlanFiltering,
 		},
 	}
@@ -59,7 +43,7 @@ func (br *Bridge) Ensure() error {
 	}
 
 	if tempBr.OperState != netlink.OperUp {
-		if err:= netlink.LinkSetUp(br); err != nil {
+		if err := netlink.LinkSetUp(br); err != nil {
 			return err
 		}
 	}
@@ -80,7 +64,7 @@ func (br *Bridge) Delete() error {
 func fetchByName(name string) (*netlink.Bridge, error) {
 	l, err := netlink.LinkByName(name)
 	if err != nil {
-		return nil, fmt.Errorf("could not lookup link, error: %w, name: %s", err, name)
+		return nil, fmt.Errorf("could not lookup link %s, error: %w", name, err)
 	}
 
 	br, ok := l.(*netlink.Bridge)
@@ -93,7 +77,7 @@ func fetchByName(name string) (*netlink.Bridge, error) {
 
 // BorrowAddr borrow address from the specified host nic.
 // Only support ipv4 address at this stage.
-func (br *Bridge) BorrowAddr(lender Link) error {
+func (br *Bridge) BorrowAddr(lender *Link, vidList []uint16) error {
 	if lender == nil {
 		return fmt.Errorf("lender link could not be nil")
 	}
@@ -103,29 +87,44 @@ func (br *Bridge) BorrowAddr(lender Link) error {
 		return fmt.Errorf("could not set master, link: %s, master: %s", lender.Attrs().Name, br.Name)
 	}
 
+	// add bridge vlan
+	for _, vid := range vidList {
+		if err := lender.AddBridgeVlan(vid); err != nil {
+			return err
+		}
+	}
+
 	// transfer address
-	return transferAddr(lender, br)
+	return transferAddr(lender, &Link{Link: br.Bridge})
 }
 
 // ReturnAddr return address to returnee link
-func (br *Bridge) ReturnAddr(returnee Link) error {
+func (br *Bridge) ReturnAddr(returnee *Link, vidList []uint16) error {
 	if returnee == nil {
 		return fmt.Errorf("returnee link could not be nil")
 	}
+
+	// del bridge vlan
+	for _, vid := range vidList {
+		if err := returnee.DelBridgeVlan(vid); err != nil {
+			return err
+		}
+	}
+
 	// returnee nic set no master
 	if err := netlink.LinkSetNoMaster(returnee); err != nil {
 		return fmt.Errorf("could not set no master, error: %w, link: %s", err, returnee.Attrs().Name)
 	}
 
 	// transfer address
-	if err := transferAddr(br, returnee); err != nil {
+	if err := transferAddr(&Link{Link: br.Bridge}, returnee); err != nil {
 		return fmt.Errorf("transfer address failed, error: %w, src link: %s, dst link: %s", err, br.Name, returnee.Attrs().Name)
 	}
 
 	return nil
 }
 
-func transferAddr(src, dst netlink.Link) error {
+func transferAddr(src, dst *Link) error {
 	//  delete address of src link
 	addrList, err := netlink.AddrList(src, netlink.FAMILY_V4)
 	if err != nil || len(addrList) == 0 {
@@ -164,6 +163,6 @@ func transferAddr(src, dst netlink.Link) error {
 	return nil
 }
 
-func (br *Bridge) ListAddr()  ([]netlink.Addr, error) {
+func (br *Bridge) ListAddr() ([]netlink.Addr, error) {
 	return netlink.AddrList(br, netlink.FAMILY_V4)
 }
