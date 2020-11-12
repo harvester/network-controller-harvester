@@ -2,6 +2,7 @@ package network
 
 import (
 	"encoding/json"
+	"fmt"
 
 	harvesterv1 "github.com/rancher/harvester/pkg/apis/harvester.cattle.io/v1alpha1"
 	harvcontroller "github.com/rancher/harvester/pkg/generated/controllers/harvester.cattle.io/v1alpha1"
@@ -49,4 +50,22 @@ func initNetworkSettings(settingClient harvcontroller.SettingClient) error {
 		return err
 	}
 	return nil
+}
+
+func encodeNetworkSettings(setting *NetworkSetting) (string, error) {
+	bytes, err := json.Marshal(setting)
+	if err != nil {
+		return "", fmt.Errorf("marshal failed, error: %w, networkSetting: %+v", err, setting)
+	}
+
+	return string(bytes), nil
+}
+
+func decodeNetworkSettings(value string) (*NetworkSetting, error) {
+	setting := &NetworkSetting{}
+	if err := json.Unmarshal([]byte(value), setting); err != nil {
+		return nil, fmt.Errorf("unmarshal failed, error: %w, value: %s", err, value)
+	}
+
+	return setting, nil
 }
