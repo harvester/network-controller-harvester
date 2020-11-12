@@ -45,7 +45,7 @@ steps:
       dockerfile: package/Dockerfile
       password:
         from_secret: docker_password
-      repo: "cnrancher/harvester-network-controller"
+      repo: "rancher/harvester-network-controller"
       tag: ${DRONE_BRANCH}-head
       username:
         from_secret: docker_username
@@ -63,7 +63,7 @@ steps:
       dockerfile: package/Dockerfile
       password:
         from_secret: docker_password
-      repo: "cnrancher/harvester-network-controller"
+      repo: "rancher/harvester-network-controller"
       tag: "${DRONE_TAG}"
       username:
         from_secret: docker_username
@@ -80,6 +80,3 @@ volumes:
   - name: docker
     host:
       path: /var/run/docker.sock
-
-node:
-  instance: agent-amd64
