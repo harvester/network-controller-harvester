@@ -9,6 +9,6 @@ func main() {
 	controllergen.Run(args.Options{
 		OutputPackage: "github.com/rancher/harvester-network-controller/pkg/generated",
 		Boilerplate:   "hack/boilerplate.go.txt",
-		Groups: map[string]args.Group{},
+		Groups:        map[string]args.Group{},
 	})
 }

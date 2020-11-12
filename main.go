@@ -8,15 +8,16 @@ import (
 	"context"
 	"os"
 
-	networkcontroller "github.com/rancher/harvester-network-controller/pkg/network"
 	harvesterv1 "github.com/rancher/harvester/pkg/generated/controllers/harvester.cattle.io"
-	"github.com/rancher/wrangler/pkg/apply"
+	cni "github.com/rancher/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
 	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/rancher/wrangler/pkg/start"
 	"github.com/urfave/cli"
-	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+
+	nadController "github.com/rancher/harvester-network-controller/pkg/controller/nad"
+	networkController "github.com/rancher/harvester-network-controller/pkg/controller/vlan"
 )
 
 var (
@@ -89,21 +90,25 @@ func run(c *cli.Context) error {
 
 	harvesters, err := harvesterv1.NewFactoryFromConfigWithNamespace(cfg, namespace)
 	if err != nil {
-		klog.Fatalf("Error building sample controllers: %s", err.Error())
+		klog.Fatalf("Error building harvester controllers: %s", err.Error())
 	}
 
-	discoverClient, err := discovery.NewDiscoveryClientForConfig(cfg)
+	nads, err := cni.NewFactoryFromConfig(cfg)
 	if err != nil {
-		klog.Fatalf("Error building discovery client: %s", err.Error())
+		klog.Fatalf("Error building nad controllers: %s", err.Error())
 	}
 
-	objectSetApply := apply.New(discoverClient, apply.NewClientFactory(cfg))
-
-	if err := networkcontroller.Register(ctx, objectSetApply, harvesters.Harvester().V1alpha1().Setting()); err != nil {
-		klog.Fatalf("Error register network controller: %s", err.Error())
+	if err := networkController.Register(ctx, harvesters.Harvester().V1alpha1().Setting(),
+		nads.K8s().V1().NetworkAttachmentDefinition()); err != nil {
+		klog.Fatalf("Error register vlan controller: %s", err.Error())
 	}
 
-	if err := start.All(ctx, threadiness, harvesters); err != nil {
+	if err := nadController.Register(ctx, harvesters.Harvester().V1alpha1().Setting(),
+		nads.K8s().V1().NetworkAttachmentDefinition()); err != nil {
+		klog.Fatalf("Error register nad controller: %s", err.Error())
+	}
+
+	if err := start.All(ctx, threadiness, harvesters, nads); err != nil {
 		klog.Fatalf("Error starting: %s", err.Error())
 	}
 

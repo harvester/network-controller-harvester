@@ -1,4 +1,4 @@
-package network
+package vlan
 
 import (
 	"encoding/json"
@@ -20,7 +20,7 @@ type NetworkSetting struct {
 }
 
 func initNetworkSettings(settingClient harvcontroller.SettingClient) error {
-	_, err := settingClient.Get(networkSettingsName, metav1.GetOptions{})
+	_, err := settingClient.Get(NetworkSettingName, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			networkSetting := &NetworkSetting{}
@@ -31,7 +31,7 @@ func initNetworkSettings(settingClient harvcontroller.SettingClient) error {
 
 			setting := &harvesterv1.Setting{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: networkSettingsName,
+					Name: NetworkSettingName,
 				},
 				Default: string(jsonNetwork),
 			}
@@ -52,7 +52,7 @@ func initNetworkSettings(settingClient harvcontroller.SettingClient) error {
 	return nil
 }
 
-func encodeNetworkSettings(setting *NetworkSetting) (string, error) {
+func EncodeNetworkSettings(setting *NetworkSetting) (string, error) {
 	bytes, err := json.Marshal(setting)
 	if err != nil {
 		return "", fmt.Errorf("marshal failed, error: %w, networkSetting: %+v", err, setting)
@@ -61,7 +61,7 @@ func encodeNetworkSettings(setting *NetworkSetting) (string, error) {
 	return string(bytes), nil
 }
 
-func decodeNetworkSettings(value string) (*NetworkSetting, error) {
+func DecodeNetworkSettings(value string) (*NetworkSetting, error) {
 	setting := &NetworkSetting{}
 	if err := json.Unmarshal([]byte(value), setting); err != nil {
 		return nil, fmt.Errorf("unmarshal failed, error: %w, value: %s", err, value)

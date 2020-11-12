@@ -16,6 +16,9 @@ rules:
   - apiGroups: ["harvester.cattle.io"]
     resources: ["settings"]
     verbs: ["get", "watch", "list", "update", "create"]
+  - apiGroups: ["k8s.cni.cncf.io"]
+    resources: ["network-attachment-definitions"]
+    verbs: ["get", "watch", "list", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -61,8 +64,8 @@ spec:
       hostNetwork: true
       containers:
         - name: network
-          image: rancher/harvester-network-controller:latest
-          imagePullPolicy: IfNotPresent
+          image: rancher/harvester-network-controller:master-head
+          imagePullPolicy: Always
           securityContext:
             privileged: true
           resources:
