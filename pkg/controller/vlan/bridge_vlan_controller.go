@@ -161,6 +161,7 @@ func (c *BridgeVLANController) configBridgeNetwork(setting *NetworkSetting) erro
 	// nic is nil if setting.NIC is an empty string
 	// return addresses to configured nic if nic is empty
 	if nic == nil && configuredNIC != nil {
+		klog.Infof("return address because nic is nil and configured nic is not nil, configured nic: %s", configuredNIC.Attrs().Name)
 		if err := c.bridge.ReturnAddr(configuredNIC, vidList); err != nil {
 			klog.Errorf("return address failed, error: %v, NIC: %s", err, setting.ConfiguredNIC)
 		}
@@ -171,6 +172,7 @@ func (c *BridgeVLANController) configBridgeNetwork(setting *NetworkSetting) erro
 	// - Yes，do nothing
 	// - No, make bridge return addresses to configured nic, lend addresses to bridge, return.
 	if nic.Attrs().MasterIndex != c.bridge.Index {
+		klog.Infof("configure network because the master of nic %s is not bridge %s", nic.Attrs().Name, c.bridge.Name)
 		if configuredNIC != nil {
 			if err := c.bridge.ReturnAddr(configuredNIC, vidList); err != nil {
 				klog.Errorf("return address failed, error: %v, NIC: %s", err, setting.ConfiguredNIC)
@@ -193,6 +195,7 @@ func (c *BridgeVLANController) configBridgeNetwork(setting *NetworkSetting) erro
 		return fmt.Errorf("could not list addresses, error: %w, link: %s", err, c.bridge.Name)
 	}
 	if len(addrList) == 0 {
+		klog.Infof("configure network because bridge %s has no address", c.bridge.Name)
 		if err := c.bridge.BorrowAddr(nic, vidList); err != nil {
 			return fmt.Errorf("borrow address failed, error: %w, nic: %s", err, setting.NIC)
 		}
