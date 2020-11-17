@@ -50,6 +50,12 @@ func (br *Bridge) Ensure() error {
 
 	// TODO ensure vlan filtering
 
+	// Re-fetch bridge to ensure br.Bridge contains all latest attributes.
+	br.Bridge, err = fetchByName(br.Name)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -144,7 +150,7 @@ func transferAddr(src, dst *Link) error {
 		}
 
 		// replace address of dst link
-		klog.Infof("add dst addr, dst: %s, addr: %+v", src.Attrs().Name, addr)
+		klog.Infof("add dst addr, dst: %s, addr: %+v", dst.Attrs().Name, addr)
 		addr.Label = dst.Attrs().Name
 		if err := netlink.AddrReplace(dst, &addr); err != nil {
 			return fmt.Errorf("could not add address, error: %w, link: %s", err, dst.Attrs().Name)
