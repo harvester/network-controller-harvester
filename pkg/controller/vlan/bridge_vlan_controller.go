@@ -82,8 +82,13 @@ func (c *BridgeVLANController) OnChange(key string, setting *harvesterv1.Setting
 		return nil, fmt.Errorf("encode network settings failed, error: %w, networksettings: %+v", err, networkSetting)
 	}
 
-	harvesterv1.SettingConfigured.True(settingCopy)
+	if networkSetting.NIC == "" {
+		harvesterv1.SettingConfigured.False(settingCopy)
+	} else {
+		harvesterv1.SettingConfigured.True(settingCopy)
+	}
 	harvesterv1.SettingConfigured.Reason(settingCopy, "")
+
 	// update setting will trigger another reconcile
 	return c.settingClient.Update(settingCopy)
 }
