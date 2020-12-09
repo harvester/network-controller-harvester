@@ -69,7 +69,7 @@ func (c *BridgeVLANController) OnChange(key string, setting *harvesterv1.Setting
 	settingCopy := setting.DeepCopy()
 	if err := c.configBridgeNetwork(networkSetting); err != nil {
 		harvesterv1.SettingConfigured.False(settingCopy)
-		harvesterv1.SettingConfigured.Reason(settingCopy, fmt.Sprintf("failed to config bridge vlan, error:%s", err.Error()))
+		harvesterv1.SettingConfigured.Reason(settingCopy, err.Error())
 		if _, err := c.settingClient.Update(settingCopy); err != nil {
 			return nil, err
 		}
@@ -149,13 +149,13 @@ func (c *BridgeVLANController) configBridgeNetwork(setting *NetworkSetting) erro
 	// get nad vid list
 	vidList, err := c.getNadVidList()
 	if err != nil {
-		return fmt.Errorf("get nad vid list failed, error: %v", err)
+		return fmt.Errorf("get NAD vid list failed, error: %v", err)
 	}
 	klog.Infof("vid list: %+v", vidList)
 
 	nic, err := bridge.GetLink(setting.NIC)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s is not a valid physical NIC, error:%s", setting.NIC, err.Error())
 	}
 
 	configuredNIC, err := bridge.GetLink(setting.ConfiguredNIC)
