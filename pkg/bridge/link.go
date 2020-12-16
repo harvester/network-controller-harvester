@@ -84,7 +84,7 @@ func (l *Link) DelBridgeVlan(vid uint16) error {
 
 const (
 	defaultRetryTimes = 10
-	defaultRetryInterval = 200 * time.Microsecond
+	defaultRetryInterval = time.Second
 )
 
 func (l *Link) setNoMaster() error {
