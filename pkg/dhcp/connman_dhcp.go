@@ -15,14 +15,15 @@ import (
 
 const (
 	// keep --ipv4 to the end to avoid empty gateway configuration
-	configDHCPCmd     = "connmanctl config %s --nameservers 8.8.8.8 --ipv4 %s"
-	getIPv4ConfigCmd  = "connmanctl services %s"
-	ipv4ConfigKeyword = "IPv4.Configuration"
-	ipv4MethodKeyword = "Method"
-	ipv4Keyword       = "IPv4 = "
-	addrKeyword       = "Address"
-	maskKeyword       = "Netmask"
-	gatewayKeyword    = "Gateway"
+	configDHCPCmd        = "connmanctl config %s --ipv4 %s"
+	configNameserversCmd = "connmanctl config %s --nameservers 8.8.8.8"
+	getIPv4ConfigCmd     = "connmanctl services %s"
+	ipv4ConfigKeyword    = "IPv4.Configuration"
+	ipv4MethodKeyword    = "Method"
+	ipv4Keyword          = "IPv4 = "
+	addrKeyword          = "Address"
+	maskKeyword          = "Netmask"
+	gatewayKeyword       = "Gateway"
 
 	// IPv4 mode
 	Off    = "off"
@@ -47,10 +48,6 @@ func NewConnmanService(iface, hwaddr string) *ConnmanService {
 // ConfigIPv4 with connmanctl
 func (c *ConnmanService) configIPv4(mode string, args ...string) error {
 	if mode == Static {
-		if len(args) != 3 {
-			return fmt.Errorf("config manual mode should have 3 arguments, followed by address, netmask and gateway")
-		}
-
 		for _, arg := range args {
 			mode += " "
 			mode += arg
@@ -72,6 +69,7 @@ func (c *ConnmanService) configIPv4(mode string, args ...string) error {
 	}
 
 	statement := fmt.Sprintf(configDHCPCmd, c.service, mode)
+	klog.Errorf("statement: %s", statement)
 	out, err := exec.Command("sh", "-c", statement).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("execute connmanctl config failed, error: %w, cmd: %s", err, statement)
@@ -80,8 +78,18 @@ func (c *ConnmanService) configIPv4(mode string, args ...string) error {
 		return fmt.Errorf("execute connmanctl config failed, stderr: [%s], cmd: %s", out, statement)
 	}
 
-	// wait for becoming effective
-	time.Sleep(waitEffectiveTime)
+	return nil
+}
+
+func (c *ConnmanService) configNameservers() error {
+	statement := fmt.Sprintf(configNameserversCmd, c.service)
+	out, err := exec.Command("sh", "-c", statement).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("execute connmanctl config failed, error: %w, cmd: %s", err, statement)
+	}
+	if len(out) != 0 {
+		return fmt.Errorf("execute connmanctl config failed, stderr: [%s], cmd: %s", out, statement)
+	}
 
 	return nil
 }
@@ -94,11 +102,33 @@ func (c *ConnmanService) DHCP2Static() error {
 
 	addr, mask, gw := getIPv4Addr(out)
 
-	return c.configIPv4(Static, addr, mask, gw)
+	if err := c.configIPv4(Static, addr, mask, gw); err != nil {
+		return err
+	}
+
+	if err := c.configNameservers(); err != nil {
+		return err
+	}
+
+	// wait for becoming effective
+	time.Sleep(waitEffectiveTime)
+
+	return nil
 }
 
 func (c *ConnmanService) ToDHCP() error {
-	return c.configIPv4(DHCP)
+	if err :=  c.configIPv4(DHCP); err != nil {
+		return err
+	}
+
+	if err :=  c.configNameservers(); err != nil {
+		return err
+	}
+
+	// wait for becoming effective
+	time.Sleep(waitEffectiveTime)
+
+	return nil
 }
 
 // GetIPv4Config with connmanctl

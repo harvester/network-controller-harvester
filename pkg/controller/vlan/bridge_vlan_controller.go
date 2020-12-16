@@ -182,7 +182,7 @@ func (c *BridgeVLANController) configBridgeNetwork(setting *NetworkSetting) erro
 	// - No, make bridge return addresses to configured nic, lend addresses to bridge, return.
 	if nic.Attrs().MasterIndex != c.bridge.Index {
 		klog.Infof("configure network because the master of nic %s is not bridge %s", nic.Attrs().Name, c.bridge.Name)
-		if configuredNIC != nil {
+		if configuredNIC != nil &&  setting.NIC != setting.ConfiguredNIC {
 			if err := c.bridge.ReturnAddr(configuredNIC, vidList); err != nil {
 				klog.Errorf("return address failed, error: %v, NIC: %s", err, setting.ConfiguredNIC)
 			}
