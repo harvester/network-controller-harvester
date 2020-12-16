@@ -15,6 +15,7 @@ replace (
 )
 
 require (
+	github.com/insomniacslk/dhcp v0.0.0-20201112113307-4de412bc85d8
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v0.0.0-20200331171230-d50e42f2b669
 	github.com/rancher/harvester v0.0.2-0.20201111020716-69a1fe84e370
 	github.com/rancher/wrangler v0.6.2-0.20200622171942-7224e49a2407
