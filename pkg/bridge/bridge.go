@@ -2,23 +2,62 @@ package bridge
 
 import (
 	"fmt"
+	"net"
 	"syscall"
 
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
+
+	"github.com/rancher/harvester-network-controller/pkg/dhcp"
 )
 
 type Bridge struct {
 	*netlink.Bridge
+
+	dhcpSignal chan bool
+	dhcpClient *dhcp.Client
 }
 
 func NewBridge(name string) *Bridge {
 	vlanFiltering := true
-	return &Bridge{
+	br := &Bridge{
 		Bridge: &netlink.Bridge{
 			LinkAttrs:     netlink.LinkAttrs{Name: name},
 			VlanFiltering: &vlanFiltering,
 		},
+		dhcpSignal: make(chan bool),
+		dhcpClient: dhcp.NewClient(name),
+	}
+
+	go br.StartDHCPClientDaemon()
+
+	return br
+}
+
+// StartDHCPDaemon maintain dynamic ip address of bridge with dhcp
+func (br *Bridge) StartDHCPClientDaemon() {
+	klog.Info("start dhcp daemon")
+	for signal := range br.dhcpSignal {
+		if !signal && br.dhcpClient.IsRunning() {
+			br.dhcpClient.Stop()
+			continue
+		}
+
+		go br.dhcpClient.Start()
+	}
+
+	klog.Info("end dhcp daemon")
+}
+
+func (br *Bridge) DHCPHealthCheck() {
+	addrList, err := br.ListAddr()
+	if err != nil {
+		klog.Errorf("could not list addresses, error: %s, link: %s", err.Error(), br.Name)
+		return
+	}
+
+	if len(addrList) != 0 && !br.dhcpClient.IsRunning() {
+		br.dhcpClient.Start()
 	}
 }
 
@@ -100,8 +139,74 @@ func (br *Bridge) BorrowAddr(lender *Link, vidList []uint16) error {
 		}
 	}
 
-	// transfer address
-	return transferAddr(lender, &Link{Link: br.Bridge})
+	// stop DHCP client for physical nic with connman, otherwise, dhcp client will failed and configure one of IP
+	// address in subnet 169.254.0.0/16. More deadly, the default IP route rule for physical nic is also changed.
+	if err := lender.stopDHCP(); err != nil {
+		return fmt.Errorf("stop dhcp client for %s failed, error: %w", lender.Attrs().Name, err)
+	}
+	// start bridge dhcp client
+	br.dhcpSignal <- true
+
+	if err := br.configAddr(lender); err != nil {
+		return fmt.Errorf("configure IP address for %s failed, error: %w", br.Name, err)
+	}
+
+	return nil
+}
+
+func (br *Bridge) configAddr(src *Link) error {
+	ip, mask, _, err := br.dhcpClient.GetIPv4Addr()
+	if err != nil {
+		return fmt.Errorf("%s get IPv4 address failed, error: %w", br.Name, err)
+	}
+	addr := &netlink.Addr{IPNet: &net.IPNet{IP: ip, Mask: mask}}
+	dst := &Link{Link: br.Bridge}
+	if err := netlink.AddrReplace(dst, addr); err != nil {
+		return fmt.Errorf("could not add address, error: %w, link: %s", err, dst.Attrs().Name)
+	}
+
+	routeList, err := netlink.RouteList(src, netlink.FAMILY_V4)
+	if err != nil {
+		return fmt.Errorf("could not list routes, error: %w, link: %s", err, src.Attrs().Name)
+	}
+
+	for i := range routeList {
+		routeList[i].LinkIndex = dst.Attrs().Index
+		if err := netlink.RouteReplace(&routeList[i]); err != nil {
+			klog.Errorf("could not replace route, error: %s, route: %v", err.Error(), routeList[i])
+			routeList[i].LinkIndex = src.Attrs().Index
+			// remove route rule that can not be replaced, for example,
+			// the auto-generated route `172.16.0.0/16 dev harvester-br0 proto kernel scope link src 172.16.0.76`
+			if err := netlink.RouteDel(&routeList[i]); err != nil {
+				klog.Errorf("could not delete route, error: %s, route: %v", err.Error(), routeList[i])
+			}
+		} else {
+			klog.Infof("replace route, %+v", routeList[i])
+		}
+	}
+
+	return nil
+}
+
+func (br *Bridge) delAddr() error {
+	addrList, err := br.ListAddr()
+	if err != nil {
+		return fmt.Errorf("list IPv4 address of %s failed, error: %w", br.Name, err)
+	}
+
+	num := len(addrList)
+	if num == 0 {
+		return nil
+	}
+	if num > 1 {
+		return fmt.Errorf("not support multiple addresses, iface: %s, address number: %d", br.Name, num)
+	}
+
+	if err := netlink.AddrDel(br, &addrList[0]); err != nil {
+		return fmt.Errorf("delete address of %s failed, error: %w", br.Name, err)
+	}
+
+	return nil
 }
 
 // ReturnAddr return address to returnee link
@@ -118,52 +223,18 @@ func (br *Bridge) ReturnAddr(returnee *Link, vidList []uint16) error {
 	}
 
 	// returnee nic set no master
-	if err := netlink.LinkSetNoMaster(returnee); err != nil {
-		return fmt.Errorf("could not set no master, error: %w, link: %s", err, returnee.Attrs().Name)
+	if err := returnee.setNoMaster(); err != nil {
+		return fmt.Errorf("set no master for %s failed, error: %w", returnee.Attrs().Name, err)
 	}
 
-	// transfer address
-	if err := transferAddr(&Link{Link: br.Bridge}, returnee); err != nil {
-		return fmt.Errorf("transfer address failed, error: %w, src link: %s, dst link: %s", err, br.Name, returnee.Attrs().Name)
+	// stop bridge dhcp client
+	br.dhcpSignal <- false
+	if err := br.delAddr(); err != nil {
+		return err
 	}
-
-	return nil
-}
-
-func transferAddr(src, dst *Link) error {
-	//  delete address of src link
-	addrList, err := netlink.AddrList(src, netlink.FAMILY_V4)
-	if err != nil || len(addrList) == 0 {
-		return fmt.Errorf("could not get address or nic does not own an address, error: %w, link: %s", err, src.Attrs().Name)
-	}
-
-	// get routes of src link before deleting addr, cause routes will disappear if the address of link is deleted.
-	routeList, err := netlink.RouteList(src, netlink.FAMILY_V4)
-	if err != nil {
-		return fmt.Errorf("could not list routes, error: %w, link: %s", err, src.Attrs().Name)
-	}
-
-	for _, addr := range addrList {
-		klog.Infof("del src addr, src: %s, addr: %+v", src.Attrs().Name, addr)
-		if err := netlink.AddrDel(src, &addr); err != nil {
-			return fmt.Errorf("could not delete address, error: %w, link:%s", err, src.Attrs().Name)
-		}
-
-		// replace address of dst link
-		klog.Infof("add dst addr, dst: %s, addr: %+v", dst.Attrs().Name, addr)
-		addr.Label = dst.Attrs().Name
-		if err := netlink.AddrReplace(dst, &addr); err != nil {
-			return fmt.Errorf("could not add address, error: %w, link: %s", err, dst.Attrs().Name)
-		}
-	}
-
-	// replace routes
-	for i := range routeList {
-		routeList[i].LinkIndex = dst.Attrs().Index
-		if err := netlink.RouteReplace(&routeList[i]); err != nil {
-			return fmt.Errorf("could not replace route, error: %w, route: %v", err, routeList[i])
-		}
-		klog.Infof("replace route, %+v", routeList[i])
+	// start dhcp client for physical nic
+	if err := returnee.startDHCP(); err != nil {
+		return fmt.Errorf("start dhcp client for link %s failed, error: %w", br.Name, err)
 	}
 
 	return nil

@@ -61,12 +61,14 @@ func (c *BridgeVLANController) OnChange(key string, setting *harvesterv1.Setting
 		return nil, fmt.Errorf("decode failed, error: %w, value: %s", err, setting.Value)
 	}
 
+	settingCopy := setting.DeepCopy()
 	if networkSetting.NIC == "" && networkSetting.ConfiguredNIC == "" {
-		klog.Errorf("skip network config, both NIC and configured NIC are empty")
-		return nil, nil
+		harvesterv1.SettingConfigured.False(settingCopy)
+		harvesterv1.SettingConfigured.Reason(settingCopy, "")
+		klog.Info("skip network config, both NIC and configured NIC are empty")
+		return c.settingClient.Update(settingCopy)
 	}
 
-	settingCopy := setting.DeepCopy()
 	if err := c.configBridgeNetwork(networkSetting); err != nil {
 		harvesterv1.SettingConfigured.False(settingCopy)
 		harvesterv1.SettingConfigured.Reason(settingCopy, fmt.Sprintf("failed to config bridge vlan, error:%s", err.Error()))
@@ -141,6 +143,8 @@ func (c *BridgeVLANController) OnRemove(key string, setting *harvesterv1.Setting
 }
 
 func (c *BridgeVLANController) configBridgeNetwork(setting *NetworkSetting) error {
+	// After pod restarts, dhcp client will not be working, thus it needs health check
+	defer c.bridge.DHCPHealthCheck()
 	// ensure the bridge existed
 	if err := c.bridge.Ensure(); err != nil {
 		return fmt.Errorf("ensure bridge failed, error: %w, bridge: %+v", err, c.bridge)
