@@ -68,9 +68,17 @@ spec:
           imagePullPolicy: Always
           securityContext:
             privileged: true
+          volumeMounts:
+          - mountPath: /var/run/dbus
+            name: dbus
           resources:
             limits:
               memory: 100Mi
             requests:
               cpu: 10m
               memory: 50Mi
+      volumes:
+        - hostPath:
+            path: /var/run/dbus
+            type: Directory
+          name: dbus
