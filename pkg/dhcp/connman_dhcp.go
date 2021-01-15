@@ -117,11 +117,11 @@ func (c *ConnmanService) DHCP2Static() error {
 }
 
 func (c *ConnmanService) ToDHCP() error {
-	if err :=  c.configIPv4(DHCP); err != nil {
+	if err := c.configIPv4(DHCP); err != nil {
 		return err
 	}
 
-	if err :=  c.configNameservers(); err != nil {
+	if err := c.configNameservers(); err != nil {
 		return err
 	}
 
