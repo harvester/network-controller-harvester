@@ -3,20 +3,27 @@ package network
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
 	"strconv"
+	"strings"
 
 	cniv1 "github.com/containernetworking/cni/pkg/types"
 	"github.com/rancher/apiserver/pkg/apierror"
 	"github.com/rancher/apiserver/pkg/types"
-	cni "github.com/rancher/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	"github.com/rancher/wrangler/pkg/schemas/validation"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/labels"
+
+	cni "github.com/rancher/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
+	ctlkubevirtv1 "github.com/rancher/harvester/pkg/generated/controllers/kubevirt.io/v1"
+	"github.com/rancher/harvester/pkg/indexeres"
 )
 
 type networkStore struct {
 	types.Store
 	nadCache cni.NetworkAttachmentDefinitionCache
+	vmCache  ctlkubevirtv1.VirtualMachineCache
 }
 
 type NetConf struct {
@@ -50,6 +57,10 @@ func (s *networkStore) Create(request *types.APIRequest, schema *types.APISchema
 		return types.APIObject{}, apierror.NewAPIError(validation.ServerError, "Failed to decode NAD config value, error: "+err.Error())
 	}
 
+	if bridgeConf.Vlan < 1 || bridgeConf.Vlan > 4094 {
+		return types.APIObject{}, apierror.NewAPIError(validation.InvalidBodyContent, "Bridge vlan vid must >=1 and <=4094")
+	}
+
 	if err := s.checkUniqueVlanID(data.Namespace(), bridgeConf); err != nil {
 		return types.APIObject{}, apierror.NewAPIError(validation.ServerError, err.Error())
 	}
@@ -57,11 +68,11 @@ func (s *networkStore) Create(request *types.APIRequest, schema *types.APISchema
 }
 
 func (s *networkStore) checkUniqueVlanID(ns string, config *NetConf) error {
-	nads, err := s.nadCache.List(ns, labels.Everything())
+	nadList, err := s.nadCache.List(ns, labels.Everything())
 	if err != nil {
 		return errors.New("failed to list network attachment definitions" + err.Error())
 	}
-	for _, nad := range nads {
+	for _, nad := range nadList {
 		var bridgeConf = &NetConf{}
 		err := json.Unmarshal([]byte(nad.Spec.Config), &bridgeConf)
 		if err != nil {
@@ -73,4 +84,27 @@ func (s *networkStore) checkUniqueVlanID(ns string, config *NetConf) error {
 		}
 	}
 	return nil
+}
+
+func (s *networkStore) Delete(request *types.APIRequest, schema *types.APISchema, id string) (types.APIObject, error) {
+	networkName := request.Name
+	vms, err := s.vmCache.GetByIndex(indexeres.VMByNetworkIndex, networkName)
+	if err != nil {
+		return types.APIObject{}, apierror.NewAPIError(validation.ServerError, err.Error())
+	}
+
+	if len(vms) > 0 {
+		vmNameList := make([]string, 0, len(vms))
+		for _, vm := range vms {
+			vmNameList = append(vmNameList, vm.Name)
+		}
+		errorMessage := fmt.Sprintf("network %s is still used by vm：%s", networkName, strings.Join(vmNameList, ","))
+		errorCode := validation.ErrorCode{
+			Code:   "ResourceIsUsed",
+			Status: http.StatusBadRequest,
+		}
+		return types.APIObject{}, apierror.NewAPIError(errorCode, errorMessage)
+	}
+
+	return s.Store.Delete(request, schema, id)
 }

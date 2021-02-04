@@ -19,8 +19,7 @@ package v1beta1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	conditions "github.com/openshift/custom-resource-status/conditions/v1"
+	sdkapi "kubevirt.io/controller-lifecycle-operator-sdk/pkg/sdk/api"
 )
 
 // DataVolume is an abstraction on top of PersistentVolumeClaims to allow easy population of those PersistentVolumeClaims with relation to VirtualMachines
@@ -50,6 +49,20 @@ type DataVolumeSpec struct {
 	//DataVolumeContentType options: "kubevirt", "archive"
 	// +kubebuilder:validation:Enum="kubevirt";"archive"
 	ContentType DataVolumeContentType `json:"contentType,omitempty"`
+	// Checkpoints is a list of DataVolumeCheckpoints, representing stages in a multistage import.
+	Checkpoints []DataVolumeCheckpoint `json:"checkpoints,omitempty"`
+	// FinalCheckpoint indicates whether the current DataVolumeCheckpoint is the final checkpoint.
+	FinalCheckpoint bool `json:"finalCheckpoint,omitempty"`
+	// Preallocation controls whether storage for DataVolumes should be allocated in advance.
+	Preallocation *bool `json:"preallocation,omitempty"`
+}
+
+// DataVolumeCheckpoint defines a stage in a warm migration.
+type DataVolumeCheckpoint struct {
+	// Previous is the identifier of the snapshot from the previous checkpoint.
+	Previous string `json:"previous"`
+	// Current is the identifier of the snapshot created for this checkpoint.
+	Current string `json:"current"`
 }
 
 // DataVolumeContentType represents the types of the imported data
@@ -71,6 +84,7 @@ type DataVolumeSource struct {
 	Upload   *DataVolumeSourceUpload   `json:"upload,omitempty"`
 	Blank    *DataVolumeBlankImage     `json:"blank,omitempty"`
 	Imageio  *DataVolumeSourceImageIO  `json:"imageio,omitempty"`
+	VDDK     *DataVolumeSourceVDDK     `json:"vddk,omitempty"`
 }
 
 // DataVolumeSourcePVC provides the parameters to create a Data Volume from an existing PVC
@@ -128,6 +142,20 @@ type DataVolumeSourceImageIO struct {
 	SecretRef string `json:"secretRef,omitempty"`
 	//CertConfigMap provides a reference to the CA cert
 	CertConfigMap string `json:"certConfigMap,omitempty"`
+}
+
+// DataVolumeSourceVDDK provides the parameters to create a Data Volume from a Vmware source
+type DataVolumeSourceVDDK struct {
+	// URL is the URL of the vCenter or ESXi host with the VM to migrate
+	URL string `json:"url,omitempty"`
+	// UUID is the UUID of the virtual machine that the backing file is attached to in vCenter/ESXi
+	UUID string `json:"uuid,omitempty"`
+	// BackingFile is the path to the virtual hard disk to migrate from vCenter/ESXi
+	BackingFile string `json:"backingFile,omitempty"`
+	// Thumbprint is the certificate thumbprint of the vCenter or ESXi host
+	Thumbprint string `json:"thumbprint,omitempty"`
+	// SecretRef provides a reference to a secret containing the username and password needed to access the vCenter or ESXi host
+	SecretRef string `json:"secretRef,omitempty"`
 }
 
 // DataVolumeStatus contains the current status of the DataVolume
@@ -211,6 +239,8 @@ const (
 	Failed DataVolumePhase = "Failed"
 	// Unknown represents a DataVolumePhase of Unknown
 	Unknown DataVolumePhase = "Unknown"
+	// Paused represents a DataVolumePhase of Paused
+	Paused DataVolumePhase = "Paused"
 
 	// DataVolumeReady is the condition that indicates if the data volume is ready to be consumed.
 	DataVolumeReady DataVolumeConditionType = "Ready"
@@ -250,8 +280,29 @@ type CDISpec struct {
 	// PullPolicy describes a policy for if/when to pull a container image
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty" valid:"required"`
 	// +kubebuilder:validation:Enum=RemoveWorkloads;BlockUninstallIfWorkloadsExist
+	// CDIUninstallStrategy defines the state to leave CDI on uninstall
 	UninstallStrategy *CDIUninstallStrategy `json:"uninstallStrategy,omitempty"`
+	// Rules on which nodes CDI infrastructure pods will be scheduled
+	Infra sdkapi.NodePlacement `json:"infra,omitempty"`
+	// Restrict on which nodes CDI workload pods will be scheduled
+	Workloads sdkapi.NodePlacement `json:"workload,omitempty"`
+	// Clone strategy override: should we use a host-assisted copy even if snapshots are available?
+	// +kubebuilder:validation:Enum="copy";"snapshot"
+	CloneStrategyOverride *CDICloneStrategy `json:"cloneStrategyOverride,omitempty"`
+	// CDIConfig at CDI level
+	Config *CDIConfigSpec `json:"config,omitempty"`
 }
+
+// CDICloneStrategy defines the preferred method for performing a CDI clone (override snapshot?)
+type CDICloneStrategy string
+
+const (
+	// CloneStrategyHostAssisted specifies slower, host-assisted copy
+	CloneStrategyHostAssisted = "copy"
+
+	// CloneStrategySnapshot specifies snapshot-based copying
+	CloneStrategySnapshot = "snapshot"
+)
 
 // CDIUninstallStrategy defines the state to leave CDI on uninstall
 type CDIUninstallStrategy string
@@ -267,41 +318,10 @@ const (
 // CDIPhase is the current phase of the CDI deployment
 type CDIPhase string
 
-// CDIStatus defines the status of the CDI installation
+// CDIStatus defines the status of the installation
 type CDIStatus struct {
-	Phase CDIPhase `json:"phase,omitempty"`
-	// A list of current conditions of the CDI resource
-	Conditions []conditions.Condition `json:"conditions,omitempty" optional:"true"`
-	// The version of the CDI resource as defined by the operator
-	OperatorVersion string `json:"operatorVersion,omitempty" optional:"true"`
-	// The desired version of the CDI resource
-	TargetVersion string `json:"targetVersion,omitempty" optional:"true"`
-	// The observed version of the CDI resource
-	ObservedVersion string `json:"observedVersion,omitempty" optional:"true"`
+	sdkapi.Status `json:",inline"`
 }
-
-const (
-	// CDIPhaseDeploying signals that the CDI resources are being deployed
-	CDIPhaseDeploying CDIPhase = "Deploying"
-
-	// CDIPhaseDeployed signals that the CDI resources are successflly deployed
-	CDIPhaseDeployed CDIPhase = "Deployed"
-
-	// CDIPhaseDeleting signals that the CDI resources are being removed
-	CDIPhaseDeleting CDIPhase = "Deleting"
-
-	// CDIPhaseDeleted signals that the CDI resources are deleted
-	CDIPhaseDeleted CDIPhase = "Deleted"
-
-	// CDIPhaseError signals that the CDI deployment is in an error state
-	CDIPhaseError CDIPhase = "Error"
-
-	// CDIPhaseUpgrading signals that the CDI resources are being deployed
-	CDIPhaseUpgrading CDIPhase = "Upgrading"
-
-	// CDIPhaseEmpty is an uninitialized phase
-	CDIPhaseEmpty CDIPhase = ""
-)
 
 //CDIList provides the needed parameters to do request a list of CDIs from the system
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -331,15 +351,33 @@ type CDIConfig struct {
 	Status CDIConfigStatus `json:"status,omitempty"`
 }
 
+//Percent is a string that can only be a value between [0,1)
+// (Note: we actually rely on reconcile to reject invalid values)
+// +kubebuilder:validation:Pattern=`^(0(?:\.\d{1,3})?|1)$`
+type Percent string
+
+//FilesystemOverhead defines the reserved size for PVCs with VolumeMode: Filesystem
+type FilesystemOverhead struct {
+	// Global is how much space of a Filesystem volume should be reserved for overhead. This value is used unless overridden by a more specific value (per storageClass)
+	Global Percent `json:"global,omitempty"`
+	// StorageClass specifies how much space of a Filesystem volume should be reserved for safety. The keys are the storageClass and the values are the overhead. This value overrides the global value
+	StorageClass map[string]Percent `json:"storageClass,omitempty"`
+}
+
 //CDIConfigSpec defines specification for user configuration
 type CDIConfigSpec struct {
 	// Override the URL used when uploading to a DataVolume
 	UploadProxyURLOverride *string `json:"uploadProxyURLOverride,omitempty"`
 	// Override the storage class to used for scratch space during transfer operations. The scratch space storage class is determined in the following order: 1. value of scratchSpaceStorageClass, if that doesn't exist, use the default storage class, if there is no default storage class, use the storage class of the DataVolume, if no storage class specified, use no storage class for scratch space
-	ScratchSpaceStorageClass *string                      `json:"scratchSpaceStorageClass,omitempty"`
-	PodResourceRequirements  *corev1.ResourceRequirements `json:"podResourceRequirements,omitempty"`
+	ScratchSpaceStorageClass *string `json:"scratchSpaceStorageClass,omitempty"`
+	// ResourceRequirements describes the compute resource requirements.
+	PodResourceRequirements *corev1.ResourceRequirements `json:"podResourceRequirements,omitempty"`
 	// FeatureGates are a list of specific enabled feature gates
 	FeatureGates []string `json:"featureGates,omitempty"`
+	// FilesystemOverhead describes the space reserved for overhead when using Filesystem volumes. A value is between 0 and 1, if not defined it is 0.055 (5.5% overhead)
+	FilesystemOverhead *FilesystemOverhead `json:"filesystemOverhead,omitempty"`
+	// Preallocation controls whether storage for DataVolumes should be allocated in advance.
+	Preallocation bool `json:"preallocation,omitempty"`
 }
 
 //CDIConfigStatus provides the most recently observed status of the CDI Config resource
@@ -347,8 +385,13 @@ type CDIConfigStatus struct {
 	// The calculated upload proxy URL
 	UploadProxyURL *string `json:"uploadProxyURL,omitempty"`
 	// The calculated storage class to be used for scratch space
-	ScratchSpaceStorageClass       string                       `json:"scratchSpaceStorageClass,omitempty"`
+	ScratchSpaceStorageClass string `json:"scratchSpaceStorageClass,omitempty"`
+	// ResourceRequirements describes the compute resource requirements.
 	DefaultPodResourceRequirements *corev1.ResourceRequirements `json:"defaultPodResourceRequirements,omitempty"`
+	// FilesystemOverhead describes the space reserved for overhead when using Filesystem volumes. A percentage value is between 0 and 1
+	FilesystemOverhead *FilesystemOverhead `json:"filesystemOverhead,omitempty"`
+	// Preallocation controls whether storage for DataVolumes should be allocated in advance.
+	Preallocation bool `json:"preallocation,omitempty"`
 }
 
 //CDIConfigList provides the needed parameters to do request a list of CDIConfigs from the system

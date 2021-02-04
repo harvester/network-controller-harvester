@@ -1,5 +1,5 @@
 /*
-Copyright 2020 Rancher Labs, Inc.
+Copyright 2021 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ func init() {
 
 type Interface interface {
 	KeyPair() KeyPairController
+	Preference() PreferenceController
 	Setting() SettingController
 	User() UserController
 	VirtualMachineImage() VirtualMachineImageController
@@ -50,6 +51,9 @@ type version struct {
 
 func (c *version) KeyPair() KeyPairController {
 	return NewKeyPairController(schema.GroupVersionKind{Group: "harvester.cattle.io", Version: "v1alpha1", Kind: "KeyPair"}, "keypairs", true, c.controllerFactory)
+}
+func (c *version) Preference() PreferenceController {
+	return NewPreferenceController(schema.GroupVersionKind{Group: "harvester.cattle.io", Version: "v1alpha1", Kind: "Preference"}, "preferences", true, c.controllerFactory)
 }
 func (c *version) Setting() SettingController {
 	return NewSettingController(schema.GroupVersionKind{Group: "harvester.cattle.io", Version: "v1alpha1", Kind: "Setting"}, "settings", false, c.controllerFactory)
