@@ -1,5 +1,5 @@
 /*
-Copyright 2020 Rancher Labs, Inc.
+Copyright 2021 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,12 +19,12 @@ limitations under the License.
 package kubevirt
 
 import (
-	v1alpha3 "github.com/rancher/harvester/pkg/generated/controllers/kubevirt.io/v1alpha3"
+	v1 "github.com/rancher/harvester/pkg/generated/controllers/kubevirt.io/v1"
 	"github.com/rancher/lasso/pkg/controller"
 )
 
 type Interface interface {
-	V1alpha3() v1alpha3.Interface
+	V1() v1.Interface
 }
 
 type group struct {
@@ -38,6 +38,6 @@ func New(controllerFactory controller.SharedControllerFactory) Interface {
 	}
 }
 
-func (g *group) V1alpha3() v1alpha3.Interface {
-	return v1alpha3.New(g.controllerFactory)
+func (g *group) V1() v1.Interface {
+	return v1.New(g.controllerFactory)
 }
