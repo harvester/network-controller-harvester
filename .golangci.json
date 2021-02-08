@@ -1,0 +1,32 @@
+{
+	"linters": {
+		"disable-all": true,
+		"enable": [
+			"govet",
+			"golint",
+			"goimports",
+			"misspell",
+			"ineffassign",
+			"gofmt",
+			"staticcheck",
+			"bodyclose",
+			"gosimple",
+			"prealloc",
+			"deadcode",
+			"errcheck"
+		]
+	},
+	"run": {
+		"skip-files": [
+			"/zz_generated_"
+		],
+		"skip-dirs": [
+			"generated"
+		],
+		"deadline": "5m",
+		"tests": true,
+		"build-tags": [
+			"test"
+		]
+	}
+}
