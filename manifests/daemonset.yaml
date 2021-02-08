@@ -1,41 +1,3 @@
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  labels:
-    app.kubernetes.io/name: harvester-network-controller
-    app.kubernetes.io/component: network
-    app.kubernetes.io/version: 0.0.1
-  name: harvester-network-controller
-  namespace: harvester-system
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: harvester-network-controller
-rules:
-  - apiGroups: ["harvester.cattle.io"]
-    resources: ["settings"]
-    verbs: ["get", "watch", "list", "update", "create"]
-  - apiGroups: ["k8s.cni.cncf.io"]
-    resources: ["network-attachment-definitions"]
-    verbs: ["get", "watch", "list", "update"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  labels:
-    app.kubernetes.io/name: harvester-network-controller
-    app.kubernetes.io/component: network
-    app.kubernetes.io/version: 0.0.1
-  name: harvester-network-controller
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: harvester-network-controller
-subjects:
-  - kind: ServiceAccount
-    name: harvester-network-controller
-    namespace: harvester-system
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -45,7 +7,7 @@ metadata:
   labels:
     app.kubernetes.io/name: harvester-network-controller
     app.kubernetes.io/component: network
-    app.kubernetes.io/version: 0.0.1
+    app.kubernetes.io/version: 0.2.0
 spec:
   selector:
     matchLabels:
@@ -63,14 +25,29 @@ spec:
       serviceAccountName: harvester-network-controller
       hostNetwork: true
       containers:
-        - name: network
+        - env:
+          - name: HOSTNAME
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: spec.nodeName
+          name: network
           image: rancher/harvester-network-controller:master-head
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
+          command:
+            - harvester-network-controller
+          args:
+            - agent
           securityContext:
             privileged: true
+            capabilities:
+              add:
+              - NET_ADMIN
           volumeMounts:
-          - mountPath: /var/run/dbus
-            name: dbus
+          - mountPath: /dev
+            name: dev
+          - mountPath: /lib/modules
+            name: modules
           resources:
             limits:
               memory: 100Mi
@@ -78,7 +55,11 @@ spec:
               cpu: 10m
               memory: 50Mi
       volumes:
-        - hostPath:
-            path: /var/run/dbus
-            type: Directory
-          name: dbus
+      - hostPath:
+          path: /dev
+          type: Directory
+        name: dev
+      - hostPath:
+          path: /lib/modules
+          type: Directory
+        name: modules
