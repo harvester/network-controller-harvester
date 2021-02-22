@@ -1,17 +1,24 @@
-package vlan
+package common
 
 import (
 	"encoding/json"
 	"fmt"
 
-	harvesterv1 "github.com/rancher/harvester/pkg/apis/harvester.cattle.io/v1alpha1"
-	harvcontroller "github.com/rancher/harvester/pkg/generated/controllers/harvester.cattle.io/v1alpha1"
+	harvnetwork "github.com/rancher/harvester/pkg/api/network"
+	harv1 "github.com/rancher/harvester/pkg/apis/harvester.cattle.io/v1alpha1"
+	ctlharv1 "github.com/rancher/harvester/pkg/generated/controllers/harvester.cattle.io/v1alpha1"
 	"github.com/sirupsen/logrus"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+var (
+	NetworkSettingName = "network-setting"
+)
+
 type NetworkSetting struct {
+	Type string
+
 	// physical NIC(network interface card)
 	NIC string
 
@@ -19,17 +26,17 @@ type NetworkSetting struct {
 	ConfiguredNIC string
 }
 
-func initNetworkSettings(settingClient harvcontroller.SettingClient) error {
+func InitNetworkSettings(settingClient ctlharv1.SettingClient) error {
 	_, err := settingClient.Get(NetworkSettingName, metav1.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			networkSetting := &NetworkSetting{}
 			jsonNetwork, err := json.Marshal(networkSetting)
 			if err != nil {
 				return err
 			}
 
-			setting := &harvesterv1.Setting{
+			setting := &harv1.Setting{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: NetworkSettingName,
 				},
@@ -38,7 +45,7 @@ func initNetworkSettings(settingClient harvcontroller.SettingClient) error {
 
 			sett, err := settingClient.Create(setting)
 			if err != nil {
-				if errors.IsAlreadyExists(err) {
+				if apierrors.IsAlreadyExists(err) {
 					logrus.Println("skip to create the default network setting as it is already exist")
 					return nil
 				}
@@ -68,4 +75,13 @@ func DecodeNetworkSettings(value string) (*NetworkSetting, error) {
 	}
 
 	return setting, nil
+}
+
+func DecodeNetConf(config string) (*harvnetwork.NetConf, error) {
+	netconf := &harvnetwork.NetConf{}
+	if err := json.Unmarshal([]byte(config), netconf); err != nil {
+		return nil, fmt.Errorf("unmarshal failed, error: %w, value: %s", err, config)
+	}
+
+	return netconf, nil
 }
