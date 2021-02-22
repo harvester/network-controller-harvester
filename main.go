@@ -1,6 +1,7 @@
 //go:generate go run pkg/codegen/cleanup/main.go
 //go:generate /bin/rm -rf pkg/generated
 //go:generate go run pkg/codegen/main.go
+//go:generate /bin/bash scripts/generate-manifest
 
 package main
 
@@ -8,16 +9,16 @@ import (
 	"context"
 	"os"
 
-	harvesterv1 "github.com/rancher/harvester/pkg/generated/controllers/harvester.cattle.io"
-	cni "github.com/rancher/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
+	"github.com/rancher/wrangler/pkg/leader"
 	"github.com/rancher/wrangler/pkg/signals"
-	"github.com/rancher/wrangler/pkg/start"
 	"github.com/urfave/cli"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 
-	nadController "github.com/rancher/harvester-network-controller/pkg/controller/nad"
-	networkController "github.com/rancher/harvester-network-controller/pkg/controller/vlan"
+	"github.com/rancher/harvester-network-controller/pkg/config"
+	"github.com/rancher/harvester-network-controller/pkg/controller/agent"
+	"github.com/rancher/harvester-network-controller/pkg/controller/master"
 )
 
 var (
@@ -29,7 +30,7 @@ func main() {
 	app.Name = "harvester-network-controller"
 	app.Version = VERSION
 	app.Usage = "Harvester Network Controller, to help with cluster network configuration. Options kubeconfig or masterurl are required."
-	app.Flags = []cli.Flag{
+	commonFlags := []cli.Flag{
 		cli.StringFlag{
 			Name:   "kubeconfig, k",
 			EnvVar: "KUBECONFIG",
@@ -55,14 +56,28 @@ func main() {
 			Usage:  "Threadiness level to set, defaults to 2.",
 		},
 	}
-	app.Action = run
+
+	app.Commands = []cli.Command{
+		{
+			Name:   "manager",
+			Usage:  "Run manager",
+			Action: managerRun,
+			Flags:  commonFlags,
+		},
+		{
+			Name:   "agent",
+			Usage:  "Run agent",
+			Action: agentRun,
+			Flags:  commonFlags,
+		},
+	}
 
 	if err := app.Run(os.Args); err != nil {
 		klog.Fatal(err)
 	}
 }
 
-func run(c *cli.Context) error {
+func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection bool) error {
 	masterURL := c.String("master")
 	kubeconfig := c.String("kubeconfig")
 	namespace := c.String("namespace")
@@ -88,30 +103,41 @@ func run(c *cli.Context) error {
 		klog.Fatalf("Error building config from flags: %s", err.Error())
 	}
 
-	harvesters, err := harvesterv1.NewFactoryFromConfigWithNamespace(cfg, namespace)
+	client, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		klog.Fatalf("Error get client from kubeconfig: %s", err.Error())
+	}
+
+	management, err := config.SetupManagement(ctx, cfg)
 	if err != nil {
 		klog.Fatalf("Error building harvester controllers: %s", err.Error())
 	}
 
-	nads, err := cni.NewFactoryFromConfig(cfg)
-	if err != nil {
-		klog.Fatalf("Error building nad controllers: %s", err.Error())
+	callback := func(ctx context.Context) {
+		if err := management.Register(ctx, cfg, registerFuncList); err != nil {
+			panic(err)
+		}
+
+		if err := management.Start(threadiness); err != nil {
+			panic(err)
+		}
+
+		<-ctx.Done()
 	}
 
-	if err := networkController.Register(ctx, harvesters.Harvester().V1alpha1().Setting(),
-		nads.K8s().V1().NetworkAttachmentDefinition()); err != nil {
-		klog.Fatalf("Error register vlan controller: %s", err.Error())
+	if leaderelection {
+		leader.RunOrDie(ctx, "kube-system", "harvester-network-controllers", client, callback)
+	} else {
+		callback(ctx)
 	}
 
-	if err := nadController.Register(ctx, harvesters.Harvester().V1alpha1().Setting(),
-		nads.K8s().V1().NetworkAttachmentDefinition()); err != nil {
-		klog.Fatalf("Error register nad controller: %s", err.Error())
-	}
-
-	if err := start.All(ctx, threadiness, harvesters, nads); err != nil {
-		klog.Fatalf("Error starting: %s", err.Error())
-	}
-
-	<-ctx.Done()
 	return nil
+}
+
+func managerRun(c *cli.Context) error {
+	return run(c, master.RegisterFuncList, true)
+}
+
+func agentRun(c *cli.Context) error {
+	return run(c, agent.RegisterFuncList, false)
 }
