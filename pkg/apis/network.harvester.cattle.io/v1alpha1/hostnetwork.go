@@ -48,7 +48,16 @@ type HostNetworkStatus struct {
 	NetworkLinkStatus map[string]*LinkStatus `json:"networkLinkStatus,omitempty"`
 
 	// +optional
+	PhysicalNics []PhysicalNic `json:"physicalNics,omitempty"`
+
+	// +optional
 	Conditions []Condition `json:"conditions,omitempty"`
+}
+
+type PhysicalNic struct {
+	Index               int    `json:"index,omitempty"`
+	Name                string `json:"name,omitempty"`
+	UsedByManageNetwork bool   `json:"usedByManageNetwork,omitempty"`
 }
 
 type NetworkID int

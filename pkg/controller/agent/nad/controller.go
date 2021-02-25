@@ -3,6 +3,7 @@ package nad
 import (
 	"context"
 	"fmt"
+	"os"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	ctlharv1 "github.com/rancher/harvester/pkg/generated/controllers/harvester.cattle.io/v1alpha1"
@@ -11,7 +12,7 @@ import (
 	"github.com/rancher/harvester-network-controller/pkg/config"
 	"github.com/rancher/harvester-network-controller/pkg/controller/common"
 	"github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvester.cattle.io/v1alpha1"
-	vlan2 "github.com/rancher/harvester-network-controller/pkg/network/vlan"
+	"github.com/rancher/harvester-network-controller/pkg/network/vlan"
 )
 
 const (
@@ -56,17 +57,23 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 
 	// TODO delete previous vlan id when update nad
 
-	nic, err := common.GetNIC(h.hostNetworkCache, h.settingCache)
+	name := os.Getenv(common.KeyHostName)
+	hn, err := h.hostNetworkCache.Get(common.HostNetworkNamespace, name)
+	if err != nil {
+		return nil, fmt.Errorf("get host network %s failed, error: %w", name, err)
+	}
+
+	nic, err := common.GetNIC(hn.Spec.NIC, h.settingCache)
 	if err != nil {
 		return nil, fmt.Errorf("get nic failed, error: %w", err)
 	}
 
-	vlan, err := vlan2.NewVlanWithNic(nic, nil)
+	v, err := vlan.GetVlanWithNic(nic, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := vlan.AddLocalArea(netconf.Vlan); err != nil {
+	if err := v.AddLocalArea(netconf.Vlan); err != nil {
 		return nil, err
 	}
 
@@ -88,17 +95,22 @@ func (h Handler) OnRemove(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 		return nil, err
 	}
 
-	nic, err := common.GetNIC(h.hostNetworkCache, h.settingCache)
+	name := os.Getenv(common.KeyHostName)
+	hn, err := h.hostNetworkCache.Get(common.HostNetworkNamespace, name)
+	if err != nil {
+		return nil, fmt.Errorf("get host network %s failed, error: %w", name, err)
+	}
+	nic, err := common.GetNIC(hn.Spec.NIC, h.settingCache)
 	if err != nil {
 		return nil, fmt.Errorf("get nic failed, error: %w", err)
 	}
 
-	vlan, err := vlan2.NewVlanWithNic(nic, nil)
+	v, err := vlan.GetVlanWithNic(nic, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := vlan.RemoveLocalArea(netconf.Vlan); err != nil {
+	if err := v.RemoveLocalArea(netconf.Vlan); err != nil {
 		return nil, err
 	}
 

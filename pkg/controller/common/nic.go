@@ -2,23 +2,15 @@ package common
 
 import (
 	"fmt"
-	"os"
 
 	ctlharv1 "github.com/rancher/harvester/pkg/generated/controllers/harvester.cattle.io/v1alpha1"
-
-	"github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvester.cattle.io/v1alpha1"
 )
 
 const KeyHostName = "HOSTNAME"
 
-func GetNIC(hostNetworkCache v1alpha1.HostNetworkCache, settingCache ctlharv1.SettingCache) (string, error) {
-	hn, err := hostNetworkCache.Get(HostNetworkNamespace, os.Getenv(KeyHostName))
-	if err != nil {
-		return "", err
-	}
-
-	if hn.Spec.NIC != "" {
-		return hn.Spec.NIC, nil
+func GetNIC(nic string, settingCache ctlharv1.SettingCache) (string, error) {
+	if nic != "" {
+		return nic, nil
 	}
 
 	return GetDefaultNIC(settingCache)

@@ -144,6 +144,17 @@ spec:
                       type: string
                   type: object
                 type: object
+              physicalNics:
+                items:
+                  properties:
+                    index:
+                      type: integer
+                    name:
+                      type: string
+                    usedByManageNetwork:
+                      type: boolean
+                  type: object
+                type: array
             type: object
         type: object
     served: true
