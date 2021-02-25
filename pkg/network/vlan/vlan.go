@@ -24,7 +24,7 @@ const BridgeName = "harvester-br0"
 
 // The bridge of a pure VLAN may have no latest information
 // The NIC of a pure VLAN can be empty
-func NewPureVlan(helper *Helper) *Vlan {
+func NewVlan(helper *Helper) *Vlan {
 	br := iface.NewBridge(BridgeName)
 	return &Vlan{
 		bridge: br,
@@ -34,8 +34,8 @@ func NewPureVlan(helper *Helper) *Vlan {
 }
 
 // A Vlan with NIC is has been configured on node
-func NewVlanWithNic(nic string, helper *Helper) (*Vlan, error) {
-	v := NewPureVlan(helper)
+func GetVlanWithNic(nic string, helper *Helper) (*Vlan, error) {
+	v := NewVlan(helper)
 	if err := v.bridge.Fetch(); err != nil {
 		return nil, err
 	}
@@ -43,12 +43,17 @@ func NewVlanWithNic(nic string, helper *Helper) (*Vlan, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if l.LinkAttrs().MasterIndex != v.bridge.Index() {
+		return nil, fmt.Errorf("the master of nic %s is not %s", nic, v.bridge.Name())
+	}
+
 	v.nic = l
 
 	return v, nil
 }
 
-func (v *Vlan) Setup(nic string, conf network.Config) error {
+func (v *Vlan) Setup(nic string, vids []uint16, conf network.Config) error {
 	klog.Info("start setup VLAN network")
 
 	// ensure bridge
@@ -62,7 +67,7 @@ func (v *Vlan) Setup(nic string, conf network.Config) error {
 	}
 
 	// setup L2 layer network
-	if err = v.setupL2(l); err != nil {
+	if err = v.setupL2(l, vids); err != nil {
 		return err
 	}
 	// setup L3 layer network
@@ -98,11 +103,24 @@ func (v *Vlan) stopMonitor() {
 	network.GetWatcher().DelLink(v.nic.Index())
 }
 
-func (v *Vlan) setupL2(nic *iface.Link) error {
-	return nic.SetMaster(v.bridge)
+func (v *Vlan) setupL2(nic *iface.Link, vids []uint16) error {
+	if err := nic.SetMaster(v.bridge); err != nil {
+		return err
+	}
+
+	for _, vid := range vids {
+		if err := nic.AddBridgeVlan(vid); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (v *Vlan) unsetL2() error {
+	if err := v.nic.ClearBridgeVlan(); err != nil {
+		return fmt.Errorf("clear bridge vlan failed, error: %w", err)
+	}
 	return v.nic.SetNoMaster()
 }
 
@@ -197,8 +215,8 @@ func (v *Vlan) afterDelBridge(update netlink.LinkUpdate) {
 		}
 	}
 
-	if v.helper != nil && v.helper.SendResetSignal != nil {
-		if err := v.helper.SendResetSignal(); err != nil {
+	if v.helper != nil && v.helper.Resetter != nil {
+		if err := v.helper.Resetter(); err != nil {
 			klog.Errorf("reset vlan failed, error: %s", err.Error())
 		}
 	}

@@ -1,10 +1,12 @@
 package vlan
 
-import "github.com/rancher/harvester-network-controller/pkg/network/iface"
+import (
+	"github.com/rancher/harvester-network-controller/pkg/network/iface"
+)
 
 type Helper struct {
-	EventSender     func(event *Event) error
-	SendResetSignal func() error
+	EventSender func(event *Event) error
+	Resetter    func() error
 }
 
 type Event struct {
