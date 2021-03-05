@@ -41,10 +41,9 @@ require (
 	github.com/vishvananda/netlink v1.1.0
 	golang.org/x/crypto v0.0.0-20201117144127-c1f2f97bffc9 // indirect
 	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b // indirect
-	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
+	golang.org/x/tools v0.1.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	k8s.io/api v0.19.0-rc.2
-	k8s.io/apiextensions-apiserver v0.19.0-rc.2
 	k8s.io/apimachinery v0.19.0-rc.2
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog v1.0.0
