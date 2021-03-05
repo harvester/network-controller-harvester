@@ -28,8 +28,12 @@ type FakeNetworkV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeNetworkV1alpha1) HostNetworks(namespace string) v1alpha1.HostNetworkInterface {
-	return &FakeHostNetworks{c, namespace}
+func (c *FakeNetworkV1alpha1) ClusterNetworks(namespace string) v1alpha1.ClusterNetworkInterface {
+	return &FakeClusterNetworks{c, namespace}
+}
+
+func (c *FakeNetworkV1alpha1) NodeNetworks(namespace string) v1alpha1.NodeNetworkInterface {
+	return &FakeNodeNetworks{c, namespace}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
