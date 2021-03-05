@@ -21,7 +21,6 @@ package versioned
 import (
 	"fmt"
 
-	k8scnicncfiov1 "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned/typed/k8s.cni.cncf.io/v1"
 	networkv1alpha1 "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvester.cattle.io/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
@@ -30,7 +29,6 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	K8sCniCncfIoV1() k8scnicncfiov1.K8sCniCncfIoV1Interface
 	NetworkV1alpha1() networkv1alpha1.NetworkV1alpha1Interface
 }
 
@@ -38,13 +36,7 @@ type Interface interface {
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	k8sCniCncfIoV1  *k8scnicncfiov1.K8sCniCncfIoV1Client
 	networkV1alpha1 *networkv1alpha1.NetworkV1alpha1Client
-}
-
-// K8sCniCncfIoV1 retrieves the K8sCniCncfIoV1Client
-func (c *Clientset) K8sCniCncfIoV1() k8scnicncfiov1.K8sCniCncfIoV1Interface {
-	return c.k8sCniCncfIoV1
 }
 
 // NetworkV1alpha1 retrieves the NetworkV1alpha1Client
@@ -73,10 +65,6 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	}
 	var cs Clientset
 	var err error
-	cs.k8sCniCncfIoV1, err = k8scnicncfiov1.NewForConfig(&configShallowCopy)
-	if err != nil {
-		return nil, err
-	}
 	cs.networkV1alpha1, err = networkv1alpha1.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
@@ -93,7 +81,6 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 // panics if there is an error in the config.
 func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
-	cs.k8sCniCncfIoV1 = k8scnicncfiov1.NewForConfigOrDie(c)
 	cs.networkV1alpha1 = networkv1alpha1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
@@ -103,7 +90,6 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.k8sCniCncfIoV1 = k8scnicncfiov1.New(c)
 	cs.networkV1alpha1 = networkv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)

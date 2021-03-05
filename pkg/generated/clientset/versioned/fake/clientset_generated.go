@@ -20,8 +20,6 @@ package fake
 
 import (
 	clientset "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned"
-	k8scnicncfiov1 "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned/typed/k8s.cni.cncf.io/v1"
-	fakek8scnicncfiov1 "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned/typed/k8s.cni.cncf.io/v1/fake"
 	networkv1alpha1 "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvester.cattle.io/v1alpha1"
 	fakenetworkv1alpha1 "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvester.cattle.io/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -77,11 +75,6 @@ func (c *Clientset) Tracker() testing.ObjectTracker {
 }
 
 var _ clientset.Interface = &Clientset{}
-
-// K8sCniCncfIoV1 retrieves the K8sCniCncfIoV1Client
-func (c *Clientset) K8sCniCncfIoV1() k8scnicncfiov1.K8sCniCncfIoV1Interface {
-	return &fakek8scnicncfiov1.FakeK8sCniCncfIoV1{Fake: &c.Fake}
-}
 
 // NetworkV1alpha1 retrieves the NetworkV1alpha1Client
 func (c *Clientset) NetworkV1alpha1() networkv1alpha1.NetworkV1alpha1Interface {

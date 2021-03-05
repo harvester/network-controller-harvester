@@ -26,7 +26,8 @@ import (
 
 type NetworkV1alpha1Interface interface {
 	RESTClient() rest.Interface
-	HostNetworksGetter
+	ClusterNetworksGetter
+	NodeNetworksGetter
 }
 
 // NetworkV1alpha1Client is used to interact with features provided by the network.harvester.cattle.io group.
@@ -34,8 +35,12 @@ type NetworkV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *NetworkV1alpha1Client) HostNetworks(namespace string) HostNetworkInterface {
-	return newHostNetworks(c, namespace)
+func (c *NetworkV1alpha1Client) ClusterNetworks(namespace string) ClusterNetworkInterface {
+	return newClusterNetworks(c, namespace)
+}
+
+func (c *NetworkV1alpha1Client) NodeNetworks(namespace string) NodeNetworkInterface {
+	return newNodeNetworks(c, namespace)
 }
 
 // NewForConfig creates a new NetworkV1alpha1Client for the given config.

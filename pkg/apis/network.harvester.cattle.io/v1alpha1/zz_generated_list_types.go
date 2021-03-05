@@ -26,16 +26,33 @@ import (
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// HostNetworkList is a list of HostNetwork resources
-type HostNetworkList struct {
+// NodeNetworkList is a list of NodeNetwork resources
+type NodeNetworkList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
 
-	Items []HostNetwork `json:"items"`
+	Items []NodeNetwork `json:"items"`
 }
 
-func NewHostNetwork(namespace, name string, obj HostNetwork) *HostNetwork {
-	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("HostNetwork").ToAPIVersionAndKind()
+func NewNodeNetwork(namespace, name string, obj NodeNetwork) *NodeNetwork {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("NodeNetwork").ToAPIVersionAndKind()
+	obj.Name = name
+	obj.Namespace = namespace
+	return &obj
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// ClusterNetworkList is a list of ClusterNetwork resources
+type ClusterNetworkList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []ClusterNetwork `json:"items"`
+}
+
+func NewClusterNetwork(namespace, name string, obj ClusterNetwork) *ClusterNetwork {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("ClusterNetwork").ToAPIVersionAndKind()
 	obj.Name = name
 	obj.Namespace = namespace
 	return &obj

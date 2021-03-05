@@ -30,7 +30,8 @@ func init() {
 }
 
 type Interface interface {
-	HostNetwork() HostNetworkController
+	ClusterNetwork() ClusterNetworkController
+	NodeNetwork() NodeNetworkController
 }
 
 func New(controllerFactory controller.SharedControllerFactory) Interface {
@@ -43,6 +44,9 @@ type version struct {
 	controllerFactory controller.SharedControllerFactory
 }
 
-func (c *version) HostNetwork() HostNetworkController {
-	return NewHostNetworkController(schema.GroupVersionKind{Group: "network.harvester.cattle.io", Version: "v1alpha1", Kind: "HostNetwork"}, "hostnetworks", true, c.controllerFactory)
+func (c *version) ClusterNetwork() ClusterNetworkController {
+	return NewClusterNetworkController(schema.GroupVersionKind{Group: "network.harvester.cattle.io", Version: "v1alpha1", Kind: "ClusterNetwork"}, "clusternetworks", true, c.controllerFactory)
+}
+func (c *version) NodeNetwork() NodeNetworkController {
+	return NewNodeNetworkController(schema.GroupVersionKind{Group: "network.harvester.cattle.io", Version: "v1alpha1", Kind: "NodeNetwork"}, "nodenetworks", true, c.controllerFactory)
 }
