@@ -14,8 +14,8 @@ metadata:
   name: harvester-network-controller
 rules:
   - apiGroups: [ "network.harvester.cattle.io" ]
-    resources: [ "hostnetworks", "hostnetworks/status" ]
-    verbs: [ "get", "watch", "list", "update", "create" ]
+    resources: [ "clusternetworks", "nodenetworks", "nodenetworks/status" ]
+    verbs: [ "get", "watch", "list", "update", "create", "delete" ]
   - apiGroups: [ "harvester.cattle.io" ]
     resources: [ "settings" ]
     verbs: [ "get", "watch", "list" ]

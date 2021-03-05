@@ -26,7 +26,7 @@ spec:
       hostNetwork: true
       containers:
         - env:
-          - name: HOSTNAME
+          - name: nodename
             valueFrom:
               fieldRef:
                 apiVersion: v1
