@@ -122,33 +122,31 @@ func (br *Bridge) ConfigIPv4AddrFromSlave(slave *Link, routes []*netlink.Route) 
 	}
 
 	// configure route rules passed by parameters
+	// In case of resuming harvester-br0 deleted atypically, we get the original route rules from CR.
+	// Moreover, we can reconfigure the special route rules configured by uses.
 	for _, route := range routes {
 		// the bridge index may have changed after reboot, that is the reason we correct it
 		route.LinkIndex = br.Index()
-		if err := netlink.RouteReplace(route); err != nil {
-			klog.Warningf("could not replace route, error: %s, route: %v", err.Error(), route)
+		if err := netlink.RouteAdd(route); err != nil {
+			klog.Warningf("could not add route, error: %s, route: %v", err.Error(), route)
+		} else {
+			klog.Infof("add route: %+v", route)
 		}
 	}
 
 	return nil
 }
 
-func (br *Bridge) delAddr() error {
+func (br *Bridge) ClearAddr() error {
 	addrList, err := netlink.AddrList(br.bridge, netlink.FAMILY_V4)
 	if err != nil {
 		return fmt.Errorf("list IPv4 address of %s failed, error: %w", br.bridge.Name, err)
 	}
 
-	num := len(addrList)
-	if num == 0 {
-		return nil
-	}
-	if num > 1 {
-		return fmt.Errorf("not support multiple addresses, iface: %s, address number: %d", br.bridge.Name, num)
-	}
-
-	if err := netlink.AddrDel(br.bridge, &addrList[0]); err != nil {
-		return fmt.Errorf("delete address of %s failed, error: %w", br.bridge.Name, err)
+	for _, addr := range addrList {
+		if err := netlink.AddrDel(br.bridge, &addr); err != nil {
+			return fmt.Errorf("delete address of %s failed, error: %w", br.bridge.Name, err)
+		}
 	}
 
 	return nil

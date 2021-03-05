@@ -4,7 +4,6 @@ import (
 	"context"
 
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	ctlharv1 "github.com/rancher/harvester/pkg/generated/controllers/harvester.cattle.io"
 	ctlcni "github.com/rancher/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
 	"github.com/rancher/harvester/pkg/util/crd"
 	"github.com/rancher/lasso/pkg/controller"
@@ -46,7 +45,6 @@ type Management struct {
 	ControllerFactory controller.SharedControllerFactory
 
 	HarvesterNetworkFactory *ctlnetwork.Factory
-	HarvesterFactory        *ctlharv1.Factory
 
 	CniFactory  *ctlcni.Factory
 	CoreFactory *ctlcore.Factory
@@ -88,7 +86,7 @@ func createCRDsIfNotExisted(ctx context.Context, config *rest.Config) error {
 	}
 	return factory.
 		CreateCRDsIfNotExisted(
-			crd.NonNamespacedFromGV(networkv1alpha1.SchemeGroupVersion, "HostNetwork"),
+			crd.NonNamespacedFromGV(networkv1alpha1.SchemeGroupVersion, "NodeNetwork"),
 		).
 		CreateCRDsIfNotExisted(
 			createNetworkAttachmentDefinitionCRD(),
@@ -123,13 +121,6 @@ func SetupManagement(ctx context.Context, restConfig *rest.Config) (*Management,
 	}
 	management.HarvesterNetworkFactory = harvesterNetwork
 	management.starters = append(management.starters, harvesterNetwork)
-
-	harvester, err := ctlharv1.NewFactoryFromConfigWithOptions(restConfig, opts)
-	if err != nil {
-		return nil, err
-	}
-	management.HarvesterFactory = harvester
-	management.starters = append(management.starters, harvester)
 
 	core, err := ctlcore.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {

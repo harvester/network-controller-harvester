@@ -72,33 +72,15 @@ func (l *Link) DelBridgeVlan(vid uint16) error {
 	return nil
 }
 
-func (l *Link) ClearBridgeVlan() error {
-	vidMap, err := netlink.BridgeVlanList()
-	if err != nil {
-		return fmt.Errorf("list vlan failed, error: %w", err)
-	}
-
-	for _, info := range vidMap[int32(l.Index())] {
-		if err := l.DelBridgeVlan(info.Vid); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (l *Link) SetMaster(br *Bridge) error {
 	if l.link.Attrs().MasterIndex == br.bridge.Index {
 		return nil
 	}
 
 	if l.link.Attrs().OperState == netlink.OperDown {
-		if err := netlink.LinkSetUp(l.link); err != nil {
-			return err
-		}
+		return fmt.Errorf("link %s should be up", l.Name())
 	}
 
-	klog.Infof("%s set master as %s", l.Name(), br.Name())
 	return netlink.LinkSetMaster(l.link, br.bridge)
 }
 

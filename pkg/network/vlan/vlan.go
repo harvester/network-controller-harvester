@@ -16,25 +16,31 @@ import (
 type Vlan struct {
 	bridge *iface.Bridge
 	nic    *iface.Link
-	status *Status
-	helper *Helper
+	status *network.Status
+	helper *network.Helper
 }
 
-const BridgeName = "harvester-br0"
+const (
+	BridgeName = "harvester-br0"
+)
+
+func (v *Vlan) Type() string {
+	return "vlan"
+}
 
 // The bridge of a pure VLAN may have no latest information
 // The NIC of a pure VLAN can be empty
-func NewVlan(helper *Helper) *Vlan {
+func NewVlan(helper *network.Helper) *Vlan {
 	br := iface.NewBridge(BridgeName)
 	return &Vlan{
 		bridge: br,
-		status: &Status{},
+		status: &network.Status{},
 		helper: helper,
 	}
 }
 
 // A Vlan with NIC is has been configured on node
-func GetVlanWithNic(nic string, helper *Helper) (*Vlan, error) {
+func GetVlanWithNic(nic string, helper *network.Helper) (*Vlan, error) {
 	v := NewVlan(helper)
 	if err := v.bridge.Fetch(); err != nil {
 		return nil, err
@@ -42,10 +48,6 @@ func GetVlanWithNic(nic string, helper *Helper) (*Vlan, error) {
 	l, err := iface.GetLink(nic)
 	if err != nil {
 		return nil, err
-	}
-
-	if l.LinkAttrs().MasterIndex != v.bridge.Index() {
-		return nil, fmt.Errorf("the master of nic %s is not %s", nic, v.bridge.Name())
 	}
 
 	v.nic = l
@@ -104,6 +106,7 @@ func (v *Vlan) stopMonitor() {
 }
 
 func (v *Vlan) setupL2(nic *iface.Link, vids []uint16) error {
+	klog.Infof("set L2")
 	if err := nic.SetMaster(v.bridge); err != nil {
 		return err
 	}
@@ -118,9 +121,7 @@ func (v *Vlan) setupL2(nic *iface.Link, vids []uint16) error {
 }
 
 func (v *Vlan) unsetL2() error {
-	if err := v.nic.ClearBridgeVlan(); err != nil {
-		return fmt.Errorf("clear bridge vlan failed, error: %w", err)
-	}
+	klog.Infof("unset L2")
 	return v.nic.SetNoMaster()
 }
 
@@ -136,6 +137,7 @@ func (v *Vlan) setupL3(nic *iface.Link, routes []*netlink.Route) error {
 }
 
 func (v *Vlan) unsetL3() error {
+	klog.Infof("unset L3")
 	if err := v.nic.UnsetRules4DHCP(); err != nil {
 		return err
 	}
@@ -145,7 +147,7 @@ func (v *Vlan) unsetL3() error {
 		return err
 	}
 
-	return nil
+	return v.bridge.ClearAddr()
 }
 
 func (v *Vlan) AddLocalArea(id int) error {
@@ -182,7 +184,7 @@ func (v *Vlan) Repeal() error {
 	return nil
 }
 
-func (v *Vlan) Status(condition Condition) (*Status, error) {
+func (v *Vlan) Status(condition network.Condition) (*network.Status, error) {
 	if err := v.bridge.Fetch(); err != nil {
 		return nil, err
 	}
@@ -192,7 +194,7 @@ func (v *Vlan) Status(condition Condition) (*Status, error) {
 		}
 	}
 
-	return &Status{
+	return &network.Status{
 		Condition: condition,
 		IFaces: map[string]iface.IFace{
 			v.bridge.Name(): v.bridge,
@@ -203,20 +205,20 @@ func (v *Vlan) Status(condition Condition) (*Status, error) {
 
 func (v *Vlan) afterDelBridge(update netlink.LinkUpdate) {
 	message := fmt.Sprintf("Bridge device %s has been deleted and the controller will try to restore", update.Link.Attrs().Name)
-	event := &Event{
+	event := &network.Event{
 		EventType: v1.EventTypeWarning,
 		Reason:    "atypical deletion",
 		Message:   message,
 	}
 
 	if v.helper != nil && v.helper.EventSender != nil {
-		if err := v.helper.EventSender(event); err != nil {
+		if err := v.helper.EventSender(event, v.Type()); err != nil {
 			klog.Errorf("recorde event failed, error: %s", err.Error())
 		}
 	}
 
 	if v.helper != nil && v.helper.Resetter != nil {
-		if err := v.helper.Resetter(); err != nil {
+		if err := v.helper.Resetter(v.Type()); err != nil {
 			klog.Errorf("reset vlan failed, error: %s", err.Error())
 		}
 	}
@@ -225,14 +227,14 @@ func (v *Vlan) afterDelBridge(update netlink.LinkUpdate) {
 func (v *Vlan) afterModifyNicIP(addr netlink.AddrUpdate) {
 	message := fmt.Sprintf("The IP address of %s has been modified as %s and the bridge %s will keep the same",
 		v.nic.Name(), addr.LinkAddress.String(), v.bridge.Name())
-	event := &Event{
+	event := &network.Event{
 		EventType: v1.EventTypeNormal,
 		Reason:    "IPv4AddressUpdate",
 		Message:   message,
 	}
 
 	if v.helper != nil && v.helper.EventSender != nil {
-		if err := v.helper.EventSender(event); err != nil {
+		if err := v.helper.EventSender(event, v.Type()); err != nil {
 			klog.Errorf("recorde event failed, error: %s", err.Error())
 		}
 	}
@@ -244,14 +246,14 @@ func (v *Vlan) afterModifyNicIP(addr netlink.AddrUpdate) {
 
 func (v *Vlan) afterLinkDown(update netlink.LinkUpdate) {
 	if update.Link.Attrs().OperState == netlink.OperDown && (update.Link.Attrs().Flags&net.FlagUp) == 0 && update.Change == 1 {
-		event := &Event{
+		event := &network.Event{
 			EventType: v1.EventTypeWarning,
 			Reason:    "LinkDown",
 			Message:   fmt.Sprintf("Link %s has been down atypically and the controller will try to set it up", update.Link.Attrs().Name),
 		}
 
 		if v.helper != nil && v.helper.EventSender != nil {
-			if err := v.helper.EventSender(event); err != nil {
+			if err := v.helper.EventSender(event, v.Type()); err != nil {
 				klog.Errorf("recorde event failed, error: %s", err.Error())
 			}
 		}

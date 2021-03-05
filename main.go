@@ -18,7 +18,7 @@ import (
 
 	"github.com/rancher/harvester-network-controller/pkg/config"
 	"github.com/rancher/harvester-network-controller/pkg/controller/agent"
-	"github.com/rancher/harvester-network-controller/pkg/controller/master"
+	"github.com/rancher/harvester-network-controller/pkg/controller/manager"
 )
 
 var (
@@ -135,7 +135,7 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 }
 
 func managerRun(c *cli.Context) error {
-	return run(c, master.RegisterFuncList, true)
+	return run(c, manager.RegisterFuncList, true)
 }
 
 func agentRun(c *cli.Context) error {
