@@ -8,25 +8,28 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:shortName=hn;hns,scope=Namespaced
+// +kubebuilder:resource:shortName=nn;nns,scope=Namespaced
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="DESCRIPTION",type=string,JSONPath=`.spec.description`
+// +kubebuilder:printcolumn:name="NODENAME",type=string,JSONPath=`.spec.nodeName`
 // +kubebuilder:printcolumn:name="TYPE",type=string,JSONPath=`.spec.type`
 // +kubebuilder:printcolumn:name="NIC",type=string,JSONPath=`.spec.nic`
 
-type HostNetwork struct {
+type NodeNetwork struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   HostNetworkSpec   `json:"spec,omitempty"`
-	Status HostNetworkStatus `json:"status,omitempty"`
+	Spec   NodeNetworkSpec   `json:"spec,omitempty"`
+	Status NodeNetworkStatus `json:"status,omitempty"`
 }
 
-type HostNetworkSpec struct {
+type NodeNetworkSpec struct {
 	// +optional
 	Description string `json:"description,omitempty"`
 
-	// +optional
+	NodeName string `json:"nodeName"`
+
+	// +kubebuilder:validation:Required
 	Type NetworkType `json:"type,omitempty"`
 
 	// +optional
@@ -40,7 +43,7 @@ const (
 	NetworkTypeVLAN NetworkType = "vlan"
 )
 
-type HostNetworkStatus struct {
+type NodeNetworkStatus struct {
 	// +optional
 	NetworkIDs []NetworkID `json:"networkIDs,omitempty"`
 
@@ -48,16 +51,16 @@ type HostNetworkStatus struct {
 	NetworkLinkStatus map[string]*LinkStatus `json:"networkLinkStatus,omitempty"`
 
 	// +optional
-	PhysicalNics []PhysicalNic `json:"physicalNics,omitempty"`
+	PhysicalNICs []PhysicalNic `json:"physicalNICs,omitempty"`
 
 	// +optional
 	Conditions []Condition `json:"conditions,omitempty"`
 }
 
 type PhysicalNic struct {
-	Index               int    `json:"index,omitempty"`
-	Name                string `json:"name,omitempty"`
-	UsedByManageNetwork bool   `json:"usedByManageNetwork,omitempty"`
+	Index             int    `json:"index,omitempty"`
+	Name              string `json:"name,omitempty"`
+	UsedByMgmtNetwork bool   `json:"usedByManagementNetwork,omitempty"`
 }
 
 type NetworkID int
@@ -91,13 +94,6 @@ type LinkStatus struct {
 	Conditions []Condition `json:"conditions,omitempty"`
 }
 
-var (
-	HostNetworkReady           condition.Cond = "Ready"
-	HostNetworkIDConfigured    condition.Cond = "NetworkIDConfigured"
-	HostNetworkLinkReady       condition.Cond = "LinkReady"
-	HostNetworkRouteConfigured condition.Cond = "RouteConfigured"
-)
-
 type Condition struct {
 	// Type of the condition.
 	Type condition.Cond `json:"type"`
@@ -112,3 +108,7 @@ type Condition struct {
 	// Human-readable message indicating details about last transition
 	Message string `json:"message,omitempty"`
 }
+
+var (
+	NodeNetworkReady condition.Cond = "Ready"
+)

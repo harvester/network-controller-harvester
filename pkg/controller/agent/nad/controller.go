@@ -2,11 +2,12 @@ package nad
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	ctlharv1 "github.com/rancher/harvester/pkg/generated/controllers/harvester.cattle.io/v1alpha1"
+	harvnetwork "github.com/rancher/harvester/pkg/api/network"
 	"k8s.io/klog"
 
 	"github.com/rancher/harvester-network-controller/pkg/config"
@@ -15,23 +16,22 @@ import (
 	"github.com/rancher/harvester-network-controller/pkg/network/vlan"
 )
 
+// Harvester network nad watches network-attachment-definition CR, retrieve network configuration and make it effective.
+// For example, the controller get VLAN ID from nad and add it to physical NIC attached with bridge.
 const (
 	controllerName = "harvester-network-nad-controller"
 )
 
 type Handler struct {
-	hostNetworkCache v1alpha1.HostNetworkCache
-	settingCache     ctlharv1.SettingCache
+	nodeNetworkCache v1alpha1.NodeNetworkCache
 }
 
 func Register(ctx context.Context, management *config.Management) error {
 	nad := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
-	hns := management.HarvesterNetworkFactory.Network().V1alpha1().HostNetwork()
-	settings := management.HarvesterFactory.Harvester().V1alpha1().Setting()
+	nns := management.HarvesterNetworkFactory.Network().V1alpha1().NodeNetwork()
 
 	handler := &Handler{
-		hostNetworkCache: hns.Cache(),
-		settingCache:     settings.Cache(),
+		nodeNetworkCache: nns.Cache(),
 	}
 
 	nad.OnChange(ctx, controllerName, handler.OnChange)
@@ -50,25 +50,20 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 	}
 
 	klog.Infof("nad configuration %s has been changed: %s", nad.Name, nad.Spec.Config)
-	netconf, err := common.DecodeNetConf(nad.Spec.Config)
-	if err != nil {
+	netconf := &harvnetwork.NetConf{}
+	if err := json.Unmarshal([]byte(nad.Spec.Config), netconf); err != nil {
 		return nil, err
 	}
 
 	// TODO delete previous vlan id when update nad
 
-	name := os.Getenv(common.KeyHostName)
-	hn, err := h.hostNetworkCache.Get(common.HostNetworkNamespace, name)
+	name := os.Getenv(common.KeyNodeName)
+	nn, err := h.nodeNetworkCache.Get(common.Namespace, name)
 	if err != nil {
-		return nil, fmt.Errorf("get host network %s failed, error: %w", name, err)
+		return nil, fmt.Errorf("get node network %s failed, error: %w", name, err)
 	}
 
-	nic, err := common.GetNIC(hn.Spec.NIC, h.settingCache)
-	if err != nil {
-		return nil, fmt.Errorf("get nic failed, error: %w", err)
-	}
-
-	v, err := vlan.GetVlanWithNic(nic, nil)
+	v, err := vlan.GetVlanWithNic(nn.Spec.NIC, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -90,22 +85,19 @@ func (h Handler) OnRemove(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 	}
 
 	klog.Infof("nad configuration %s has been deleted.", nad.Name)
-	netconf, err := common.DecodeNetConf(nad.Spec.Config)
-	if err != nil {
+
+	netconf := &harvnetwork.NetConf{}
+	if err := json.Unmarshal([]byte(nad.Spec.Config), netconf); err != nil {
 		return nil, err
 	}
 
-	name := os.Getenv(common.KeyHostName)
-	hn, err := h.hostNetworkCache.Get(common.HostNetworkNamespace, name)
+	name := os.Getenv(common.KeyNodeName)
+	nn, err := h.nodeNetworkCache.Get(common.Namespace, name)
 	if err != nil {
-		return nil, fmt.Errorf("get host network %s failed, error: %w", name, err)
-	}
-	nic, err := common.GetNIC(hn.Spec.NIC, h.settingCache)
-	if err != nil {
-		return nil, fmt.Errorf("get nic failed, error: %w", err)
+		return nil, fmt.Errorf("get node network %s failed, error: %w", name, err)
 	}
 
-	v, err := vlan.GetVlanWithNic(nic, nil)
+	v, err := vlan.GetVlanWithNic(nn.Spec.NIC, nil)
 	if err != nil {
 		return nil, err
 	}
