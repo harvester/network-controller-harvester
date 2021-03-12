@@ -8,8 +8,10 @@ import (
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	harvnetwork "github.com/rancher/harvester/pkg/api/network"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog"
 
+	networkv1alpha1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvester.cattle.io/v1alpha1"
 	"github.com/rancher/harvester-network-controller/pkg/config"
 	"github.com/rancher/harvester-network-controller/pkg/controller/common"
 	"github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvester.cattle.io/v1alpha1"
@@ -57,10 +59,13 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 
 	// TODO delete previous vlan id when update nad
 
-	name := os.Getenv(common.KeyNodeName)
+	name := os.Getenv(common.KeyNodeName) + "-" + string(networkv1alpha1.NetworkTypeVLAN)
 	nn, err := h.nodeNetworkCache.Get(common.Namespace, name)
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return nil, fmt.Errorf("get node network %s failed, error: %w", name, err)
+	}
+	if apierrors.IsNotFound(err) {
+		return nad, nil
 	}
 
 	v, err := vlan.GetVlanWithNic(nn.Spec.NIC, nil)
@@ -93,8 +98,11 @@ func (h Handler) OnRemove(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 
 	name := os.Getenv(common.KeyNodeName)
 	nn, err := h.nodeNetworkCache.Get(common.Namespace, name)
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return nil, fmt.Errorf("get node network %s failed, error: %w", name, err)
+	}
+	if apierrors.IsNotFound(err) {
+		return nad, nil
 	}
 
 	v, err := vlan.GetVlanWithNic(nn.Spec.NIC, nil)
