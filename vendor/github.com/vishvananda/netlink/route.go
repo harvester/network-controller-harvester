@@ -3,11 +3,31 @@ package netlink
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 // Scope is an enum representing a route scope.
 type Scope uint8
+
+func (s Scope) String() string {
+	switch s {
+	case SCOPE_UNIVERSE:
+		return "universe"
+	case SCOPE_SITE:
+		return "site"
+	case SCOPE_LINK:
+		return "link"
+	case SCOPE_HOST:
+		return "host"
+	case SCOPE_NOWHERE:
+		return "nowhere"
+	default:
+		return "unknown"
+	}
+}
 
 type NextHopFlag int
 
@@ -27,27 +47,95 @@ type Encap interface {
 	Equal(Encap) bool
 }
 
+//Protocol describe what was the originator of the route
+type RouteProtocol int
+
+func (p RouteProtocol) String() string {
+	switch int(p) {
+	case unix.RTPROT_BABEL:
+		return "babel"
+	case unix.RTPROT_BGP:
+		return "bgp"
+	case unix.RTPROT_BIRD:
+		return "bird"
+	case unix.RTPROT_BOOT:
+		return "boot"
+	case unix.RTPROT_DHCP:
+		return "dhcp"
+	case unix.RTPROT_DNROUTED:
+		return "dnrouted"
+	case unix.RTPROT_EIGRP:
+		return "eigrp"
+	case unix.RTPROT_GATED:
+		return "gated"
+	case unix.RTPROT_ISIS:
+		return "isis"
+	//case unix.RTPROT_KEEPALIVED:
+	//	return "keepalived"
+	case unix.RTPROT_KERNEL:
+		return "kernel"
+	case unix.RTPROT_MROUTED:
+		return "mrouted"
+	case unix.RTPROT_MRT:
+		return "mrt"
+	case unix.RTPROT_NTK:
+		return "ntk"
+	case unix.RTPROT_OSPF:
+		return "ospf"
+	case unix.RTPROT_RA:
+		return "ra"
+	case unix.RTPROT_REDIRECT:
+		return "redirect"
+	case unix.RTPROT_RIP:
+		return "rip"
+	case unix.RTPROT_STATIC:
+		return "static"
+	case unix.RTPROT_UNSPEC:
+		return "unspec"
+	case unix.RTPROT_XORP:
+		return "xorp"
+	case unix.RTPROT_ZEBRA:
+		return "zebra"
+	default:
+		return strconv.Itoa(int(p))
+	}
+}
+
 // Route represents a netlink route.
 type Route struct {
-	LinkIndex  int
-	ILinkIndex int
-	Scope      Scope
-	Dst        *net.IPNet
-	Src        net.IP
-	Gw         net.IP
-	MultiPath  []*NexthopInfo
-	Protocol   int
-	Priority   int
-	Table      int
-	Type       int
-	Tos        int
-	Flags      int
-	MPLSDst    *int
-	NewDst     Destination
-	Encap      Encap
-	MTU        int
-	AdvMSS     int
-	Hoplimit   int
+	LinkIndex        int
+	ILinkIndex       int
+	Scope            Scope
+	Dst              *net.IPNet
+	Src              net.IP
+	Gw               net.IP
+	MultiPath        []*NexthopInfo
+	Protocol         RouteProtocol
+	Priority         int
+	Table            int
+	Type             int
+	Tos              int
+	Flags            int
+	MPLSDst          *int
+	NewDst           Destination
+	Encap            Encap
+	Via              Destination
+	MTU              int
+	Window           int
+	Rtt              int
+	RttVar           int
+	Ssthresh         int
+	Cwnd             int
+	AdvMSS           int
+	Reordering       int
+	Hoplimit         int
+	InitCwnd         int
+	Features         int
+	RtoMin           int
+	InitRwnd         int
+	QuickACK         int
+	Congctl          string
+	FastOpenNoCookie int
 }
 
 func (r Route) String() string {
@@ -65,6 +153,9 @@ func (r Route) String() string {
 	}
 	if r.Encap != nil {
 		elems = append(elems, fmt.Sprintf("Encap: %s", r.Encap))
+	}
+	if r.Via != nil {
+		elems = append(elems, fmt.Sprintf("Via: %s", r.Via))
 	}
 	elems = append(elems, fmt.Sprintf("Src: %s", r.Src))
 	if len(r.MultiPath) > 0 {
@@ -94,6 +185,7 @@ func (r Route) Equal(x Route) bool {
 		r.Flags == x.Flags &&
 		(r.MPLSDst == x.MPLSDst || (r.MPLSDst != nil && x.MPLSDst != nil && *r.MPLSDst == *x.MPLSDst)) &&
 		(r.NewDst == x.NewDst || (r.NewDst != nil && r.NewDst.Equal(x.NewDst))) &&
+		(r.Via == x.Via || (r.Via != nil && r.Via.Equal(x.Via))) &&
 		(r.Encap == x.Encap || (r.Encap != nil && r.Encap.Equal(x.Encap)))
 }
 
@@ -123,6 +215,7 @@ type NexthopInfo struct {
 	Flags     int
 	NewDst    Destination
 	Encap     Encap
+	Via       Destination
 }
 
 func (n *NexthopInfo) String() string {
@@ -133,6 +226,9 @@ func (n *NexthopInfo) String() string {
 	}
 	if n.Encap != nil {
 		elems = append(elems, fmt.Sprintf("Encap: %s", n.Encap))
+	}
+	if n.Via != nil {
+		elems = append(elems, fmt.Sprintf("Via: %s", n.Via))
 	}
 	elems = append(elems, fmt.Sprintf("Weight: %d", n.Hops+1))
 	elems = append(elems, fmt.Sprintf("Gw: %s", n.Gw))
