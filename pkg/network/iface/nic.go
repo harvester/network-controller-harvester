@@ -3,7 +3,7 @@ package iface
 import "github.com/vishvananda/netlink"
 
 type Nic struct {
-	Name                string
+	Link                netlink.Link
 	UsedByManageNetwork bool
 }
 
@@ -14,7 +14,7 @@ const (
 	typeVxlan    = "vxlan"
 )
 
-func GetPhysicalNics() (map[int]*Nic, error) {
+func GetPhysicalNICs() (map[int]*Nic, error) {
 	nics := map[int]*Nic{}
 	links, err := netlink.LinkList()
 	if err != nil {
@@ -23,7 +23,7 @@ func GetPhysicalNics() (map[int]*Nic, error) {
 
 	for _, link := range links {
 		if link.Type() == "device" && link.Attrs().EncapType != typeLoopback {
-			nics[link.Attrs().Index] = &Nic{link.Attrs().Name, false}
+			nics[link.Attrs().Index] = &Nic{Link: link}
 		}
 	}
 

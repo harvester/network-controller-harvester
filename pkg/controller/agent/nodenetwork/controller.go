@@ -3,6 +3,7 @@ package nodenetwork
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -62,7 +63,7 @@ func Register(ctx context.Context, management *config.Management) error {
 		for range ticker.C {
 			klog.Infof("regular reset node network")
 			if err := handler.reconcileNodeNetwork(string(networkv1alpha1.NetworkTypeVLAN)); err != nil {
-				klog.Errorf("regular reset vlan network failed")
+				klog.Errorf("regular reset vlan network failed, error: %+v", err)
 			}
 		}
 	}()
@@ -105,7 +106,7 @@ func (h Handler) OnRemove(key string, nn *networkv1alpha1.NodeNetwork) (*network
 
 	switch nn.Spec.Type {
 	case networkv1alpha1.NetworkTypeVLAN:
-		if err := h.removeVlanNetwork(nn); err != nil {
+		if err := h.removeVlanNetwork(); err != nil {
 			return nil, err
 		}
 	default:
@@ -129,15 +130,14 @@ func (h Handler) setupVlan(nn *networkv1alpha1.NodeNetwork) error {
 		})
 	}
 
-	v := vlan.NewVlan(&network.Helper{EventSender: h.sendEvent, Resetter: h.reconcileNodeNetwork})
-	routes := getRoutes(vlan.BridgeName, nn)
+	v := vlan.NewVlan(h)
 
 	vids, err := h.getNadVidList()
 	if err != nil {
 		return err
 	}
 
-	if err = v.Setup(nn.Spec.NIC, vids, network.Config{Routes: routes}); err != nil {
+	if err = v.Setup(nn.Spec.NIC, vids); err != nil {
 		err = fmt.Errorf("set up vlan failed, error: %w, nic: %s", err, nn.Spec.NIC)
 		if statusErr := h.updateStatus(nn, network.Status{
 			Condition: network.Condition{Normal: false, Message: err.Error()},
@@ -155,19 +155,21 @@ func (h Handler) setupVlan(nn *networkv1alpha1.NodeNetwork) error {
 }
 
 func (h Handler) repealVlan(nn *networkv1alpha1.NodeNetwork) error {
-	configuredNic := h.getNICFromStatus(nn)
-	klog.Infof("configuredNIC: %s", configuredNic)
+	v, err := vlan.GetVlan()
+	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) && !errors.As(err, &vlan.SlaveNotFoundError{}) {
+		return err
+	} else if err != nil {
+		klog.Infof("ignore link not found error, details: %+v", err)
+		return nil
+	}
 
-	// try to repeal VLAN network with previous configured NIC
-	if configuredNic != "" && configuredNic != nn.Spec.NIC {
-		v, err := vlan.GetVlanWithNic(configuredNic, nil)
-		if err != nil {
-			return fmt.Errorf("create vlan with nic %s failed, error: %s", configuredNic, err.Error())
-		}
-		if err := v.Repeal(); err != nil {
-			return fmt.Errorf("repeal vlan failed, error: %s, nic: %s", err.Error(), configuredNic)
+	configuredNIC := v.SlaveNICName()
+	if configuredNIC != "" && configuredNIC != nn.Spec.NIC {
+		if err := v.Teardown(); err != nil {
+			return fmt.Errorf("tear down vlan failed, error: %s, nic: %s", err.Error(), configuredNIC)
 		}
 	}
+
 	return nil
 }
 
@@ -196,21 +198,17 @@ func (h Handler) getNICFromStatus(nn *networkv1alpha1.NodeNetwork) string {
 	return ""
 }
 
-func (h Handler) removeVlanNetwork(nn *networkv1alpha1.NodeNetwork) error {
-	configuredNic := h.getNICFromStatus(nn)
-	klog.Infof("configuredNIC: %s", configuredNic)
-
-	if configuredNic == "" {
+func (h Handler) removeVlanNetwork() error {
+	v, err := vlan.GetVlan()
+	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) && !errors.As(err, &vlan.SlaveNotFoundError{}) {
+		return err
+	} else if err != nil {
+		klog.Infof("ignore link not found error, details: %+v", err)
 		return nil
 	}
 
-	v, err := vlan.GetVlanWithNic(configuredNic, nil)
-	if err != nil {
-		return fmt.Errorf("new vlan with nic %s failed, error: %w", configuredNic, err)
-	}
-
-	if err := v.Repeal(); err != nil {
-		return fmt.Errorf("repeal vlan failed, error: %w", err)
+	if err := v.Teardown(); err != nil {
+		return fmt.Errorf("tear down vlan failed, error: %w", err)
 	}
 
 	return nil
@@ -234,7 +232,7 @@ func (h Handler) updateStatus(nn *networkv1alpha1.NodeNetwork, status network.St
 	}
 
 	// get all physical NICs
-	nics, err := getPhysicalNics()
+	nics, err := getPhysicalNICs()
 	if err != nil {
 		return err
 	}
@@ -297,25 +295,25 @@ func makeLinkStatus(link iface.IFace) *networkv1alpha1.LinkStatus {
 	return linkStatus
 }
 
-func getPhysicalNics() ([]networkv1alpha1.PhysicalNic, error) {
-	nics, err := iface.GetPhysicalNics()
+func getPhysicalNICs() ([]networkv1alpha1.PhysicalNic, error) {
+	nics, err := iface.GetPhysicalNICs()
 	if err != nil {
 		return nil, fmt.Errorf("list physical NICs failed")
 	}
 
-	physicalNics := []networkv1alpha1.PhysicalNic{}
+	physicalNICs := []networkv1alpha1.PhysicalNic{}
 	for index, nic := range nics {
-		physicalNics = append(physicalNics, networkv1alpha1.PhysicalNic{
+		physicalNICs = append(physicalNICs, networkv1alpha1.PhysicalNic{
 			Index:             index,
-			Name:              nic.Name,
+			Name:              nic.Link.Attrs().Name,
 			UsedByMgmtNetwork: nic.UsedByManageNetwork,
 		})
 	}
 
-	return physicalNics, nil
+	return physicalNICs, nil
 }
 
-func (h Handler) sendEvent(e *network.Event, networkType string) error {
+func (h Handler) SendEvent(e *network.Event, networkType string) error {
 	name := os.Getenv(common.KeyNodeName)
 	nn, err := h.nodeNetworkCache.Get(common.Namespace, name+"-"+networkType)
 	if err != nil {
@@ -331,22 +329,4 @@ func (h Handler) sendEvent(e *network.Event, networkType string) error {
 	h.recorder.Event(ref, e.EventType, e.Reason, e.Message)
 
 	return nil
-}
-
-func getRoutes(link string, nn *networkv1alpha1.NodeNetwork) []*netlink.Route {
-	if nn.Status.NetworkLinkStatus == nil || nn.Status.NetworkLinkStatus[link] == nil {
-		return nil
-	}
-
-	routes := []*netlink.Route{}
-	for _, r := range nn.Status.NetworkLinkStatus[link].Routes {
-		route, err := iface.String2Route(r)
-		if err != nil {
-			klog.Errorf("unmarshal route failed, route: %s, error: %s", route, err.Error())
-			continue
-		}
-		routes = append(routes, route)
-	}
-
-	return routes
 }

@@ -16,7 +16,7 @@ import (
 	ctlv1alpha1 "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvester.cattle.io/v1alpha1"
 )
 
-// ClusterNetwork controller watches the default ClusterNetwork called network-setting to create or delete NodeNetwork.
+// ClusterNetwork controller watches ClusterNetworks with the same name of network type to create or delete NodeNetwork.
 const (
 	controllerName = "harvester-clusternetwork-controller"
 )

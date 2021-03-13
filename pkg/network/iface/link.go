@@ -2,7 +2,10 @@ package iface
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
+	"syscall"
 	"time"
 
 	"github.com/vishvananda/netlink"
@@ -72,19 +75,30 @@ func (l *Link) DelBridgeVlan(vid uint16) error {
 	return nil
 }
 
-func (l *Link) SetMaster(br *Bridge) error {
+func (l *Link) SetMaster(br *Bridge, vids []uint16) error {
+	if err := l.setRules4DHCP(); err != nil {
+		return err
+	}
 	if l.link.Attrs().MasterIndex == br.bridge.Index {
 		return nil
 	}
-
-	if l.link.Attrs().OperState == netlink.OperDown {
-		return fmt.Errorf("link %s should be up", l.Name())
+	if err := netlink.LinkSetMaster(l.link, br.bridge); err != nil {
+		return fmt.Errorf("%s set %s as master failed, error: %w", l.Name(), br.Name(), err)
+	}
+	for _, vid := range vids {
+		if err := l.AddBridgeVlan(vid); err != nil {
+			return err
+		}
 	}
 
-	return netlink.LinkSetMaster(l.link, br.bridge)
+	return nil
 }
 
 func (l *Link) SetNoMaster() error {
+	if err := l.unsetRules4DHCP(); err != nil {
+		return err
+	}
+
 	if l.LinkAttrs().MasterIndex == 0 {
 		return nil
 	}
@@ -132,7 +146,7 @@ func (l *Link) reportDown(ctx context.Context, cancel context.CancelFunc) {
 }
 
 // allow to receive DHCP packages after attaching with bridge
-func (l *Link) SetRules4DHCP() error {
+func (l *Link) setRules4DHCP() error {
 	executor := exec.New()
 	runner := ebtables.New(executor)
 	var ruleArgs []string
@@ -147,7 +161,7 @@ func (l *Link) SetRules4DHCP() error {
 	return nil
 }
 
-func (l *Link) UnsetRules4DHCP() error {
+func (l *Link) unsetRules4DHCP() error {
 	executor := exec.New()
 	runner := ebtables.New(executor)
 	var ruleArgs []string
@@ -161,25 +175,34 @@ func (l *Link) UnsetRules4DHCP() error {
 	return nil
 }
 
-func (l *Link) ReplaceRoutes(replaced *Link) error {
-	routeList, err := netlink.RouteList(replaced.link, netlink.FAMILY_V4)
-	if err != nil {
-		return fmt.Errorf("could not list routes, error: %w, link: %s", err, replaced.Name())
+func (l *Link) AddRoutes(link IFace) error {
+	// Rearrange routes to let routes with gateway be configured later than the ones without.
+	// Otherwise, error syscall.ENETUNREACH, exactly "network is unreachable", may occur.
+	routes := link.Routes()
+	sort.Slice(routes, func(i, j int) bool {
+		return routes[i].Gw == nil
+	})
+	for _, route := range routes {
+		route.LinkIndex = l.Index()
+		err := netlink.RouteAppend(&route)
+		if err != nil && !errors.Is(err, syscall.EEXIST) {
+			return fmt.Errorf("append route failed, route: %+v, error: %w", route, err)
+		} else if err == nil {
+			klog.Infof("append route: %+v", route)
+		} else {
+			klog.Infof("ignore existing route: %+v", route)
+		}
 	}
 
-	for _, route := range routeList {
-		route.LinkIndex = l.Index()
-		if err := netlink.RouteReplace(&route); err != nil {
-			klog.Warningf("could not replace route %v and it will be removed", route)
-			route.LinkIndex = replaced.Index()
-			// remove route rule that can not be replaced, such as
-			// the auto-generated route `172.16.0.0/16 dev harvester-br0 proto kernel scope link src 172.16.0.76`
-			if err := netlink.RouteDel(&route); err != nil {
-				klog.Errorf("could not delete route, error: %s, route: %v", err.Error(), route)
-			}
-		} else {
-			klog.Infof("replace route, route: %+v", route)
+	return nil
+}
+
+func (l *Link) DeleteRoutes() error {
+	for _, route := range l.routes {
+		if err := netlink.RouteDel(&route); err != nil && !errors.Is(err, syscall.ESRCH) {
+			return fmt.Errorf("delete route failed, route: %+v, error: %w", route, err)
 		}
+		klog.Infof("delete route %+v", route)
 	}
 
 	return nil

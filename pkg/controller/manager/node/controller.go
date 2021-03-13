@@ -6,6 +6,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 
 	networkv1alpha1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvester.cattle.io/v1alpha1"
 	"github.com/rancher/harvester-network-controller/pkg/config"
@@ -45,7 +46,8 @@ func (h Handler) OnChange(key string, node *corev1.Node) (*corev1.Node, error) {
 		return nil, nil
 	}
 
-	// TODO adjust the definition positions of namespace and name, maybe defined in CRD
+	klog.Infof("new node %s added", node.Name)
+
 	cns, err := h.clusterNetworkCache.List(common.Namespace, labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("get clusternetwork failed, error: %w", err)
