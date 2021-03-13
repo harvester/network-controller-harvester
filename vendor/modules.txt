@@ -247,10 +247,10 @@ github.com/sirupsen/logrus
 github.com/spf13/pflag
 # github.com/urfave/cli v1.22.2
 github.com/urfave/cli
-# github.com/vishvananda/netlink v1.1.0
+# github.com/vishvananda/netlink v1.1.0 => github.com/vishvananda/netlink v0.0.0-20210315072101-c30d9bc9e748
 github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
-# github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df
+# github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae
 github.com/vishvananda/netns
 # golang.org/x/crypto v0.0.0-20201117144127-c1f2f97bffc9
 golang.org/x/crypto/acme

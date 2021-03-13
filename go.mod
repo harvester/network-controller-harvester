@@ -25,6 +25,7 @@ replace (
 	kubevirt.io/client-go => github.com/rancher/kubevirt-client-go v0.20.2-0.20210201144041-d294c131c268
 	kubevirt.io/containerized-data-importer => github.com/rancher/kubevirt-containerized-data-importer v1.26.1-0.20210201143124-afdd470ff718
 	sigs.k8s.io/structured-merge-diff => sigs.k8s.io/structured-merge-diff v0.0.0-20190302045857-e85c7b244fd2
+	github.com/vishvananda/netlink => github.com/vishvananda/netlink v0.0.0-20210315072101-c30d9bc9e748
 )
 
 require (
