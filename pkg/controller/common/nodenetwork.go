@@ -16,7 +16,7 @@ import (
 const (
 	Namespace        = "harvester-system"
 	KeyNodeName      = "NODENAME"
-	KeyLabelNodeName = "NodeName"
+	KeyLabelNodeName = "network.harvester.cattle.io/nodename"
 )
 
 func NewNodeNetworkFromNode(node *corev1.Node, networkType networkv1alpha1.NetworkType,

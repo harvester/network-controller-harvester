@@ -31,7 +31,7 @@ func (br *Bridge) Ensure() error {
 		return fmt.Errorf("add iface failed, error: %w, iface: %v", err, br)
 	}
 
-	// Re-fetch link to read all attributes and if it already existed,
+	// Re-fetch link to read all attributes and if it's already existing,
 	// ensure it's really a bridge with similar configuration
 	tempBr, err := fetchByName(br.bridge.Name)
 	if err != nil {
@@ -52,101 +52,37 @@ func (br *Bridge) Ensure() error {
 	// TODO ensure vlan filtering
 
 	// Re-fetch bridge to ensure br.Bridge contains all latest attributes.
-	tempBr, err = fetchByName(br.Name())
-	if err != nil {
-		return err
-	}
-	br.bridge = tempBr
-
-	return nil
+	return br.Fetch()
 }
 
-func (br *Bridge) Delete() error {
-	if err := netlink.LinkDel(br.bridge); err != nil {
-		return fmt.Errorf("could not delete link %s, error: %w", br.bridge.Name, err)
-	}
-
-	return nil
-}
-
-func (br *Bridge) configIPv4AddrFromSlave(slave *Link) error {
-	slaveAddrList, err := netlink.AddrList(slave.link, netlink.FAMILY_V4)
-	if err != nil {
-		return fmt.Errorf("list IPv4 address of %s failed, error: %w", slave.link.Attrs().Name, err)
-	}
-	brAddrList, err := netlink.AddrList(br.bridge, netlink.FAMILY_V4)
-	if err != nil {
-		return fmt.Errorf("list IPv4 address of %s failed, error: %w", br.bridge.Name, err)
-	}
-	delList := relativeComplement(slaveAddrList, brAddrList)
-	addList := relativeComplement(brAddrList, slaveAddrList)
+// Keep the bridge's IPv4 addresses are the same with the slave
+func (br *Bridge) SyncIPv4Addr(slave IFace) error {
+	delList := relativeComplement(slave.Addr(), br.addr)
+	addList := relativeComplement(br.addr, slave.Addr())
 	for _, addr := range delList {
-		klog.Infof("delete address: %+v", addr)
 		if err := netlink.AddrDel(br.bridge, &addr); err != nil {
 			return fmt.Errorf("could not add address, error: %w, link: %s, addr: %+v", err, br.bridge.Name, addr)
 		}
+		klog.Infof("delete IPv4 address %+v", addr)
 	}
 
 	for _, addr := range addList {
 		addr.Label = br.bridge.Name
-		klog.Infof("replace address: %+v", addr)
-		if err := netlink.AddrReplace(br.bridge, &addr); err != nil {
+		if err := netlink.AddrAdd(br.bridge, &addr); err != nil {
 			return fmt.Errorf("could not add address, error: %w, link: %s, addr: %+v", err, br.bridge.Name, addr)
 		}
-	}
-
-	return nil
-}
-
-func (br *Bridge) replaceRoutes(slave *Link) error {
-	if err := br.ToLink().ReplaceRoutes(slave); err != nil {
-		return fmt.Errorf("replaces routes from %s to %s failed, error: %w", br.bridge.Name, slave.link.Attrs().Name, err)
-	}
-
-	return nil
-}
-
-func (br *Bridge) ConfigIPv4AddrFromSlave(slave *Link, routes []*netlink.Route) error {
-	if err := br.configIPv4AddrFromSlave(slave); err != nil {
-		return fmt.Errorf("configure IPv4 addresses from slave link %s failed, error: %w", slave.link.Attrs().Name, err)
-	}
-
-	addr, err := netlink.AddrList(br.bridge, netlink.FAMILY_V4)
-	if err != nil {
-		return fmt.Errorf("list addr of bridge %s failed, error: %w", br.bridge.Name, err)
-	}
-	br.addr = addr
-
-	if err = br.replaceRoutes(slave); err != nil {
-		return fmt.Errorf("replace route rules of slave link %s failed, error: %w", slave.link.Attrs().Name, err)
-	}
-
-	// configure route rules passed by parameters
-	// In case of resuming harvester-br0 deleted atypically, we get the original route rules from CR.
-	// Moreover, we can reconfigure the special route rules configured by uses.
-	for _, route := range routes {
-		// the bridge index may have changed after reboot, that is the reason we correct it
-		route.LinkIndex = br.Index()
-		if err := netlink.RouteAdd(route); err != nil {
-			klog.Warningf("could not add route, error: %s, route: %v", err.Error(), route)
-		} else {
-			klog.Infof("add route: %+v", route)
-		}
+		klog.Infof("add IPv4 address %+v", addr)
 	}
 
 	return nil
 }
 
 func (br *Bridge) ClearAddr() error {
-	addrList, err := netlink.AddrList(br.bridge, netlink.FAMILY_V4)
-	if err != nil {
-		return fmt.Errorf("list IPv4 address of %s failed, error: %w", br.bridge.Name, err)
-	}
-
-	for _, addr := range addrList {
+	for _, addr := range br.addr {
 		if err := netlink.AddrDel(br.bridge, &addr); err != nil {
 			return fmt.Errorf("delete address of %s failed, error: %w", br.bridge.Name, err)
 		}
+		klog.Infof("delete IPv4 address %+v", addr)
 	}
 
 	return nil
@@ -219,7 +155,7 @@ func fetchByName(name string) (*netlink.Bridge, error) {
 
 	br, ok := l.(*netlink.Bridge)
 	if !ok {
-		return nil, fmt.Errorf("%s already exists but is not a iface", name)
+		return nil, fmt.Errorf("%s already exists but is not a bridge", name)
 	}
 
 	return br, nil
