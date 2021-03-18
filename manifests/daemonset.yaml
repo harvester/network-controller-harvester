@@ -40,9 +40,6 @@ spec:
             - agent
           securityContext:
             privileged: true
-            capabilities:
-              add:
-              - NET_ADMIN
           volumeMounts:
           - mountPath: /dev
             name: dev
