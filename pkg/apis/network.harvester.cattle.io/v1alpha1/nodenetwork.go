@@ -9,7 +9,6 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=nn;nns,scope=Namespaced
-// +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="DESCRIPTION",type=string,JSONPath=`.spec.description`
 // +kubebuilder:printcolumn:name="NODENAME",type=string,JSONPath=`.spec.nodeName`
 // +kubebuilder:printcolumn:name="TYPE",type=string,JSONPath=`.spec.type`

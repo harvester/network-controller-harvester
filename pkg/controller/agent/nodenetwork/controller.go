@@ -126,7 +126,7 @@ func (h Handler) configVlanNetwork(nn *networkv1alpha1.NodeNetwork) error {
 func (h Handler) setupVlan(nn *networkv1alpha1.NodeNetwork) error {
 	if nn.Spec.NIC == "" {
 		return h.updateStatus(nn, network.Status{
-			Condition: network.Condition{Normal: false, Message: "The physical NIC for VLAN network hasn't configured yet"},
+			Condition: network.Condition{Normal: false, Message: "A physical NIC has not been specified yet"},
 		})
 	}
 
@@ -138,13 +138,12 @@ func (h Handler) setupVlan(nn *networkv1alpha1.NodeNetwork) error {
 	}
 
 	if err = v.Setup(nn.Spec.NIC, vids); err != nil {
-		err = fmt.Errorf("set up vlan failed, error: %w, nic: %s", err, nn.Spec.NIC)
 		if statusErr := h.updateStatus(nn, network.Status{
-			Condition: network.Condition{Normal: false, Message: err.Error()},
+			Condition: network.Condition{Normal: false, Message: "Setup VLAN network failed, please try another NIC"},
 		}); statusErr != nil {
 			return statusErr
 		}
-		return err
+		return fmt.Errorf("set up vlan failed, error: %w, nic: %s", err, nn.Spec.NIC)
 	}
 
 	status, err := v.Status(network.Condition{Normal: true, Message: ""})
@@ -241,7 +240,7 @@ func (h Handler) updateStatus(nn *networkv1alpha1.NodeNetwork, status network.St
 	networkv1alpha1.NodeNetworkReady.SetStatusBool(nnCopy, status.Condition.Normal)
 	networkv1alpha1.NodeNetworkReady.Message(nnCopy, status.Condition.Message)
 
-	if _, err := h.nodeNetworkCtr.UpdateStatus(nnCopy); err != nil {
+	if _, err := h.nodeNetworkCtr.Update(nnCopy); err != nil {
 		return fmt.Errorf("update status of nodenetwork %s failed, error: %w", nn.Name, err)
 	}
 
