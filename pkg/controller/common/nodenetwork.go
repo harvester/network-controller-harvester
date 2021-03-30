@@ -17,6 +17,7 @@ const (
 	Namespace        = "harvester-system"
 	KeyNodeName      = "NODENAME"
 	KeyLabelNodeName = "network.harvester.cattle.io/nodename"
+	initStatusMsg    = "Initializing network configuration"
 )
 
 func NewNodeNetworkFromNode(node *corev1.Node, networkType networkv1alpha1.NetworkType,
@@ -47,6 +48,10 @@ func NewNodeNetworkFromNode(node *corev1.Node, networkType networkv1alpha1.Netwo
 			Conditions:        []networkv1alpha1.Condition{},
 		},
 	}
+
+	// initialize status
+	networkv1alpha1.NodeNetworkReady.SetStatusBool(nn, false)
+	networkv1alpha1.NodeNetworkReady.Message(nn, initStatusMsg)
 
 	switch networkType {
 	case networkv1alpha1.NetworkTypeVLAN:
