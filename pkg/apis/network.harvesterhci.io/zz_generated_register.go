@@ -18,26 +18,7 @@ limitations under the License.
 
 package network
 
-import (
-	v1alpha1 "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvester.cattle.io/v1alpha1"
-	"github.com/rancher/lasso/pkg/controller"
+const (
+	// Package-wide consts from generator "zz_generated_register".
+	GroupName = "network.harvesterhci.io"
 )
-
-type Interface interface {
-	V1alpha1() v1alpha1.Interface
-}
-
-type group struct {
-	controllerFactory controller.SharedControllerFactory
-}
-
-// New returns a new Interface.
-func New(controllerFactory controller.SharedControllerFactory) Interface {
-	return &group{
-		controllerFactory: controllerFactory,
-	}
-}
-
-func (g *group) V1alpha1() v1alpha1.Interface {
-	return v1alpha1.New(g.controllerFactory)
-}

@@ -21,7 +21,7 @@ package fake
 import (
 	"context"
 
-	v1alpha1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvester.cattle.io/v1alpha1"
+	v1beta1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -32,29 +32,29 @@ import (
 
 // FakeNodeNetworks implements NodeNetworkInterface
 type FakeNodeNetworks struct {
-	Fake *FakeNetworkV1alpha1
+	Fake *FakeNetworkV1beta1
 	ns   string
 }
 
-var nodenetworksResource = schema.GroupVersionResource{Group: "network.harvester.cattle.io", Version: "v1alpha1", Resource: "nodenetworks"}
+var nodenetworksResource = schema.GroupVersionResource{Group: "network.harvesterhci.io", Version: "v1beta1", Resource: "nodenetworks"}
 
-var nodenetworksKind = schema.GroupVersionKind{Group: "network.harvester.cattle.io", Version: "v1alpha1", Kind: "NodeNetwork"}
+var nodenetworksKind = schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "NodeNetwork"}
 
 // Get takes name of the nodeNetwork, and returns the corresponding nodeNetwork object, and an error if there is any.
-func (c *FakeNodeNetworks) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.NodeNetwork, err error) {
+func (c *FakeNodeNetworks) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.NodeNetwork, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(nodenetworksResource, c.ns, name), &v1alpha1.NodeNetwork{})
+		Invokes(testing.NewGetAction(nodenetworksResource, c.ns, name), &v1beta1.NodeNetwork{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.NodeNetwork), err
+	return obj.(*v1beta1.NodeNetwork), err
 }
 
 // List takes label and field selectors, and returns the list of NodeNetworks that match those selectors.
-func (c *FakeNodeNetworks) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.NodeNetworkList, err error) {
+func (c *FakeNodeNetworks) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.NodeNetworkList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(nodenetworksResource, nodenetworksKind, c.ns, opts), &v1alpha1.NodeNetworkList{})
+		Invokes(testing.NewListAction(nodenetworksResource, nodenetworksKind, c.ns, opts), &v1beta1.NodeNetworkList{})
 
 	if obj == nil {
 		return nil, err
@@ -64,8 +64,8 @@ func (c *FakeNodeNetworks) List(ctx context.Context, opts v1.ListOptions) (resul
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &v1alpha1.NodeNetworkList{ListMeta: obj.(*v1alpha1.NodeNetworkList).ListMeta}
-	for _, item := range obj.(*v1alpha1.NodeNetworkList).Items {
+	list := &v1beta1.NodeNetworkList{ListMeta: obj.(*v1beta1.NodeNetworkList).ListMeta}
+	for _, item := range obj.(*v1beta1.NodeNetworkList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -81,43 +81,43 @@ func (c *FakeNodeNetworks) Watch(ctx context.Context, opts v1.ListOptions) (watc
 }
 
 // Create takes the representation of a nodeNetwork and creates it.  Returns the server's representation of the nodeNetwork, and an error, if there is any.
-func (c *FakeNodeNetworks) Create(ctx context.Context, nodeNetwork *v1alpha1.NodeNetwork, opts v1.CreateOptions) (result *v1alpha1.NodeNetwork, err error) {
+func (c *FakeNodeNetworks) Create(ctx context.Context, nodeNetwork *v1beta1.NodeNetwork, opts v1.CreateOptions) (result *v1beta1.NodeNetwork, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(nodenetworksResource, c.ns, nodeNetwork), &v1alpha1.NodeNetwork{})
+		Invokes(testing.NewCreateAction(nodenetworksResource, c.ns, nodeNetwork), &v1beta1.NodeNetwork{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.NodeNetwork), err
+	return obj.(*v1beta1.NodeNetwork), err
 }
 
 // Update takes the representation of a nodeNetwork and updates it. Returns the server's representation of the nodeNetwork, and an error, if there is any.
-func (c *FakeNodeNetworks) Update(ctx context.Context, nodeNetwork *v1alpha1.NodeNetwork, opts v1.UpdateOptions) (result *v1alpha1.NodeNetwork, err error) {
+func (c *FakeNodeNetworks) Update(ctx context.Context, nodeNetwork *v1beta1.NodeNetwork, opts v1.UpdateOptions) (result *v1beta1.NodeNetwork, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(nodenetworksResource, c.ns, nodeNetwork), &v1alpha1.NodeNetwork{})
+		Invokes(testing.NewUpdateAction(nodenetworksResource, c.ns, nodeNetwork), &v1beta1.NodeNetwork{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.NodeNetwork), err
+	return obj.(*v1beta1.NodeNetwork), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeNodeNetworks) UpdateStatus(ctx context.Context, nodeNetwork *v1alpha1.NodeNetwork, opts v1.UpdateOptions) (*v1alpha1.NodeNetwork, error) {
+func (c *FakeNodeNetworks) UpdateStatus(ctx context.Context, nodeNetwork *v1beta1.NodeNetwork, opts v1.UpdateOptions) (*v1beta1.NodeNetwork, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(nodenetworksResource, "status", c.ns, nodeNetwork), &v1alpha1.NodeNetwork{})
+		Invokes(testing.NewUpdateSubresourceAction(nodenetworksResource, "status", c.ns, nodeNetwork), &v1beta1.NodeNetwork{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.NodeNetwork), err
+	return obj.(*v1beta1.NodeNetwork), err
 }
 
 // Delete takes name of the nodeNetwork and deletes it. Returns an error if one occurs.
 func (c *FakeNodeNetworks) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(nodenetworksResource, c.ns, name), &v1alpha1.NodeNetwork{})
+		Invokes(testing.NewDeleteAction(nodenetworksResource, c.ns, name), &v1beta1.NodeNetwork{})
 
 	return err
 }
@@ -126,17 +126,17 @@ func (c *FakeNodeNetworks) Delete(ctx context.Context, name string, opts v1.Dele
 func (c *FakeNodeNetworks) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
 	action := testing.NewDeleteCollectionAction(nodenetworksResource, c.ns, listOpts)
 
-	_, err := c.Fake.Invokes(action, &v1alpha1.NodeNetworkList{})
+	_, err := c.Fake.Invokes(action, &v1beta1.NodeNetworkList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched nodeNetwork.
-func (c *FakeNodeNetworks) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.NodeNetwork, err error) {
+func (c *FakeNodeNetworks) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.NodeNetwork, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(nodenetworksResource, c.ns, name, pt, data, subresources...), &v1alpha1.NodeNetwork{})
+		Invokes(testing.NewPatchSubresourceAction(nodenetworksResource, c.ns, name, pt, data, subresources...), &v1beta1.NodeNetwork{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*v1alpha1.NodeNetwork), err
+	return obj.(*v1beta1.NodeNetwork), err
 }
