@@ -19,26 +19,26 @@ limitations under the License.
 package fake
 
 import (
-	v1alpha1 "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvester.cattle.io/v1alpha1"
+	v1beta1 "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )
 
-type FakeNetworkV1alpha1 struct {
+type FakeNetworkV1beta1 struct {
 	*testing.Fake
 }
 
-func (c *FakeNetworkV1alpha1) ClusterNetworks(namespace string) v1alpha1.ClusterNetworkInterface {
+func (c *FakeNetworkV1beta1) ClusterNetworks(namespace string) v1beta1.ClusterNetworkInterface {
 	return &FakeClusterNetworks{c, namespace}
 }
 
-func (c *FakeNetworkV1alpha1) NodeNetworks(namespace string) v1alpha1.NodeNetworkInterface {
+func (c *FakeNetworkV1beta1) NodeNetworks(namespace string) v1beta1.NodeNetworkInterface {
 	return &FakeNodeNetworks{c, namespace}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *FakeNetworkV1alpha1) RESTClient() rest.Interface {
+func (c *FakeNetworkV1beta1) RESTClient() rest.Interface {
 	var ret *rest.RESTClient
 	return ret
 }

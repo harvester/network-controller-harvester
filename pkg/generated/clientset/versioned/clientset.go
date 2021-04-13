@@ -21,7 +21,7 @@ package versioned
 import (
 	"fmt"
 
-	networkv1alpha1 "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvester.cattle.io/v1alpha1"
+	networkv1beta1 "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -29,19 +29,19 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	NetworkV1alpha1() networkv1alpha1.NetworkV1alpha1Interface
+	NetworkV1beta1() networkv1beta1.NetworkV1beta1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	networkV1alpha1 *networkv1alpha1.NetworkV1alpha1Client
+	networkV1beta1 *networkv1beta1.NetworkV1beta1Client
 }
 
-// NetworkV1alpha1 retrieves the NetworkV1alpha1Client
-func (c *Clientset) NetworkV1alpha1() networkv1alpha1.NetworkV1alpha1Interface {
-	return c.networkV1alpha1
+// NetworkV1beta1 retrieves the NetworkV1beta1Client
+func (c *Clientset) NetworkV1beta1() networkv1beta1.NetworkV1beta1Interface {
+	return c.networkV1beta1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -65,7 +65,7 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	}
 	var cs Clientset
 	var err error
-	cs.networkV1alpha1, err = networkv1alpha1.NewForConfig(&configShallowCopy)
+	cs.networkV1beta1, err = networkv1beta1.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 // panics if there is an error in the config.
 func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
-	cs.networkV1alpha1 = networkv1alpha1.NewForConfigOrDie(c)
+	cs.networkV1beta1 = networkv1beta1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
 	return &cs
@@ -90,7 +90,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.networkV1alpha1 = networkv1alpha1.New(c)
+	cs.networkV1beta1 = networkv1beta1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs
