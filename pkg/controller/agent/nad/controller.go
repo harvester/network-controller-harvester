@@ -6,13 +6,13 @@ import (
 	"errors"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	harvnetwork "github.com/rancher/harvester/pkg/api/network"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
 
 	"github.com/rancher/harvester-network-controller/pkg/config"
-	"github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvester.cattle.io/v1alpha1"
+	ctlnetworkv1 "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/rancher/harvester-network-controller/pkg/network/vlan"
+	networkv1 "github.com/rancher/harvester/pkg/api/network"
 )
 
 // Harvester network nad watches network-attachment-definition CR, retrieve network configuration and make it effective.
@@ -22,12 +22,12 @@ const (
 )
 
 type Handler struct {
-	nodeNetworkCache v1alpha1.NodeNetworkCache
+	nodeNetworkCache ctlnetworkv1.NodeNetworkCache
 }
 
 func Register(ctx context.Context, management *config.Management) error {
 	nad := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
-	nns := management.HarvesterNetworkFactory.Network().V1alpha1().NodeNetwork()
+	nns := management.HarvesterNetworkFactory.Network().V1beta1().NodeNetwork()
 
 	handler := &Handler{
 		nodeNetworkCache: nns.Cache(),
@@ -49,7 +49,7 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 	}
 
 	klog.Infof("nad configuration %s has been changed: %s", nad.Name, nad.Spec.Config)
-	netconf := &harvnetwork.NetConf{}
+	netconf := &networkv1.NetConf{}
 	if err := json.Unmarshal([]byte(nad.Spec.Config), netconf); err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func (h Handler) OnRemove(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 
 	klog.Infof("nad configuration %s has been deleted.", nad.Name)
 
-	netconf := &harvnetwork.NetConf{}
+	netconf := &networkv1.NetConf{}
 	if err := json.Unmarshal([]byte(nad.Spec.Config), netconf); err != nil {
 		return nil, err
 	}

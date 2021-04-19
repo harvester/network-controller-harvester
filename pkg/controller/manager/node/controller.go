@@ -8,10 +8,10 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 
-	networkv1alpha1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvester.cattle.io/v1alpha1"
+	networkv1alpha1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/rancher/harvester-network-controller/pkg/config"
 	"github.com/rancher/harvester-network-controller/pkg/controller/common"
-	ctlnetworkv1alpha1 "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvester.cattle.io/v1alpha1"
+	ctl "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 )
 
 // Harvester network node controller watches node to create or delete NodeNetwork CR
@@ -20,15 +20,15 @@ const (
 )
 
 type Handler struct {
-	nodeNetworkClient   ctlnetworkv1alpha1.NodeNetworkClient
-	nodeNetworkCache    ctlnetworkv1alpha1.NodeNetworkCache
-	clusterNetworkCache ctlnetworkv1alpha1.ClusterNetworkCache
+	nodeNetworkClient   ctl.NodeNetworkClient
+	nodeNetworkCache    ctl.NodeNetworkCache
+	clusterNetworkCache ctl.ClusterNetworkCache
 }
 
 func Register(ctx context.Context, management *config.Management) error {
 	nodes := management.CoreFactory.Core().V1().Node()
-	nodeNetworks := management.HarvesterNetworkFactory.Network().V1alpha1().NodeNetwork()
-	clusterNetworks := management.HarvesterNetworkFactory.Network().V1alpha1().ClusterNetwork()
+	nodeNetworks := management.HarvesterNetworkFactory.Network().V1beta1().NodeNetwork()
+	clusterNetworks := management.HarvesterNetworkFactory.Network().V1beta1().ClusterNetwork()
 
 	handler := &Handler{
 		nodeNetworkClient:   nodeNetworks,

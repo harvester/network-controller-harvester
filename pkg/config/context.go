@@ -4,8 +4,6 @@ import (
 	"context"
 
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	ctlcni "github.com/rancher/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
-	"github.com/rancher/harvester/pkg/util/crd"
 	"github.com/rancher/lasso/pkg/controller"
 	ctlcore "github.com/rancher/wrangler-api/pkg/generated/controllers/core"
 	wcrd "github.com/rancher/wrangler/pkg/crd"
@@ -21,13 +19,15 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 
-	networkv1alpha1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvester.cattle.io/v1alpha1"
-	ctlnetwork "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvester.cattle.io"
+	networkv1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
+	ctlnetworkv1 "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
+	ctlcni "github.com/rancher/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
+	"github.com/rancher/harvester/pkg/util/crd"
 )
 
 var (
 	localSchemeBuilder = runtime.SchemeBuilder{
-		networkv1alpha1.AddToScheme,
+		networkv1.AddToScheme,
 	}
 	AddToScheme = localSchemeBuilder.AddToScheme
 	Scheme      = runtime.NewScheme()
@@ -44,7 +44,7 @@ type Management struct {
 	ctx               context.Context
 	ControllerFactory controller.SharedControllerFactory
 
-	HarvesterNetworkFactory *ctlnetwork.Factory
+	HarvesterNetworkFactory *ctlnetworkv1.Factory
 
 	CniFactory  *ctlcni.Factory
 	CoreFactory *ctlcore.Factory
@@ -86,7 +86,7 @@ func createCRDsIfNotExisted(ctx context.Context, config *rest.Config) error {
 	}
 	return factory.
 		CreateCRDsIfNotExisted(
-			crd.NonNamespacedFromGV(networkv1alpha1.SchemeGroupVersion, "NodeNetwork"),
+			crd.NonNamespacedFromGV(networkv1.SchemeGroupVersion, "NodeNetwork"),
 		).
 		CreateCRDsIfNotExisted(
 			createNetworkAttachmentDefinitionCRD(),
@@ -115,7 +115,7 @@ func SetupManagement(ctx context.Context, restConfig *rest.Config) (*Management,
 		ctx: ctx,
 	}
 
-	harvesterNetwork, err := ctlnetwork.NewFactoryFromConfigWithOptions(restConfig, opts)
+	harvesterNetwork, err := ctlnetworkv1.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {
 		return nil, err
 	}

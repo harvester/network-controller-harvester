@@ -22,7 +22,6 @@ type Monitor struct {
 
 	// every monitor can start/stop once
 	startOnce sync.Once
-	stopOnce  sync.Once
 }
 
 func NewMonitor() *Monitor {
@@ -31,7 +30,6 @@ func NewMonitor() *Monitor {
 		mutex:     sync.RWMutex{},
 		done:      make(chan struct{}),
 		startOnce: sync.Once{},
-		stopOnce:  sync.Once{},
 	}
 }
 
