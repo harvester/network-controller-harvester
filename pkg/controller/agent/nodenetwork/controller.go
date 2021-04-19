@@ -8,21 +8,21 @@ import (
 	"os"
 	"time"
 
-	harvnetwork "github.com/rancher/harvester/pkg/api/network"
-	cniv1 "github.com/rancher/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	"github.com/vishvananda/netlink"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
-	networkv1alpha1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvester.cattle.io/v1alpha1"
+	networkv1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/rancher/harvester-network-controller/pkg/config"
 	"github.com/rancher/harvester-network-controller/pkg/controller/common"
-	"github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvester.cattle.io/v1alpha1"
+	ctlnetworkv1 "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/rancher/harvester-network-controller/pkg/network"
 	"github.com/rancher/harvester-network-controller/pkg/network/iface"
 	"github.com/rancher/harvester-network-controller/pkg/network/vlan"
+	harvnetwork "github.com/rancher/harvester/pkg/api/network"
+	cniv1 "github.com/rancher/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 )
 
 // NodeNetwork controller watches NodeNetwork to configure network for cluster node
@@ -34,14 +34,14 @@ const (
 )
 
 type Handler struct {
-	nodeNetworkCtr   v1alpha1.NodeNetworkController
-	nodeNetworkCache v1alpha1.NodeNetworkCache
+	nodeNetworkCtr   ctlnetworkv1.NodeNetworkController
+	nodeNetworkCache ctlnetworkv1.NodeNetworkCache
 	nadCache         cniv1.NetworkAttachmentDefinitionCache
 	recorder         record.EventRecorder
 }
 
 func Register(ctx context.Context, management *config.Management) error {
-	nns := management.HarvesterNetworkFactory.Network().V1alpha1().NodeNetwork()
+	nns := management.HarvesterNetworkFactory.Network().V1beta1().NodeNetwork()
 	nad := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
 
 	handler := &Handler{
@@ -62,7 +62,7 @@ func Register(ctx context.Context, management *config.Management) error {
 		ticker := time.NewTicker(resetPeriod)
 		for range ticker.C {
 			klog.Infof("regular reset node network")
-			if err := handler.reconcileNodeNetwork(string(networkv1alpha1.NetworkTypeVLAN)); err != nil {
+			if err := handler.reconcileNodeNetwork(string(networkv1.NetworkTypeVLAN)); err != nil {
 				klog.Errorf("regular reset vlan network failed, error: %+v", err)
 			}
 		}
@@ -71,7 +71,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func (h Handler) OnChange(key string, nn *networkv1alpha1.NodeNetwork) (*networkv1alpha1.NodeNetwork, error) {
+func (h Handler) OnChange(key string, nn *networkv1.NodeNetwork) (*networkv1.NodeNetwork, error) {
 	if nn == nil || nn.DeletionTimestamp != nil {
 		return nil, nil
 	}
@@ -84,7 +84,7 @@ func (h Handler) OnChange(key string, nn *networkv1alpha1.NodeNetwork) (*network
 	klog.Infof("node network configuration %s has been changed, spec: %+v", nn.Name, nn.Spec)
 
 	switch nn.Spec.Type {
-	case networkv1alpha1.NetworkTypeVLAN:
+	case networkv1.NetworkTypeVLAN:
 		if err := h.configVlanNetwork(nn); err != nil {
 			return nil, err
 		}
@@ -94,7 +94,7 @@ func (h Handler) OnChange(key string, nn *networkv1alpha1.NodeNetwork) (*network
 	return nn, nil
 }
 
-func (h Handler) OnRemove(key string, nn *networkv1alpha1.NodeNetwork) (*networkv1alpha1.NodeNetwork, error) {
+func (h Handler) OnRemove(key string, nn *networkv1.NodeNetwork) (*networkv1.NodeNetwork, error) {
 	if nn == nil {
 		return nil, nil
 	}
@@ -105,7 +105,7 @@ func (h Handler) OnRemove(key string, nn *networkv1alpha1.NodeNetwork) (*network
 	klog.Infof("node network configuration %s has been deleted", nn.Name)
 
 	switch nn.Spec.Type {
-	case networkv1alpha1.NetworkTypeVLAN:
+	case networkv1.NetworkTypeVLAN:
 		if err := h.removeVlanNetwork(); err != nil {
 			return nil, err
 		}
@@ -115,7 +115,7 @@ func (h Handler) OnRemove(key string, nn *networkv1alpha1.NodeNetwork) (*network
 	return nn, nil
 }
 
-func (h Handler) configVlanNetwork(nn *networkv1alpha1.NodeNetwork) error {
+func (h Handler) configVlanNetwork(nn *networkv1.NodeNetwork) error {
 	if err := h.repealVlan(nn); err != nil {
 		return err
 	}
@@ -123,7 +123,7 @@ func (h Handler) configVlanNetwork(nn *networkv1alpha1.NodeNetwork) error {
 	return h.setupVlan(nn)
 }
 
-func (h Handler) setupVlan(nn *networkv1alpha1.NodeNetwork) error {
+func (h Handler) setupVlan(nn *networkv1.NodeNetwork) error {
 	if nn.Spec.NIC == "" {
 		return h.updateStatus(nn, network.Status{
 			Condition: network.Condition{Normal: false, Message: "A physical NIC has not been specified yet"},
@@ -153,7 +153,7 @@ func (h Handler) setupVlan(nn *networkv1alpha1.NodeNetwork) error {
 	return h.updateStatus(nn, *status)
 }
 
-func (h Handler) repealVlan(nn *networkv1alpha1.NodeNetwork) error {
+func (h Handler) repealVlan(nn *networkv1.NodeNetwork) error {
 	v, err := vlan.GetVlan()
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) && !errors.As(err, &vlan.SlaveNotFoundError{}) {
 		return err
@@ -187,7 +187,7 @@ func (h Handler) reconcileNodeNetwork(networkType string) error {
 	return nil
 }
 
-func (h Handler) getNICFromStatus(nn *networkv1alpha1.NodeNetwork) string {
+func (h Handler) getNICFromStatus(nn *networkv1.NodeNetwork) string {
 	for linkName, status := range nn.Status.NetworkLinkStatus {
 		if status.Type == "device" {
 			return linkName
@@ -213,7 +213,7 @@ func (h Handler) removeVlanNetwork() error {
 	return nil
 }
 
-func (h Handler) updateStatus(nn *networkv1alpha1.NodeNetwork, status network.Status) error {
+func (h Handler) updateStatus(nn *networkv1.NodeNetwork, status network.Status) error {
 	nnCopy := nn.DeepCopy()
 
 	for name := range nn.Status.NetworkLinkStatus {
@@ -223,7 +223,7 @@ func (h Handler) updateStatus(nn *networkv1alpha1.NodeNetwork, status network.St
 	}
 
 	if nnCopy.Status.NetworkLinkStatus == nil {
-		nnCopy.Status.NetworkLinkStatus = make(map[string]*networkv1alpha1.LinkStatus)
+		nnCopy.Status.NetworkLinkStatus = make(map[string]*networkv1.LinkStatus)
 	}
 
 	for name, link := range status.IFaces {
@@ -237,8 +237,8 @@ func (h Handler) updateStatus(nn *networkv1alpha1.NodeNetwork, status network.St
 	}
 	nnCopy.Status.PhysicalNICs = nics
 
-	networkv1alpha1.NodeNetworkReady.SetStatusBool(nnCopy, status.Condition.Normal)
-	networkv1alpha1.NodeNetworkReady.Message(nnCopy, status.Condition.Message)
+	networkv1.NodeNetworkReady.SetStatusBool(nnCopy, status.Condition.Normal)
+	networkv1.NodeNetworkReady.Message(nnCopy, status.Condition.Message)
 
 	if _, err := h.nodeNetworkCtr.Update(nnCopy); err != nil {
 		return fmt.Errorf("update status of nodenetwork %s failed, error: %w", nn.Name, err)
@@ -270,8 +270,8 @@ func (h Handler) getNadVidList() ([]uint16, error) {
 	return vidList, nil
 }
 
-func makeLinkStatus(link iface.IFace) *networkv1alpha1.LinkStatus {
-	linkStatus := &networkv1alpha1.LinkStatus{
+func makeLinkStatus(link iface.IFace) *networkv1.LinkStatus {
+	linkStatus := &networkv1.LinkStatus{
 		Index:       link.Index(),
 		Type:        link.Type(),
 		MAC:         link.LinkAttrs().HardwareAddr.String(),
@@ -294,15 +294,15 @@ func makeLinkStatus(link iface.IFace) *networkv1alpha1.LinkStatus {
 	return linkStatus
 }
 
-func getPhysicalNICs() ([]networkv1alpha1.PhysicalNic, error) {
+func getPhysicalNICs() ([]networkv1.PhysicalNic, error) {
 	nics, err := iface.GetPhysicalNICs()
 	if err != nil {
 		return nil, fmt.Errorf("list physical NICs failed")
 	}
 
-	physicalNICs := []networkv1alpha1.PhysicalNic{}
+	physicalNICs := []networkv1.PhysicalNic{}
 	for index, nic := range nics {
-		physicalNICs = append(physicalNICs, networkv1alpha1.PhysicalNic{
+		physicalNICs = append(physicalNICs, networkv1.PhysicalNic{
 			Index:             index,
 			Name:              nic.Link.Attrs().Name,
 			UsedByMgmtNetwork: nic.UsedByManageNetwork,

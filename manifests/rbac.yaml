@@ -13,7 +13,7 @@ kind: ClusterRole
 metadata:
   name: harvester-network-controller
 rules:
-  - apiGroups: [ "network.harvester.cattle.io" ]
+  - apiGroups: [ "network.harvesterhci.io" ]
     resources: [ "clusternetworks", "nodenetworks" ]
     verbs: [ "get", "watch", "list", "update", "create", "delete" ]
   - apiGroups: [ "k8s.cni.cncf.io" ]
