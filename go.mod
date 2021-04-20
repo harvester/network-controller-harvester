@@ -14,6 +14,7 @@ replace (
 	github.com/rancher/apiserver => github.com/cnrancher/apiserver v0.0.0-20210111070015-74fc636626b5
 	github.com/rancher/steve => github.com/cnrancher/steve v0.0.0-20210111071104-8891a7756b81
 	github.com/rancher/wrangler => github.com/rancher/wrangler v0.7.3-0.20201204033916-d7f8c90b22e5
+	github.com/vishvananda/netlink => github.com/vishvananda/netlink v0.0.0-20210315072101-c30d9bc9e748
 	k8s.io/api => k8s.io/api v0.18.6
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.18.6
 	k8s.io/apimachinery => k8s.io/apimachinery v0.18.6
@@ -25,7 +26,6 @@ replace (
 	kubevirt.io/client-go => github.com/rancher/kubevirt-client-go v0.20.2-0.20210201144041-d294c131c268
 	kubevirt.io/containerized-data-importer => github.com/rancher/kubevirt-containerized-data-importer v1.26.1-0.20210201143124-afdd470ff718
 	sigs.k8s.io/structured-merge-diff => sigs.k8s.io/structured-merge-diff v0.0.0-20190302045857-e85c7b244fd2
-	github.com/vishvananda/netlink => github.com/vishvananda/netlink v0.0.0-20210315072101-c30d9bc9e748
 )
 
 require (
