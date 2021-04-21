@@ -91,12 +91,12 @@ func (v *Vlan) Setup(nic string, vids []uint16) error {
 		return fmt.Errorf("NIC %s is down", l.Name())
 	}
 
-	// append routes for bridge
-	if err := v.bridge.ToLink().AddRoutes(l); err != nil {
-		return err
-	}
 	// config IPv4 address for bridge
 	if err := v.bridge.SyncIPv4Addr(l); err != nil {
+		return err
+	}
+	// append routes for bridge
+	if err := v.bridge.ToLink().AddRoutes(l); err != nil {
 		return err
 	}
 	// set master
@@ -147,8 +147,9 @@ func (v *Vlan) startMonitor() {
 	}
 
 	nicMonitorHandler := monitor.Handler{
-		NewLink: v.afterLinkDown,
-		NewAddr: v.afterModifyNicIP,
+		NewLink:  v.afterLinkDown,
+		NewAddr:  v.afterModifyNicIP,
+		NewRoute: v.afterModifyNicRoute,
 	}
 
 	w := network.GetWatcher()
@@ -210,8 +211,7 @@ func (v *Vlan) afterModifyNicIP(addr netlink.AddrUpdate) {
 			klog.Errorf("recorde event failed, error: %s", err.Error())
 		}
 	}
-
-	// Sync IPv4 addresses and routes
+	// Sync IPv4 addresses
 	if err := v.nic.Fetch(); err != nil {
 		klog.Errorf("fetch NIC %s failed, error: %s", v.nic.Name(), err.Error())
 		return
@@ -220,17 +220,31 @@ func (v *Vlan) afterModifyNicIP(addr netlink.AddrUpdate) {
 		klog.Errorf("fetch bridge %s failed, error: %s", v.bridge.Name(), err.Error())
 		return
 	}
-	if err := v.bridge.ToLink().AddRoutes(v.nic); err != nil {
+
+	if err := v.bridge.ToLink().DeleteRoutes(); err != nil {
 		klog.Error(err)
 		return
 	}
-	if err := v.nic.DeleteRoutes(); err != nil {
-		klog.Error(err)
-		return
-	}
+
 	if err := v.bridge.SyncIPv4Addr(v.nic); err != nil {
 		klog.Error(err)
 		return
+	}
+}
+
+func (v *Vlan) afterModifyNicRoute(route netlink.RouteUpdate) {
+	route.LinkIndex = v.bridge.Index()
+	if err := netlink.RouteAppend(&route.Route); err != nil {
+		klog.Errorf("append route failed, error: %s, route: %+v", err, route)
+	} else {
+		klog.Infof("append route %+v", route)
+	}
+
+	route.LinkIndex = v.nic.Index()
+	if err := netlink.RouteDel(&route.Route); err != nil {
+		klog.Errorf("delete failed, error: %s, route: %+v", err, route)
+	} else {
+		klog.Infof("delete route %+v", route)
 	}
 }
 
