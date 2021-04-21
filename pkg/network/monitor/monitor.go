@@ -16,7 +16,7 @@ import (
 
 type Monitor struct {
 	handlers map[int]Handler
-	mutex    sync.RWMutex
+	mutex    sync.Mutex
 
 	done chan struct{}
 
@@ -27,7 +27,7 @@ type Monitor struct {
 func NewMonitor() *Monitor {
 	return &Monitor{
 		handlers:  make(map[int]Handler),
-		mutex:     sync.RWMutex{},
+		mutex:     sync.Mutex{},
 		done:      make(chan struct{}),
 		startOnce: sync.Once{},
 	}
@@ -67,25 +67,23 @@ func (m *Monitor) start(ctx context.Context) {
 		return
 	}
 
-	go func() {
-		for {
-			select {
-			case l := <-linkCh:
-				m.handleLink(l)
-			case a := <-addrCh:
-				m.handleAddr(a)
-			case r := <-routeCh:
-				m.handleRoute(r)
-			}
+	for {
+		select {
+		case l := <-linkCh:
+			m.handleLink(l)
+		case a := <-addrCh:
+			m.handleAddr(a)
+		case r := <-routeCh:
+			m.handleRoute(r)
+		case <-ctx.Done():
+			return
 		}
-	}()
-
-	<-ctx.Done()
+	}
 }
 
 func (m *Monitor) handleLink(update netlink.LinkUpdate) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 	handler, ok := m.handlers[int(update.Index)]
 	if !ok {
 		return
@@ -106,8 +104,8 @@ func (m *Monitor) handleLink(update netlink.LinkUpdate) {
 }
 
 func (m *Monitor) handleAddr(update netlink.AddrUpdate) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 	handler, ok := m.handlers[int(update.LinkIndex)]
 	if !ok {
 		return
@@ -130,8 +128,8 @@ func (m *Monitor) handleAddr(update netlink.AddrUpdate) {
 }
 
 func (m *Monitor) handleRoute(update netlink.RouteUpdate) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 	handler, ok := m.handlers[int(update.LinkIndex)]
 	if !ok {
 		return
