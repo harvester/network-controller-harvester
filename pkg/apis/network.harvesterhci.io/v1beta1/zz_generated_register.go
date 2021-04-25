@@ -21,7 +21,7 @@ limitations under the License.
 package v1beta1
 
 import (
-	network "github.com/rancher/harvester-network-controller/pkg/apis/network.harvesterhci.io"
+	network "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"

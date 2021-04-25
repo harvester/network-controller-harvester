@@ -19,9 +19,9 @@ limitations under the License.
 package fake
 
 import (
-	clientset "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned"
-	networkv1beta1 "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1"
-	fakenetworkv1beta1 "github.com/rancher/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1/fake"
+	clientset "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned"
+	networkv1beta1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1"
+	fakenetworkv1beta1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
