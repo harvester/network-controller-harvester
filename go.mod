@@ -6,7 +6,7 @@ replace (
 	github.com/dgrijalva/jwt-go => github.com/dgrijalva/jwt-go v3.2.1-0.20200107013213-dc14462fd587+incompatible
 	github.com/docker/distribution => github.com/docker/distribution v0.0.0-20191216044856-a8371794149d
 	github.com/docker/docker => github.com/docker/docker v1.4.2-0.20200203170920-46ec8731fbce
-	github.com/googleapis/gnostic => github.com/googleapis/gnostic v0.3.1
+	github.com/googleapis/gnostic => github.com/googleapis/gnostic v0.4.1
 	github.com/knative/pkg => github.com/rancher/pkg v0.0.0-20190514055449-b30ab9de040e
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20191125132246-f6563a70e19a
@@ -14,7 +14,9 @@ replace (
 	github.com/rancher/apiserver => github.com/cnrancher/apiserver v0.0.0-20210302022932-069aa785cb9f
 	github.com/rancher/rancher/pkg/apis => github.com/rancher/rancher/pkg/apis v0.0.0-20210304063736-65f7c844267b
 	github.com/rancher/rancher/pkg/client => github.com/rancher/rancher/pkg/client v0.0.0-20210304063736-65f7c844267b
+
 	github.com/vishvananda/netlink => github.com/vishvananda/netlink v0.0.0-20210315072101-c30d9bc9e748
+
 	k8s.io/api => k8s.io/api v0.20.4
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.20.4
 	k8s.io/apimachinery => k8s.io/apimachinery v0.20.4
@@ -40,18 +42,19 @@ replace (
 	k8s.io/metrics => k8s.io/metrics v0.20.4
 	k8s.io/mount-utils => k8s.io/mount-utils v0.20.4
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.20.4
+
 	kubevirt.io/client-go => github.com/kubevirt/client-go v0.40.0-rc.2
 	kubevirt.io/containerized-data-importer => github.com/rancher/kubevirt-containerized-data-importer v1.26.1-0.20210303063201-9e7a78643487
 	sigs.k8s.io/structured-merge-diff => sigs.k8s.io/structured-merge-diff v0.0.0-20190302045857-e85c7b244fd2
 )
 
 require (
-	github.com/harvester/harvester v0.0.0-20210423160150-3758022490af
+	github.com/harvester/harvester v0.0.2-0.20210426072157-d98c45f87861
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v0.0.0-20200331171230-d50e42f2b669
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
-	github.com/rancher/lasso v0.0.0-20210408231703-9ddd9378d08d
-	github.com/rancher/wrangler v0.8.1-0.20210423003607-f71a90542852
-	github.com/rancher/wrangler-api v0.6.1-0.20200515193802-dcf70881b087
+	github.com/rancher/lasso v0.0.0-20210219160604-9baf1c12751b
+	github.com/rancher/wrangler v0.7.3-0.20210219161540-ef7fe9ce2443
+	github.com/rancher/wrangler-api v0.6.1-0.20200427172631-a7c2f09b783e
 	github.com/sirupsen/logrus v1.7.0
 	github.com/urfave/cli v1.22.2
 	github.com/vishvananda/netlink v1.1.1-0.20200914145417-7484f55b2263
