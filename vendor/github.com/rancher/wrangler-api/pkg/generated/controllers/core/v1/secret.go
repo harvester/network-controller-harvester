@@ -81,7 +81,7 @@ type secretController struct {
 }
 
 func NewSecretController(gvk schema.GroupVersionKind, resource string, namespaced bool, controller controller.SharedControllerFactory) SecretController {
-	c := controller.ForResourceKind(gvk.GroupVersion().WithResource(resource), gvk.Kind, namespaced)
+	c := controller.ForResource(gvk.GroupVersion().WithResource(resource), namespaced)
 	return &secretController{
 		controller: c,
 		client:     c.Client(),
