@@ -8,21 +8,21 @@ import (
 	"os"
 	"time"
 
+	harvnetwork "github.com/harvester/harvester/pkg/api/network"
+	cniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	"github.com/vishvananda/netlink"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
-	networkv1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
-	"github.com/rancher/harvester-network-controller/pkg/config"
-	"github.com/rancher/harvester-network-controller/pkg/controller/common"
-	ctlnetworkv1 "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
-	"github.com/rancher/harvester-network-controller/pkg/network"
-	"github.com/rancher/harvester-network-controller/pkg/network/iface"
-	"github.com/rancher/harvester-network-controller/pkg/network/vlan"
-	harvnetwork "github.com/rancher/harvester/pkg/api/network"
-	cniv1 "github.com/rancher/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
+	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
+	"github.com/harvester/harvester-network-controller/pkg/config"
+	"github.com/harvester/harvester-network-controller/pkg/controller/common"
+	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
+	"github.com/harvester/harvester-network-controller/pkg/network"
+	"github.com/harvester/harvester-network-controller/pkg/network/iface"
+	"github.com/harvester/harvester-network-controller/pkg/network/vlan"
 )
 
 // NodeNetwork controller watches NodeNetwork to configure network for cluster node

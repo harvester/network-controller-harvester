@@ -3,6 +3,8 @@ package config
 import (
 	"context"
 
+	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
+	"github.com/harvester/harvester/pkg/util/crd"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/rancher/lasso/pkg/controller"
 	ctlcore "github.com/rancher/wrangler-api/pkg/generated/controllers/core"
@@ -19,10 +21,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 
-	networkv1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
-	ctlnetworkv1 "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
-	ctlcni "github.com/rancher/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
-	"github.com/rancher/harvester/pkg/util/crd"
+	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
+	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
 )
 
 var (
@@ -85,13 +85,13 @@ func createCRDsIfNotExisted(ctx context.Context, config *rest.Config) error {
 		return err
 	}
 	return factory.
-		CreateCRDsIfNotExisted(
+		BatchCreateCRDsIfNotExisted(
 			crd.NonNamespacedFromGV(networkv1.SchemeGroupVersion, "NodeNetwork"),
 		).
-		CreateCRDsIfNotExisted(
+		BatchCreateCRDsIfNotExisted(
 			createNetworkAttachmentDefinitionCRD(),
 		).
-		Wait()
+		BatchWait()
 }
 
 func createNetworkAttachmentDefinitionCRD() wcrd.CRD {

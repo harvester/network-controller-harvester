@@ -8,9 +8,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
-	"github.com/rancher/harvester-network-controller/pkg/network"
-	"github.com/rancher/harvester-network-controller/pkg/network/iface"
-	"github.com/rancher/harvester-network-controller/pkg/network/monitor"
+	"github.com/harvester/harvester-network-controller/pkg/network"
+	"github.com/harvester/harvester-network-controller/pkg/network/iface"
+	"github.com/harvester/harvester-network-controller/pkg/network/monitor"
 )
 
 type Vlan struct {

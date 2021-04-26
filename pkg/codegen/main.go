@@ -6,13 +6,13 @@ import (
 	controllergen "github.com/rancher/wrangler/pkg/controller-gen"
 	"github.com/rancher/wrangler/pkg/controller-gen/args"
 
-	networkv1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
+	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 )
 
 func main() {
 	os.Unsetenv("GOPATH")
 	controllergen.Run(args.Options{
-		OutputPackage: "github.com/rancher/harvester-network-controller/pkg/generated",
+		OutputPackage: "github.com/harvester/harvester-network-controller/pkg/generated",
 		Boilerplate:   "hack/boilerplate.go.txt",
 		Groups: map[string]args.Group{
 			"network.harvesterhci.io": {

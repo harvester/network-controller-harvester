@@ -16,9 +16,9 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 
-	"github.com/rancher/harvester-network-controller/pkg/config"
-	"github.com/rancher/harvester-network-controller/pkg/controller/agent"
-	"github.com/rancher/harvester-network-controller/pkg/controller/manager"
+	"github.com/harvester/harvester-network-controller/pkg/config"
+	"github.com/harvester/harvester-network-controller/pkg/controller/agent"
+	"github.com/harvester/harvester-network-controller/pkg/controller/manager"
 )
 
 var (
