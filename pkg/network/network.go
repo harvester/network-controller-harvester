@@ -1,7 +1,7 @@
 package network
 
 import (
-	"github.com/rancher/harvester-network-controller/pkg/network/iface"
+	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 )
 
 // network type

@@ -8,10 +8,10 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 
-	networkv1alpha1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
-	"github.com/rancher/harvester-network-controller/pkg/config"
-	"github.com/rancher/harvester-network-controller/pkg/controller/common"
-	ctl "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
+	networkv1alpha1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
+	"github.com/harvester/harvester-network-controller/pkg/config"
+	"github.com/harvester/harvester-network-controller/pkg/controller/common"
+	ctl "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 )
 
 // Harvester network node controller watches node to create or delete NodeNetwork CR

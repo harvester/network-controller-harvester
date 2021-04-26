@@ -9,10 +9,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
-	networkv1 "github.com/rancher/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
-	"github.com/rancher/harvester-network-controller/pkg/config"
-	"github.com/rancher/harvester-network-controller/pkg/controller/common"
-	ctlnetworkv1 "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
+	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
+	"github.com/harvester/harvester-network-controller/pkg/config"
+	"github.com/harvester/harvester-network-controller/pkg/controller/common"
+	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 )
 
 // ClusterNetwork controller watches ClusterNetworks with the same name of network type to create or delete NodeNetwork.

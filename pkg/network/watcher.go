@@ -3,7 +3,7 @@ package network
 import (
 	"sync"
 
-	"github.com/rancher/harvester-network-controller/pkg/network/monitor"
+	"github.com/harvester/harvester-network-controller/pkg/network/monitor"
 )
 
 var watcher *monitor.Monitor

@@ -1,6 +1,6 @@
 Harvester Network Controller
 ========
-A network controller helps to manage the host network configuration of the [Harvester](https://github.com/rancher/harvester) cluster.
+A network controller helps to manage the host network configuration of the [Harvester](https://github.com/harvester/harvester) cluster.
 
 ## Manifests and Deploying
 The `./manifests` folder contains useful YAML manifests to use for deploying and developing the Harvester network controller. 

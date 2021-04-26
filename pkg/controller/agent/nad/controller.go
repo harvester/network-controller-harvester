@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 
+	networkv1 "github.com/harvester/harvester/pkg/api/network"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
 
-	"github.com/rancher/harvester-network-controller/pkg/config"
-	ctlnetworkv1 "github.com/rancher/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
-	"github.com/rancher/harvester-network-controller/pkg/network/vlan"
-	networkv1 "github.com/rancher/harvester/pkg/api/network"
+	"github.com/harvester/harvester-network-controller/pkg/config"
+	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
+	"github.com/harvester/harvester-network-controller/pkg/network/vlan"
 )
 
 // Harvester network nad watches network-attachment-definition CR, retrieve network configuration and make it effective.
