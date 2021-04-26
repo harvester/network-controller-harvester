@@ -81,7 +81,7 @@ type configMapController struct {
 }
 
 func NewConfigMapController(gvk schema.GroupVersionKind, resource string, namespaced bool, controller controller.SharedControllerFactory) ConfigMapController {
-	c := controller.ForResourceKind(gvk.GroupVersion().WithResource(resource), gvk.Kind, namespaced)
+	c := controller.ForResource(gvk.GroupVersion().WithResource(resource), namespaced)
 	return &configMapController{
 		controller: c,
 		client:     c.Client(),

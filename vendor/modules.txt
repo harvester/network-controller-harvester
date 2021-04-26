@@ -56,7 +56,7 @@ github.com/google/go-cmp/cmp/internal/value
 github.com/google/gofuzz
 # github.com/google/uuid v1.1.2
 github.com/google/uuid
-# github.com/googleapis/gnostic v0.4.1 => github.com/googleapis/gnostic v0.3.1
+# github.com/googleapis/gnostic v0.4.1 => github.com/googleapis/gnostic v0.4.1
 github.com/googleapis/gnostic/compiler
 github.com/googleapis/gnostic/extensions
 github.com/googleapis/gnostic/openapiv2
@@ -66,7 +66,7 @@ github.com/gorilla/handlers
 github.com/gorilla/mux
 # github.com/gorilla/websocket v1.4.2
 github.com/gorilla/websocket
-# github.com/harvester/harvester v0.0.0-20210423160150-3758022490af
+# github.com/harvester/harvester v0.0.2-0.20210426072157-d98c45f87861
 github.com/harvester/harvester/pkg/api/network
 github.com/harvester/harvester/pkg/apis/harvesterhci.io
 github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1
@@ -151,7 +151,7 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/rancher/apiserver v0.0.0-20210423001905-8cca34223733 => github.com/cnrancher/apiserver v0.0.0-20210302022932-069aa785cb9f
+# github.com/rancher/apiserver v0.0.0-20210209001659-a17289640582 => github.com/cnrancher/apiserver v0.0.0-20210302022932-069aa785cb9f
 github.com/rancher/apiserver/pkg/apierror
 github.com/rancher/apiserver/pkg/builtin
 github.com/rancher/apiserver/pkg/handlers
@@ -178,7 +178,7 @@ github.com/rancher/eks-operator/pkg/apis/eks.cattle.io/v1
 # github.com/rancher/kubernetes-provider-detector v0.1.2
 github.com/rancher/kubernetes-provider-detector
 github.com/rancher/kubernetes-provider-detector/providers
-# github.com/rancher/lasso v0.0.0-20210408231703-9ddd9378d08d
+# github.com/rancher/lasso v0.0.0-20210219160604-9baf1c12751b
 github.com/rancher/lasso/pkg/cache
 github.com/rancher/lasso/pkg/client
 github.com/rancher/lasso/pkg/controller
@@ -204,16 +204,12 @@ github.com/rancher/rancher/pkg/apis/management.cattle.io
 github.com/rancher/rancher/pkg/apis/management.cattle.io/v3
 github.com/rancher/rancher/pkg/apis/project.cattle.io
 github.com/rancher/rancher/pkg/apis/project.cattle.io/v3
-# github.com/rancher/remotedialer v0.2.6-0.20210318171128-d1ebd5202be4
-github.com/rancher/remotedialer
-github.com/rancher/remotedialer/metrics
 # github.com/rancher/rke v1.2.6
 github.com/rancher/rke/types
 github.com/rancher/rke/types/image
 github.com/rancher/rke/types/kdm
-# github.com/rancher/steve v0.0.0-20210423003643-0a9ab631701f
+# github.com/rancher/steve v0.0.0-20210302143000-362617a677a9
 github.com/rancher/steve/pkg/accesscontrol
-github.com/rancher/steve/pkg/aggregation
 github.com/rancher/steve/pkg/attributes
 github.com/rancher/steve/pkg/auth
 github.com/rancher/steve/pkg/client
@@ -241,7 +237,7 @@ github.com/rancher/steve/pkg/summarycache
 github.com/rancher/system-upgrade-controller/pkg/apis/condition
 github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io
 github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1
-# github.com/rancher/wrangler v0.8.1-0.20210423003607-f71a90542852
+# github.com/rancher/wrangler v0.7.3-0.20210219161540-ef7fe9ce2443
 github.com/rancher/wrangler/pkg/apply
 github.com/rancher/wrangler/pkg/apply/injectors
 github.com/rancher/wrangler/pkg/broadcast
@@ -254,7 +250,7 @@ github.com/rancher/wrangler/pkg/crd
 github.com/rancher/wrangler/pkg/data
 github.com/rancher/wrangler/pkg/data/convert
 github.com/rancher/wrangler/pkg/generated/controllers/apiextensions.k8s.io
-github.com/rancher/wrangler/pkg/generated/controllers/apiextensions.k8s.io/v1
+github.com/rancher/wrangler/pkg/generated/controllers/apiextensions.k8s.io/v1beta1
 github.com/rancher/wrangler/pkg/generated/controllers/apiregistration.k8s.io
 github.com/rancher/wrangler/pkg/generated/controllers/apiregistration.k8s.io/v1
 github.com/rancher/wrangler/pkg/generated/controllers/apps
@@ -291,9 +287,8 @@ github.com/rancher/wrangler/pkg/summary
 github.com/rancher/wrangler/pkg/summary/client
 github.com/rancher/wrangler/pkg/summary/informer
 github.com/rancher/wrangler/pkg/summary/lister
-github.com/rancher/wrangler/pkg/unstructured
 github.com/rancher/wrangler/pkg/yaml
-# github.com/rancher/wrangler-api v0.6.1-0.20200515193802-dcf70881b087
+# github.com/rancher/wrangler-api v0.6.1-0.20200427172631-a7c2f09b783e
 github.com/rancher/wrangler-api/pkg/generated/controllers/core
 github.com/rancher/wrangler-api/pkg/generated/controllers/core/v1
 # github.com/russross/blackfriday/v2 v2.0.1
@@ -313,7 +308,7 @@ github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae
 github.com/vishvananda/netns
-# golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
+# golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
 golang.org/x/crypto/ed25519
@@ -323,7 +318,7 @@ golang.org/x/crypto/ssh/terminal
 # golang.org/x/mod v0.3.0
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
+# golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
 golang.org/x/net/html
@@ -347,7 +342,7 @@ golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1
+# golang.org/x/term v0.0.0-20201117132131-f5c789dd3221
 golang.org/x/term
 # golang.org/x/text v0.3.4
 golang.org/x/text/secure/bidirule
