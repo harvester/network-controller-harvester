@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	corev1 "github.com/rancher/wrangler-api/pkg/generated/controllers/core/v1"
+	corev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
