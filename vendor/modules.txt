@@ -66,7 +66,7 @@ github.com/gorilla/handlers
 github.com/gorilla/mux
 # github.com/gorilla/websocket v1.4.2
 github.com/gorilla/websocket
-# github.com/harvester/harvester v0.0.2-0.20210426072157-d98c45f87861
+# github.com/harvester/harvester v0.2.0-rc4
 github.com/harvester/harvester/pkg/api/network
 github.com/harvester/harvester/pkg/apis/harvesterhci.io
 github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1
@@ -288,9 +288,6 @@ github.com/rancher/wrangler/pkg/summary/client
 github.com/rancher/wrangler/pkg/summary/informer
 github.com/rancher/wrangler/pkg/summary/lister
 github.com/rancher/wrangler/pkg/yaml
-# github.com/rancher/wrangler-api v0.6.1-0.20200427172631-a7c2f09b783e
-github.com/rancher/wrangler-api/pkg/generated/controllers/core
-github.com/rancher/wrangler-api/pkg/generated/controllers/core/v1
 # github.com/russross/blackfriday/v2 v2.0.1
 github.com/russross/blackfriday/v2
 # github.com/satori/go.uuid v1.2.0

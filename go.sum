@@ -617,8 +617,8 @@ github.com/grpc-ecosystem/grpc-gateway v1.11.3/go.mod h1:vNeuVxBJEsws4ogUvrchl83
 github.com/grpc-ecosystem/grpc-gateway v1.12.1/go.mod h1:8XEsbTttt/W+VvjtQhLACqCisSPWTxCZ7sBRjU6iH9c=
 github.com/grpc-ecosystem/grpc-health-probe v0.2.0/go.mod h1:4GVx/bTCtZaSzhjbGueDY5YgBdsmKeVx+LErv/n0L6s=
 github.com/guonaihong/gout v0.1.3/go.mod h1:vXvv5Kxr70eM5wrp4F0+t9lnLWmq+YPW2GByll2f/EA=
-github.com/harvester/harvester v0.0.2-0.20210426072157-d98c45f87861 h1:zfamy6th55zg/nohSQQchLrPE4DBcZjUmeoQuImIwDo=
-github.com/harvester/harvester v0.0.2-0.20210426072157-d98c45f87861/go.mod h1:hl4qFDVTpNkmJlZOdTzACz7cFD7a3hhsQl6F2i439EQ=
+github.com/harvester/harvester v0.2.0-rc4 h1:7NIufS2uSJOd9NkVVcupY2AFbXF5z2q/5dpW5yShTjc=
+github.com/harvester/harvester v0.2.0-rc4/go.mod h1:hl4qFDVTpNkmJlZOdTzACz7cFD7a3hhsQl6F2i439EQ=
 github.com/hashicorp/consul/api v1.1.0/go.mod h1:VmuI/Lkw1nC05EYQWNKwWGbkg+FbDBtguAZLlVdkD9Q=
 github.com/hashicorp/consul/api v1.3.0/go.mod h1:MmDNSzIMUjNpY/mQ398R4bk2FnqQLoPndWW5VkKPlCE=
 github.com/hashicorp/consul/sdk v0.1.1/go.mod h1:VKf9jXwCTEY1QZP2MOLRhb5i/I/ssyNV1vwHyQBF0x8=

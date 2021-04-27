@@ -49,12 +49,11 @@ replace (
 )
 
 require (
-	github.com/harvester/harvester v0.0.2-0.20210426072157-d98c45f87861
+	github.com/harvester/harvester v0.2.0-rc4
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v0.0.0-20200331171230-d50e42f2b669
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/rancher/lasso v0.0.0-20210219160604-9baf1c12751b
 	github.com/rancher/wrangler v0.7.3-0.20210219161540-ef7fe9ce2443
-	github.com/rancher/wrangler-api v0.6.1-0.20200427172631-a7c2f09b783e
 	github.com/sirupsen/logrus v1.7.0
 	github.com/urfave/cli v1.22.2
 	github.com/vishvananda/netlink v1.1.1-0.20200914145417-7484f55b2263
