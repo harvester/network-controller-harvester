@@ -198,6 +198,20 @@ func (v *Vlan) Status(condition network.Condition) (*network.Status, error) {
 }
 
 func (v *Vlan) afterModifyNicIP(addr netlink.AddrUpdate) {
+	if err := v.bridge.Fetch(); err != nil {
+		klog.Errorf("fetch bridge %s failed, error: %s", v.bridge.Name(), err.Error())
+		return
+	}
+
+	// When DHCP renew the lease, a new address netlink event occurs, even though the IP address is not changed.
+	// We have to filter this type of events.
+	for _, a := range v.bridge.Addr() {
+		if a.IPNet.String() == addr.LinkAddress.String() {
+			klog.Infof("IP address is not changed, %s", addr.LinkAddress.String())
+			return
+		}
+	}
+
 	// Sent event
 	message := fmt.Sprintf("The IP address of %s has been modified as %s and the bridge %s will keep the same",
 		v.nic.Name(), addr.LinkAddress.String(), v.bridge.Name())
@@ -211,21 +225,16 @@ func (v *Vlan) afterModifyNicIP(addr netlink.AddrUpdate) {
 			klog.Errorf("recorde event failed, error: %s", err.Error())
 		}
 	}
-	// Sync IPv4 addresses
-	if err := v.nic.Fetch(); err != nil {
-		klog.Errorf("fetch NIC %s failed, error: %s", v.nic.Name(), err.Error())
-		return
-	}
-	if err := v.bridge.Fetch(); err != nil {
-		klog.Errorf("fetch bridge %s failed, error: %s", v.bridge.Name(), err.Error())
-		return
-	}
 
+	// sync ip address and routes
 	if err := v.bridge.ToLink().DeleteRoutes(); err != nil {
 		klog.Error(err)
 		return
 	}
-
+	if err := v.nic.Fetch(); err != nil {
+		klog.Errorf("fetch NIC %s failed, error: %s", v.nic.Name(), err.Error())
+		return
+	}
 	if err := v.bridge.SyncIPv4Addr(v.nic); err != nil {
 		klog.Error(err)
 		return
