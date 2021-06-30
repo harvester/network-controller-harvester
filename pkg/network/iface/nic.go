@@ -11,6 +11,8 @@ const (
 	flannelName = "flannel.1"
 
 	typeLoopback = "loopback"
+	typeDevice   = "device"
+	typeBond     = "bond"
 	typeVxlan    = "vxlan"
 )
 
@@ -22,7 +24,8 @@ func GetPhysicalNICs() (map[int]*Nic, error) {
 	}
 
 	for _, link := range links {
-		if link.Type() == "device" && link.Attrs().EncapType != typeLoopback {
+		if (link.Type() == typeDevice || link.Type() == typeBond) &&
+			link.Attrs().EncapType != typeLoopback {
 			nics[link.Attrs().Index] = &Nic{Link: link}
 		}
 	}
