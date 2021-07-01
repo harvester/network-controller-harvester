@@ -1,5 +1,7 @@
 Harvester Network Controller
 ========
+[![Build Status](https://drone-publish.rancher.io/api/badges/harvester/network-controller-harvester/status.svg)](https://drone-publish.rancher.io/harvester/network-controller-harvester)
+
 A network controller helps to manage the host network configuration of the [Harvester](https://github.com/harvester/harvester) cluster.
 
 ## Manifests and Deploying
