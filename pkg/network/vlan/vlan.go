@@ -18,11 +18,11 @@ type Vlan struct {
 	nic         *iface.Link
 	status      *network.Status
 	eventSender network.EventSender
+	mgmtNetwork network.Network
+	vids        []uint16
 }
 
-const (
-	BridgeName = "harvester-br0"
-)
+const BridgeName = "harvester-br0"
 
 func (v *Vlan) Type() string {
 	return "vlan"
@@ -30,40 +30,44 @@ func (v *Vlan) Type() string {
 
 // The bridge of a pure VLAN may have no latest information
 // The NIC of a pure VLAN can be empty
-func NewVlan(eventSender network.EventSender) *Vlan {
+func NewVlan(eventSender network.EventSender, mgmtNetwork network.Network, vids []uint16) *Vlan {
 	br := iface.NewBridge(BridgeName)
 	return &Vlan{
 		bridge:      br,
 		status:      &network.Status{},
 		eventSender: eventSender,
+		mgmtNetwork: mgmtNetwork,
+		vids:        vids,
 	}
 }
 
 func (v *Vlan) getSlaveNIC() (*iface.Link, error) {
-	nics, err := iface.GetPhysicalNICs()
+	nics, err := iface.ListLinks(map[string]bool{iface.TypeDevice: true, iface.TypeBond: true})
 	if err != nil {
-		return nil, fmt.Errorf("get physical NICs failed, error: %w", err)
+		return nil, fmt.Errorf("get NICs failed, error: %w", err)
 	}
-	slaveNICs := []string{}
+
+	var number int
+	var slaveNIC string
 	for _, n := range nics {
-		if n.Link.Attrs().MasterIndex == v.bridge.Index() {
-			slaveNICs = append(slaveNICs, n.Link.Attrs().Name)
+		if n.LinkAttrs().MasterIndex == v.bridge.Index() {
+			slaveNIC = n.Name()
+			number++
 		}
 	}
-	number := len(slaveNICs)
 	if number > 1 {
-		return nil, fmt.Errorf("the number of slave NICs can not be over one, actual numbers: %d", len(slaveNICs))
+		return nil, fmt.Errorf("the number of slave NICs can not be over one, actual numbers: %d", number)
 	}
 
 	if number == 0 {
 		return nil, SlaveNotFoundError{fmt.Errorf("slave of %s not found", v.bridge.Name())}
 	}
 
-	return iface.GetLink(slaveNICs[0])
+	return iface.GetLinkByName(slaveNIC)
 }
 
 func GetVlan() (*Vlan, error) {
-	v := NewVlan(nil)
+	v := NewVlan(nil, nil, nil)
 	if err := v.bridge.Fetch(); err != nil {
 		return nil, err
 	}
@@ -77,13 +81,13 @@ func GetVlan() (*Vlan, error) {
 	return v, nil
 }
 
-func (v *Vlan) Setup(nic string, vids []uint16) error {
+func (v *Vlan) Setup(nic string) error {
 	klog.Info("start to setup VLAN network")
 	// ensure bridge and get NIC
 	if err := v.bridge.Ensure(); err != nil {
 		return fmt.Errorf("ensure bridge %s failed, error: %w", v.bridge.Name(), err)
 	}
-	l, err := iface.GetLink(nic)
+	l, err := iface.GetLinkByName(nic)
 	if err != nil {
 		return fmt.Errorf("get NIC %s failed, error: %w", nic, err)
 	}
@@ -91,16 +95,18 @@ func (v *Vlan) Setup(nic string, vids []uint16) error {
 		return fmt.Errorf("NIC %s is down", l.Name())
 	}
 
-	// config IPv4 address for bridge
-	if err := v.bridge.SyncIPv4Addr(l); err != nil {
-		return err
+	// Use the same NIC with the flannel network
+	if l.Index() == v.mgmtNetwork.NIC().Index() {
+		if err := v.bridge.SyncIPv4Addr(l); err != nil {
+			return err
+		}
+		if err := v.bridge.ToLink().AddRoutes(l); err != nil {
+			return err
+		}
 	}
-	// append routes for bridge
-	if err := v.bridge.ToLink().AddRoutes(l); err != nil {
-		return err
-	}
+
 	// set master
-	if err := l.SetMaster(v.bridge, vids); err != nil {
+	if err := l.SetMaster(v.bridge, v.vids); err != nil {
 		return err
 	}
 	// delete routes of NIC
@@ -147,9 +153,7 @@ func (v *Vlan) startMonitor() {
 	}
 
 	nicMonitorHandler := monitor.Handler{
-		NewLink:  v.afterLinkDown,
-		NewAddr:  v.afterModifyNicIP,
-		NewRoute: v.afterModifyNicRoute,
+		NewLink: v.afterLinkDown,
 	}
 
 	w := network.GetWatcher()
@@ -197,66 +201,6 @@ func (v *Vlan) Status(condition network.Condition) (*network.Status, error) {
 	}, nil
 }
 
-func (v *Vlan) afterModifyNicIP(addr netlink.AddrUpdate) {
-	if err := v.bridge.Fetch(); err != nil {
-		klog.Errorf("fetch bridge %s failed, error: %s", v.bridge.Name(), err.Error())
-		return
-	}
-
-	// When DHCP renew the lease, a new address netlink event occurs, even though the IP address is not changed.
-	// We have to filter this type of events.
-	for _, a := range v.bridge.Addr() {
-		if a.IPNet.String() == addr.LinkAddress.String() {
-			klog.Infof("IP address is not changed, %s", addr.LinkAddress.String())
-			return
-		}
-	}
-
-	// Sent event
-	message := fmt.Sprintf("The IP address of %s has been modified as %s and the bridge %s will keep the same",
-		v.nic.Name(), addr.LinkAddress.String(), v.bridge.Name())
-	event := &network.Event{
-		EventType: v1.EventTypeNormal,
-		Reason:    "IPv4AddressUpdate",
-		Message:   message,
-	}
-	if v.eventSender != nil {
-		if err := v.eventSender.SendEvent(event, v.Type()); err != nil {
-			klog.Errorf("recorde event failed, error: %s", err.Error())
-		}
-	}
-
-	// sync ip address and routes
-	if err := v.bridge.ToLink().DeleteRoutes(); err != nil {
-		klog.Error(err)
-		return
-	}
-	if err := v.nic.Fetch(); err != nil {
-		klog.Errorf("fetch NIC %s failed, error: %s", v.nic.Name(), err.Error())
-		return
-	}
-	if err := v.bridge.SyncIPv4Addr(v.nic); err != nil {
-		klog.Error(err)
-		return
-	}
-}
-
-func (v *Vlan) afterModifyNicRoute(route netlink.RouteUpdate) {
-	route.LinkIndex = v.bridge.Index()
-	if err := netlink.RouteAppend(&route.Route); err != nil {
-		klog.Errorf("append route failed, error: %s, route: %+v", err, route)
-	} else {
-		klog.Infof("append route %+v", route)
-	}
-
-	route.LinkIndex = v.nic.Index()
-	if err := netlink.RouteDel(&route.Route); err != nil {
-		klog.Errorf("delete failed, error: %s, route: %+v", err, route)
-	} else {
-		klog.Infof("delete route %+v", route)
-	}
-}
-
 func (v *Vlan) afterLinkDown(update netlink.LinkUpdate) {
 	if update.Link.Attrs().OperState == netlink.OperDown && (update.Link.Attrs().Flags&net.FlagUp) == 0 && update.Change == 1 {
 		event := &network.Event{
@@ -290,10 +234,6 @@ func (v *Vlan) afterLinkDown(update netlink.LinkUpdate) {
 	}
 }
 
-func (v *Vlan) SlaveNICName() string {
-	if v.nic != nil {
-		return v.nic.Name()
-	}
-
-	return ""
+func (v *Vlan) NIC() iface.IFace {
+	return v.nic
 }

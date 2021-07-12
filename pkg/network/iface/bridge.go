@@ -57,18 +57,9 @@ func (br *Bridge) Ensure() error {
 
 // Keep the bridge's IPv4 addresses are the same with the slave
 func (br *Bridge) SyncIPv4Addr(slave IFace) error {
-	delList := relativeComplement(slave.Addr(), br.addr)
-	addList := relativeComplement(br.addr, slave.Addr())
-	for _, addr := range delList {
-		if err := netlink.AddrDel(br.bridge, &addr); err != nil {
-			return fmt.Errorf("could not add address, error: %w, link: %s, addr: %+v", err, br.bridge.Name, addr)
-		}
-		klog.Infof("delete IPv4 address %+v", addr)
-	}
-
-	for _, addr := range addList {
+	for _, addr := range slave.Addr() {
 		addr.Label = br.bridge.Name
-		if err := netlink.AddrAdd(br.bridge, &addr); err != nil {
+		if err := netlink.AddrAdd(br.bridge, &addr); err != nil && err != syscall.EEXIST {
 			return fmt.Errorf("could not add address, error: %w, link: %s, addr: %+v", err, br.bridge.Name, addr)
 		}
 		klog.Infof("add IPv4 address %+v", addr)
@@ -159,23 +150,4 @@ func fetchByName(name string) (*netlink.Bridge, error) {
 	}
 
 	return br, nil
-}
-
-// find the relative complement of A (left side) in B (right side)
-func relativeComplement(A, B []netlink.Addr) []netlink.Addr {
-	complement := []netlink.Addr{}
-	for i := range B {
-		flag := true
-		for j := range A {
-			if B[i].Equal(A[j]) {
-				flag = false
-				break
-			}
-		}
-		if flag {
-			complement = append(complement, B[i])
-		}
-	}
-
-	return complement
 }
