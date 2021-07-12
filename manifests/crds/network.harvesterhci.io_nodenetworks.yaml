@@ -37,14 +37,10 @@ spec:
       openAPIV3Schema:
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
@@ -69,15 +65,13 @@ spec:
                 items:
                   properties:
                     lastTransitionTime:
-                      description: Last time the condition transitioned from one status
-                        to another.
+                      description: Last time the condition transitioned from one status to another.
                       type: string
                     lastUpdateTime:
                       description: The last time this condition was updated.
                       type: string
                     message:
-                      description: Human-readable message indicating details about
-                        last transition
+                      description: Human-readable message indicating details about last transition
                       type: string
                     reason:
                       description: The reason for the condition's last transition.
@@ -104,22 +98,19 @@ spec:
                       items:
                         properties:
                           lastTransitionTime:
-                            description: Last time the condition transitioned from
-                              one status to another.
+                            description: Last time the condition transitioned from one status to another.
                             type: string
                           lastUpdateTime:
                             description: The last time this condition was updated.
                             type: string
                           message:
-                            description: Human-readable message indicating details
-                              about last transition
+                            description: Human-readable message indicating details about last transition
                             type: string
                           reason:
                             description: The reason for the condition's last transition.
                             type: string
                           status:
-                            description: Status of the condition, one of True, False,
-                              Unknown.
+                            description: Status of the condition, one of True, False, Unknown.
                             type: string
                           type:
                             description: Type of the condition.
@@ -137,8 +128,8 @@ spec:
                       type: array
                     mac:
                       type: string
-                    master:
-                      type: string
+                    masterIndex:
+                      type: integer
                     promiscuous:
                       type: boolean
                     routes:
@@ -151,15 +142,32 @@ spec:
                       type: string
                   type: object
                 type: object
-              physicalNICs:
+              nics:
                 items:
                   properties:
                     index:
+                      description: Index of the NIC
+                      type: integer
+                    masterIndex:
+                      description: Index of the NIC's master
                       type: integer
                     name:
+                      description: Name of the NIC
+                      type: string
+                    state:
+                      description: State of the NIC, up/down/unknown
+                      type: string
+                    type:
+                      description: Interface type of the NIC
                       type: string
                     usedByManagementNetwork:
+                      description: Specify whether used by management network or not
                       type: boolean
+                  required:
+                  - index
+                  - name
+                  - state
+                  - type
                   type: object
                 type: array
             type: object
