@@ -55,6 +55,18 @@ func main() {
 			Value:  2,
 			Usage:  "Threadiness level to set, defaults to 2.",
 		},
+		cli.StringFlag{
+			Name:   "management-network-type",
+			EnvVar: "MANAGEMENT_NETWORK_TYPE",
+			Value:  "flannel",
+			Usage:  "The type of management network, defaults to flannel",
+		},
+		cli.StringFlag{
+			Name:   "management-network-device",
+			EnvVar: "MANAGEMENT_NETWORK_DEVICE",
+			Value:  "flannel.1",
+			Usage:  "The device of management network, such as VTEP device flannel.1 of flannel or canal, defaults to flannel.1.",
+		},
 	}
 
 	app.Commands = []cli.Command{
@@ -82,6 +94,8 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 	kubeconfig := c.String("kubeconfig")
 	namespace := c.String("namespace")
 	threadiness := c.Int("threads")
+	mgmtNetworkType := c.String("management-network-type")
+	mgmtNetworkDevice := c.String("management-network-device")
 
 	if threadiness <= 0 {
 		klog.Infof("Can not start with thread count of %d, please pass a proper thread count.", threadiness)
@@ -108,7 +122,12 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 		klog.Fatalf("Error get client from kubeconfig: %s", err.Error())
 	}
 
-	management, err := config.SetupManagement(ctx, cfg)
+	options := &config.Options{
+		MgmtNetworkType:   mgmtNetworkType,
+		MgmtNetworkDevice: mgmtNetworkDevice,
+	}
+
+	management, err := config.SetupManagement(ctx, cfg, options)
 	if err != nil {
 		klog.Fatalf("Error building harvester controllers: %s", err.Error())
 	}

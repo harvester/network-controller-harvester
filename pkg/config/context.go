@@ -40,6 +40,11 @@ func init() {
 
 type RegisterFunc func(context.Context, *Management) error
 
+type Options struct {
+	MgmtNetworkType   string
+	MgmtNetworkDevice string
+}
+
 type Management struct {
 	ctx               context.Context
 	ControllerFactory controller.SharedControllerFactory
@@ -50,6 +55,8 @@ type Management struct {
 	CoreFactory *ctlcore.Factory
 
 	ClientSet *kubernetes.Clientset
+
+	Options *Options
 
 	starters []start.Starter
 }
@@ -101,7 +108,7 @@ func createNetworkAttachmentDefinitionCRD() wcrd.CRD {
 	return nad
 }
 
-func SetupManagement(ctx context.Context, restConfig *rest.Config) (*Management, error) {
+func SetupManagement(ctx context.Context, restConfig *rest.Config, options *Options) (*Management, error) {
 	factory, err := controller.NewSharedControllerFactoryFromConfig(restConfig, Scheme)
 	if err != nil {
 		return nil, err
@@ -112,7 +119,8 @@ func SetupManagement(ctx context.Context, restConfig *rest.Config) (*Management,
 	}
 
 	management := &Management{
-		ctx: ctx,
+		ctx:     ctx,
+		Options: options,
 	}
 
 	harvesterNetwork, err := ctlnetworkv1.NewFactoryFromConfigWithOptions(restConfig, opts)
