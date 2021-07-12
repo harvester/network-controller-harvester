@@ -1,14 +1,14 @@
 Harvester Network Controller
 ========
+[![Build Status](https://drone-publish.rancher.io/api/badges/harvester/network-controller-harvester/status.svg)](https://drone-publish.rancher.io/harvester/network-controller-harvester)
+[![Go Report Card](https://goreportcard.com/badge/github.com/harvester/network-controller-harvester)](https://goreportcard.com/report/github.com/harvester/network-controller-harvester)
+[![Releases](https://img.shields.io/github/release/harvester/network-controller-harvester/all.svg)](https://github.com/harvester/network-controller-harvester/releases)
+
 A network controller helps to manage the host network configuration of the [Harvester](https://github.com/harvester/harvester) cluster.
 
 ## Manifests and Deploying
 The `./manifests` folder contains useful YAML manifests to use for deploying and developing the Harvester network controller. 
 This simply YAML deployment creates a Daemonset using the `rancher/harvester-network-controller` container.
-
-## Current status
-
-This is in the pre-alpha stage of the development.
 
 ## License
 Copyright (c) 2020 [Rancher Labs, Inc.](http://rancher.com)
