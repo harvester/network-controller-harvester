@@ -199,7 +199,7 @@ func (h Handler) reconcileNodeNetwork(networkType string) error {
 
 func (h Handler) getNICFromStatus(nn *networkv1.NodeNetwork) string {
 	for linkName, status := range nn.Status.NetworkLinkStatus {
-		if status.Type == "device" {
+		if status.Type == "device" || status.Type == "bond" {
 			return linkName
 		}
 	}
