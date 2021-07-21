@@ -16,6 +16,7 @@ import (
 type Vlan struct {
 	bridge      *iface.Bridge
 	nic         *iface.Link
+	parentNIC   *iface.Link
 	status      *network.Status
 	eventSender network.EventSender
 	mgmtNetwork network.Network
@@ -42,7 +43,7 @@ func NewVlan(eventSender network.EventSender, mgmtNetwork network.Network, vids 
 }
 
 func (v *Vlan) getSlaveNIC() (*iface.Link, error) {
-	nics, err := iface.ListLinks(map[string]bool{iface.TypeDevice: true, iface.TypeBond: true})
+	nics, err := iface.ListLinks(map[string]bool{iface.TypeDevice: true, iface.TypeBond: true, iface.TypeMacVlan: true})
 	if err != nil {
 		return nil, fmt.Errorf("get NICs failed, error: %w", err)
 	}
@@ -78,6 +79,13 @@ func GetVlan() (*Vlan, error) {
 	}
 	v.nic = nic
 
+	if nic.LinkAttrs().ParentIndex != 0 {
+		v.parentNIC, err = iface.GetLinkByIndex(nic.LinkAttrs().ParentIndex)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return v, nil
 }
 
@@ -95,26 +103,26 @@ func (v *Vlan) Setup(nic string) error {
 		return fmt.Errorf("NIC %s is down", l.Name())
 	}
 
-	// Use the same NIC with the flannel network
+	v.nic = l
+	// if the NIC is the same with the one that the management network uses, to use its sub-link instead.
 	if l.Index() == v.mgmtNetwork.NIC().Index() {
-		if err := v.bridge.SyncIPv4Addr(l); err != nil {
+		subLink, err := l.GetSubLink(l.Name() + "-" + v.Type())
+		if err != nil {
 			return err
 		}
-		if err := v.bridge.ToLink().AddRoutes(l); err != nil {
-			return err
-		}
+		v.nic = subLink
+		v.parentNIC = l
 	}
 
 	// set master
-	if err := l.SetMaster(v.bridge, v.vids); err != nil {
+	if err := v.nic.SetMaster(v.bridge, v.vids); err != nil {
 		return err
 	}
 	// delete routes of NIC
-	if err := l.DeleteRoutes(); err != nil {
+	if err := v.nic.DeleteRoutes(); err != nil {
 		return err
 	}
 
-	v.nic = l
 	v.startMonitor()
 
 	klog.Info("setup VLAN network successfully")
@@ -236,4 +244,8 @@ func (v *Vlan) afterLinkDown(update netlink.LinkUpdate) {
 
 func (v *Vlan) NIC() iface.IFace {
 	return v.nic
+}
+
+func (v *Vlan) ParentNIC() iface.IFace {
+	return v.parentNIC
 }
