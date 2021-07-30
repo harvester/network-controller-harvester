@@ -17,7 +17,7 @@ spec:
     - nn
     - nns
     singular: nodenetwork
-  scope: Namespaced
+  scope: Cluster
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.description

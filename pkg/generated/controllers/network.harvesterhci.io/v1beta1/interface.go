@@ -45,8 +45,8 @@ type version struct {
 }
 
 func (c *version) ClusterNetwork() ClusterNetworkController {
-	return NewClusterNetworkController(schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "ClusterNetwork"}, "clusternetworks", true, c.controllerFactory)
+	return NewClusterNetworkController(schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "ClusterNetwork"}, "clusternetworks", false, c.controllerFactory)
 }
 func (c *version) NodeNetwork() NodeNetworkController {
-	return NewNodeNetworkController(schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "NodeNetwork"}, "nodenetworks", true, c.controllerFactory)
+	return NewNodeNetworkController(schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "NodeNetwork"}, "nodenetworks", false, c.controllerFactory)
 }

@@ -46,8 +46,8 @@ type ClusterNetworkController interface {
 
 	OnChange(ctx context.Context, name string, sync ClusterNetworkHandler)
 	OnRemove(ctx context.Context, name string, sync ClusterNetworkHandler)
-	Enqueue(namespace, name string)
-	EnqueueAfter(namespace, name string, duration time.Duration)
+	Enqueue(name string)
+	EnqueueAfter(name string, duration time.Duration)
 
 	Cache() ClusterNetworkCache
 }
@@ -56,16 +56,16 @@ type ClusterNetworkClient interface {
 	Create(*v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error)
 	Update(*v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error)
 
-	Delete(namespace, name string, options *metav1.DeleteOptions) error
-	Get(namespace, name string, options metav1.GetOptions) (*v1beta1.ClusterNetwork, error)
-	List(namespace string, opts metav1.ListOptions) (*v1beta1.ClusterNetworkList, error)
-	Watch(namespace string, opts metav1.ListOptions) (watch.Interface, error)
-	Patch(namespace, name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.ClusterNetwork, err error)
+	Delete(name string, options *metav1.DeleteOptions) error
+	Get(name string, options metav1.GetOptions) (*v1beta1.ClusterNetwork, error)
+	List(opts metav1.ListOptions) (*v1beta1.ClusterNetworkList, error)
+	Watch(opts metav1.ListOptions) (watch.Interface, error)
+	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.ClusterNetwork, err error)
 }
 
 type ClusterNetworkCache interface {
-	Get(namespace, name string) (*v1beta1.ClusterNetwork, error)
-	List(namespace string, selector labels.Selector) ([]*v1beta1.ClusterNetwork, error)
+	Get(name string) (*v1beta1.ClusterNetwork, error)
+	List(selector labels.Selector) ([]*v1beta1.ClusterNetwork, error)
 
 	AddIndexer(indexName string, indexer ClusterNetworkIndexer)
 	GetByIndex(indexName, key string) ([]*v1beta1.ClusterNetwork, error)
@@ -151,12 +151,12 @@ func (c *clusterNetworkController) OnRemove(ctx context.Context, name string, sy
 	c.AddGenericHandler(ctx, name, generic.NewRemoveHandler(name, c.Updater(), FromClusterNetworkHandlerToHandler(sync)))
 }
 
-func (c *clusterNetworkController) Enqueue(namespace, name string) {
-	c.controller.Enqueue(namespace, name)
+func (c *clusterNetworkController) Enqueue(name string) {
+	c.controller.Enqueue("", name)
 }
 
-func (c *clusterNetworkController) EnqueueAfter(namespace, name string, duration time.Duration) {
-	c.controller.EnqueueAfter(namespace, name, duration)
+func (c *clusterNetworkController) EnqueueAfter(name string, duration time.Duration) {
+	c.controller.EnqueueAfter("", name, duration)
 }
 
 func (c *clusterNetworkController) Informer() cache.SharedIndexInformer {
@@ -176,38 +176,38 @@ func (c *clusterNetworkController) Cache() ClusterNetworkCache {
 
 func (c *clusterNetworkController) Create(obj *v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error) {
 	result := &v1beta1.ClusterNetwork{}
-	return result, c.client.Create(context.TODO(), obj.Namespace, obj, result, metav1.CreateOptions{})
+	return result, c.client.Create(context.TODO(), "", obj, result, metav1.CreateOptions{})
 }
 
 func (c *clusterNetworkController) Update(obj *v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error) {
 	result := &v1beta1.ClusterNetwork{}
-	return result, c.client.Update(context.TODO(), obj.Namespace, obj, result, metav1.UpdateOptions{})
+	return result, c.client.Update(context.TODO(), "", obj, result, metav1.UpdateOptions{})
 }
 
-func (c *clusterNetworkController) Delete(namespace, name string, options *metav1.DeleteOptions) error {
+func (c *clusterNetworkController) Delete(name string, options *metav1.DeleteOptions) error {
 	if options == nil {
 		options = &metav1.DeleteOptions{}
 	}
-	return c.client.Delete(context.TODO(), namespace, name, *options)
+	return c.client.Delete(context.TODO(), "", name, *options)
 }
 
-func (c *clusterNetworkController) Get(namespace, name string, options metav1.GetOptions) (*v1beta1.ClusterNetwork, error) {
+func (c *clusterNetworkController) Get(name string, options metav1.GetOptions) (*v1beta1.ClusterNetwork, error) {
 	result := &v1beta1.ClusterNetwork{}
-	return result, c.client.Get(context.TODO(), namespace, name, result, options)
+	return result, c.client.Get(context.TODO(), "", name, result, options)
 }
 
-func (c *clusterNetworkController) List(namespace string, opts metav1.ListOptions) (*v1beta1.ClusterNetworkList, error) {
+func (c *clusterNetworkController) List(opts metav1.ListOptions) (*v1beta1.ClusterNetworkList, error) {
 	result := &v1beta1.ClusterNetworkList{}
-	return result, c.client.List(context.TODO(), namespace, result, opts)
+	return result, c.client.List(context.TODO(), "", result, opts)
 }
 
-func (c *clusterNetworkController) Watch(namespace string, opts metav1.ListOptions) (watch.Interface, error) {
-	return c.client.Watch(context.TODO(), namespace, opts)
+func (c *clusterNetworkController) Watch(opts metav1.ListOptions) (watch.Interface, error) {
+	return c.client.Watch(context.TODO(), "", opts)
 }
 
-func (c *clusterNetworkController) Patch(namespace, name string, pt types.PatchType, data []byte, subresources ...string) (*v1beta1.ClusterNetwork, error) {
+func (c *clusterNetworkController) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (*v1beta1.ClusterNetwork, error) {
 	result := &v1beta1.ClusterNetwork{}
-	return result, c.client.Patch(context.TODO(), namespace, name, pt, data, result, metav1.PatchOptions{}, subresources...)
+	return result, c.client.Patch(context.TODO(), "", name, pt, data, result, metav1.PatchOptions{}, subresources...)
 }
 
 type clusterNetworkCache struct {
@@ -215,8 +215,8 @@ type clusterNetworkCache struct {
 	resource schema.GroupResource
 }
 
-func (c *clusterNetworkCache) Get(namespace, name string) (*v1beta1.ClusterNetwork, error) {
-	obj, exists, err := c.indexer.GetByKey(namespace + "/" + name)
+func (c *clusterNetworkCache) Get(name string) (*v1beta1.ClusterNetwork, error) {
+	obj, exists, err := c.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
 	}
@@ -226,9 +226,9 @@ func (c *clusterNetworkCache) Get(namespace, name string) (*v1beta1.ClusterNetwo
 	return obj.(*v1beta1.ClusterNetwork), nil
 }
 
-func (c *clusterNetworkCache) List(namespace string, selector labels.Selector) (ret []*v1beta1.ClusterNetwork, err error) {
+func (c *clusterNetworkCache) List(selector labels.Selector) (ret []*v1beta1.ClusterNetwork, err error) {
 
-	err = cache.ListAllByNamespace(c.indexer, namespace, selector, func(m interface{}) {
+	err = cache.ListAll(c.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.ClusterNetwork))
 	})
 

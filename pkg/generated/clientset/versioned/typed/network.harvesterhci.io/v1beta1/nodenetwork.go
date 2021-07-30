@@ -33,7 +33,7 @@ import (
 // NodeNetworksGetter has a method to return a NodeNetworkInterface.
 // A group's client should implement this interface.
 type NodeNetworksGetter interface {
-	NodeNetworks(namespace string) NodeNetworkInterface
+	NodeNetworks() NodeNetworkInterface
 }
 
 // NodeNetworkInterface has methods to work with NodeNetwork resources.
@@ -53,14 +53,12 @@ type NodeNetworkInterface interface {
 // nodeNetworks implements NodeNetworkInterface
 type nodeNetworks struct {
 	client rest.Interface
-	ns     string
 }
 
 // newNodeNetworks returns a NodeNetworks
-func newNodeNetworks(c *NetworkV1beta1Client, namespace string) *nodeNetworks {
+func newNodeNetworks(c *NetworkV1beta1Client) *nodeNetworks {
 	return &nodeNetworks{
 		client: c.RESTClient(),
-		ns:     namespace,
 	}
 }
 
@@ -68,7 +66,6 @@ func newNodeNetworks(c *NetworkV1beta1Client, namespace string) *nodeNetworks {
 func (c *nodeNetworks) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.NodeNetwork, err error) {
 	result = &v1beta1.NodeNetwork{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("nodenetworks").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
@@ -85,7 +82,6 @@ func (c *nodeNetworks) List(ctx context.Context, opts v1.ListOptions) (result *v
 	}
 	result = &v1beta1.NodeNetworkList{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("nodenetworks").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -102,7 +98,6 @@ func (c *nodeNetworks) Watch(ctx context.Context, opts v1.ListOptions) (watch.In
 	}
 	opts.Watch = true
 	return c.client.Get().
-		Namespace(c.ns).
 		Resource("nodenetworks").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -113,7 +108,6 @@ func (c *nodeNetworks) Watch(ctx context.Context, opts v1.ListOptions) (watch.In
 func (c *nodeNetworks) Create(ctx context.Context, nodeNetwork *v1beta1.NodeNetwork, opts v1.CreateOptions) (result *v1beta1.NodeNetwork, err error) {
 	result = &v1beta1.NodeNetwork{}
 	err = c.client.Post().
-		Namespace(c.ns).
 		Resource("nodenetworks").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(nodeNetwork).
@@ -126,7 +120,6 @@ func (c *nodeNetworks) Create(ctx context.Context, nodeNetwork *v1beta1.NodeNetw
 func (c *nodeNetworks) Update(ctx context.Context, nodeNetwork *v1beta1.NodeNetwork, opts v1.UpdateOptions) (result *v1beta1.NodeNetwork, err error) {
 	result = &v1beta1.NodeNetwork{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("nodenetworks").
 		Name(nodeNetwork.Name).
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -141,7 +134,6 @@ func (c *nodeNetworks) Update(ctx context.Context, nodeNetwork *v1beta1.NodeNetw
 func (c *nodeNetworks) UpdateStatus(ctx context.Context, nodeNetwork *v1beta1.NodeNetwork, opts v1.UpdateOptions) (result *v1beta1.NodeNetwork, err error) {
 	result = &v1beta1.NodeNetwork{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("nodenetworks").
 		Name(nodeNetwork.Name).
 		SubResource("status").
@@ -155,7 +147,6 @@ func (c *nodeNetworks) UpdateStatus(ctx context.Context, nodeNetwork *v1beta1.No
 // Delete takes name of the nodeNetwork and deletes it. Returns an error if one occurs.
 func (c *nodeNetworks) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("nodenetworks").
 		Name(name).
 		Body(&opts).
@@ -170,7 +161,6 @@ func (c *nodeNetworks) DeleteCollection(ctx context.Context, opts v1.DeleteOptio
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("nodenetworks").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -183,7 +173,6 @@ func (c *nodeNetworks) DeleteCollection(ctx context.Context, opts v1.DeleteOptio
 func (c *nodeNetworks) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.NodeNetwork, err error) {
 	result = &v1beta1.NodeNetwork{}
 	err = c.client.Patch(pt).
-		Namespace(c.ns).
 		Resource("nodenetworks").
 		Name(name).
 		SubResource(subresources...).
