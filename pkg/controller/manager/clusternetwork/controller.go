@@ -90,12 +90,12 @@ func (h Handler) OnRemove(key string, cn *networkv1.ClusterNetwork) (*networkv1.
 
 func initClusterNetwork(client ctlnetworkv1.ClusterNetworkClient) error {
 	name := string(networkv1.NetworkTypeVLAN)
-	if _, err := client.Get(common.Namespace, name, metav1.GetOptions{}); err == nil || !apierrors.IsNotFound(err) {
+	if _, err := client.Get(name, metav1.GetOptions{}); err == nil || !apierrors.IsNotFound(err) {
 		return err
 	}
 
 	var cn networkv1.ClusterNetwork
-	if _, err := client.Create(networkv1.NewClusterNetwork(common.Namespace, name, cn)); err != nil {
+	if _, err := client.Create(networkv1.NewClusterNetwork("", name, cn)); err != nil {
 		return fmt.Errorf("create clusternetwork failed, error: %w", err)
 	}
 

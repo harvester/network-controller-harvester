@@ -48,7 +48,7 @@ func (h Handler) OnChange(key string, node *corev1.Node) (*corev1.Node, error) {
 
 	klog.Infof("new node %s added", node.Name)
 
-	cns, err := h.clusterNetworkCache.List(common.Namespace, labels.Everything())
+	cns, err := h.clusterNetworkCache.List(labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("get clusternetwork failed, error: %w", err)
 	}

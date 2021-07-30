@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	Namespace        = "harvester-system"
 	KeyNodeName      = "NODENAME"
 	KeyLabelNodeName = "network.harvesterhci.io/nodename"
 	initStatusMsg    = "Initializing network configuration"
@@ -24,11 +23,10 @@ func NewNodeNetworkFromNode(node *corev1.Node, networkType networkv1.NetworkType
 	cn *networkv1.ClusterNetwork) *networkv1.NodeNetwork {
 	nn := &networkv1.NodeNetwork{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      node.Name + "-" + string(networkType),
-			Namespace: Namespace,
+			Name: node.Name + "-" + string(networkType),
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "ctlcorev1",
+					APIVersion: "v1",
 					Kind:       "Node",
 					Name:       node.Name,
 					UID:        node.UID,
@@ -69,7 +67,7 @@ func CreateNodeNetworkIfNotExist(node *corev1.Node, networkTye networkv1.Network
 	cn *networkv1.ClusterNetwork, nodeNetworkCache ctlnetworkv1.NodeNetworkCache,
 	nodeNetworkClient ctlnetworkv1.NodeNetworkClient) (*networkv1.NodeNetwork, error) {
 	crName := node.Name + "-" + string(networkTye)
-	nn, err := nodeNetworkCache.Get(Namespace, crName)
+	nn, err := nodeNetworkCache.Get(crName)
 	if err == nil {
 		return nn, nil
 	}
@@ -90,13 +88,13 @@ func CreateNodeNetworkIfNotExist(node *corev1.Node, networkTye networkv1.Network
 
 func DeleteAllNodeNetwork(networkTye networkv1.NetworkType, nodeNetworkCache ctlnetworkv1.NodeNetworkCache,
 	nodeNetworkClient ctlnetworkv1.NodeNetworkClient) error {
-	nodeNetworkList, err := nodeNetworkCache.List(Namespace, labels.Everything())
+	nodeNetworkList, err := nodeNetworkCache.List(labels.Everything())
 	if err != nil {
 		return err
 	}
 	for _, nodeNetwork := range nodeNetworkList {
 		if nodeNetwork.Spec.Type == networkTye {
-			if err = nodeNetworkClient.Delete(Namespace, nodeNetwork.Name, &metav1.DeleteOptions{}); err != nil {
+			if err = nodeNetworkClient.Delete(nodeNetwork.Name, &metav1.DeleteOptions{}); err != nil {
 				return err
 			}
 		}
