@@ -35,12 +35,12 @@ type NetworkV1beta1Client struct {
 	restClient rest.Interface
 }
 
-func (c *NetworkV1beta1Client) ClusterNetworks(namespace string) ClusterNetworkInterface {
-	return newClusterNetworks(c, namespace)
+func (c *NetworkV1beta1Client) ClusterNetworks() ClusterNetworkInterface {
+	return newClusterNetworks(c)
 }
 
-func (c *NetworkV1beta1Client) NodeNetworks(namespace string) NodeNetworkInterface {
-	return newNodeNetworks(c, namespace)
+func (c *NetworkV1beta1Client) NodeNetworks() NodeNetworkInterface {
+	return newNodeNetworks(c)
 }
 
 // NewForConfig creates a new NetworkV1beta1Client for the given config.

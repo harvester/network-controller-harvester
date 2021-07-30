@@ -17,7 +17,7 @@ spec:
     - cn
     - cns
     singular: clusternetwork
-  scope: Namespaced
+  scope: Cluster
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.description

@@ -49,8 +49,8 @@ type NodeNetworkController interface {
 
 	OnChange(ctx context.Context, name string, sync NodeNetworkHandler)
 	OnRemove(ctx context.Context, name string, sync NodeNetworkHandler)
-	Enqueue(namespace, name string)
-	EnqueueAfter(namespace, name string, duration time.Duration)
+	Enqueue(name string)
+	EnqueueAfter(name string, duration time.Duration)
 
 	Cache() NodeNetworkCache
 }
@@ -59,16 +59,16 @@ type NodeNetworkClient interface {
 	Create(*v1beta1.NodeNetwork) (*v1beta1.NodeNetwork, error)
 	Update(*v1beta1.NodeNetwork) (*v1beta1.NodeNetwork, error)
 	UpdateStatus(*v1beta1.NodeNetwork) (*v1beta1.NodeNetwork, error)
-	Delete(namespace, name string, options *metav1.DeleteOptions) error
-	Get(namespace, name string, options metav1.GetOptions) (*v1beta1.NodeNetwork, error)
-	List(namespace string, opts metav1.ListOptions) (*v1beta1.NodeNetworkList, error)
-	Watch(namespace string, opts metav1.ListOptions) (watch.Interface, error)
-	Patch(namespace, name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.NodeNetwork, err error)
+	Delete(name string, options *metav1.DeleteOptions) error
+	Get(name string, options metav1.GetOptions) (*v1beta1.NodeNetwork, error)
+	List(opts metav1.ListOptions) (*v1beta1.NodeNetworkList, error)
+	Watch(opts metav1.ListOptions) (watch.Interface, error)
+	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.NodeNetwork, err error)
 }
 
 type NodeNetworkCache interface {
-	Get(namespace, name string) (*v1beta1.NodeNetwork, error)
-	List(namespace string, selector labels.Selector) ([]*v1beta1.NodeNetwork, error)
+	Get(name string) (*v1beta1.NodeNetwork, error)
+	List(selector labels.Selector) ([]*v1beta1.NodeNetwork, error)
 
 	AddIndexer(indexName string, indexer NodeNetworkIndexer)
 	GetByIndex(indexName, key string) ([]*v1beta1.NodeNetwork, error)
@@ -154,12 +154,12 @@ func (c *nodeNetworkController) OnRemove(ctx context.Context, name string, sync 
 	c.AddGenericHandler(ctx, name, generic.NewRemoveHandler(name, c.Updater(), FromNodeNetworkHandlerToHandler(sync)))
 }
 
-func (c *nodeNetworkController) Enqueue(namespace, name string) {
-	c.controller.Enqueue(namespace, name)
+func (c *nodeNetworkController) Enqueue(name string) {
+	c.controller.Enqueue("", name)
 }
 
-func (c *nodeNetworkController) EnqueueAfter(namespace, name string, duration time.Duration) {
-	c.controller.EnqueueAfter(namespace, name, duration)
+func (c *nodeNetworkController) EnqueueAfter(name string, duration time.Duration) {
+	c.controller.EnqueueAfter("", name, duration)
 }
 
 func (c *nodeNetworkController) Informer() cache.SharedIndexInformer {
@@ -179,43 +179,43 @@ func (c *nodeNetworkController) Cache() NodeNetworkCache {
 
 func (c *nodeNetworkController) Create(obj *v1beta1.NodeNetwork) (*v1beta1.NodeNetwork, error) {
 	result := &v1beta1.NodeNetwork{}
-	return result, c.client.Create(context.TODO(), obj.Namespace, obj, result, metav1.CreateOptions{})
+	return result, c.client.Create(context.TODO(), "", obj, result, metav1.CreateOptions{})
 }
 
 func (c *nodeNetworkController) Update(obj *v1beta1.NodeNetwork) (*v1beta1.NodeNetwork, error) {
 	result := &v1beta1.NodeNetwork{}
-	return result, c.client.Update(context.TODO(), obj.Namespace, obj, result, metav1.UpdateOptions{})
+	return result, c.client.Update(context.TODO(), "", obj, result, metav1.UpdateOptions{})
 }
 
 func (c *nodeNetworkController) UpdateStatus(obj *v1beta1.NodeNetwork) (*v1beta1.NodeNetwork, error) {
 	result := &v1beta1.NodeNetwork{}
-	return result, c.client.UpdateStatus(context.TODO(), obj.Namespace, obj, result, metav1.UpdateOptions{})
+	return result, c.client.UpdateStatus(context.TODO(), "", obj, result, metav1.UpdateOptions{})
 }
 
-func (c *nodeNetworkController) Delete(namespace, name string, options *metav1.DeleteOptions) error {
+func (c *nodeNetworkController) Delete(name string, options *metav1.DeleteOptions) error {
 	if options == nil {
 		options = &metav1.DeleteOptions{}
 	}
-	return c.client.Delete(context.TODO(), namespace, name, *options)
+	return c.client.Delete(context.TODO(), "", name, *options)
 }
 
-func (c *nodeNetworkController) Get(namespace, name string, options metav1.GetOptions) (*v1beta1.NodeNetwork, error) {
+func (c *nodeNetworkController) Get(name string, options metav1.GetOptions) (*v1beta1.NodeNetwork, error) {
 	result := &v1beta1.NodeNetwork{}
-	return result, c.client.Get(context.TODO(), namespace, name, result, options)
+	return result, c.client.Get(context.TODO(), "", name, result, options)
 }
 
-func (c *nodeNetworkController) List(namespace string, opts metav1.ListOptions) (*v1beta1.NodeNetworkList, error) {
+func (c *nodeNetworkController) List(opts metav1.ListOptions) (*v1beta1.NodeNetworkList, error) {
 	result := &v1beta1.NodeNetworkList{}
-	return result, c.client.List(context.TODO(), namespace, result, opts)
+	return result, c.client.List(context.TODO(), "", result, opts)
 }
 
-func (c *nodeNetworkController) Watch(namespace string, opts metav1.ListOptions) (watch.Interface, error) {
-	return c.client.Watch(context.TODO(), namespace, opts)
+func (c *nodeNetworkController) Watch(opts metav1.ListOptions) (watch.Interface, error) {
+	return c.client.Watch(context.TODO(), "", opts)
 }
 
-func (c *nodeNetworkController) Patch(namespace, name string, pt types.PatchType, data []byte, subresources ...string) (*v1beta1.NodeNetwork, error) {
+func (c *nodeNetworkController) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (*v1beta1.NodeNetwork, error) {
 	result := &v1beta1.NodeNetwork{}
-	return result, c.client.Patch(context.TODO(), namespace, name, pt, data, result, metav1.PatchOptions{}, subresources...)
+	return result, c.client.Patch(context.TODO(), "", name, pt, data, result, metav1.PatchOptions{}, subresources...)
 }
 
 type nodeNetworkCache struct {
@@ -223,8 +223,8 @@ type nodeNetworkCache struct {
 	resource schema.GroupResource
 }
 
-func (c *nodeNetworkCache) Get(namespace, name string) (*v1beta1.NodeNetwork, error) {
-	obj, exists, err := c.indexer.GetByKey(namespace + "/" + name)
+func (c *nodeNetworkCache) Get(name string) (*v1beta1.NodeNetwork, error) {
+	obj, exists, err := c.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
 	}
@@ -234,9 +234,9 @@ func (c *nodeNetworkCache) Get(namespace, name string) (*v1beta1.NodeNetwork, er
 	return obj.(*v1beta1.NodeNetwork), nil
 }
 
-func (c *nodeNetworkCache) List(namespace string, selector labels.Selector) (ret []*v1beta1.NodeNetwork, err error) {
+func (c *nodeNetworkCache) List(selector labels.Selector) (ret []*v1beta1.NodeNetwork, err error) {
 
-	err = cache.ListAllByNamespace(c.indexer, namespace, selector, func(m interface{}) {
+	err = cache.ListAll(c.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.NodeNetwork))
 	})
 
