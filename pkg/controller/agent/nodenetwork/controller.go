@@ -187,12 +187,12 @@ func (h Handler) repealVlan(nn *networkv1.NodeNetwork) error {
 // so we use nodeNetworkCache to get nodeNetwork.
 func (h Handler) reconcileNodeNetwork(networkType string) error {
 	name := os.Getenv(common.KeyNodeName) + "-" + networkType
-	nn, err := h.nodeNetworkCache.Get(common.Namespace, name)
+	nn, err := h.nodeNetworkCache.Get(name)
 	if err != nil {
 		return fmt.Errorf("get nn %s failed, error: %w", name, err)
 	}
 
-	h.nodeNetworkCtr.Enqueue(common.Namespace, nn.Name)
+	h.nodeNetworkCtr.Enqueue(nn.Name)
 
 	return nil
 }
@@ -334,7 +334,7 @@ func (h Handler) getNICs() ([]networkv1.NIC, error) {
 
 func (h Handler) SendEvent(e *network.Event, networkType string) error {
 	name := os.Getenv(common.KeyNodeName)
-	nn, err := h.nodeNetworkCache.Get(common.Namespace, name+"-"+networkType)
+	nn, err := h.nodeNetworkCache.Get(name + "-" + networkType)
 	if err != nil {
 		return err
 	}
