@@ -173,13 +173,10 @@ func (h Handler) repealVlan(nn *networkv1.NodeNetwork) error {
 	}
 
 	configuredNIC := v.NIC().Name()
-	parentNIC := v.ParentNIC().Name()
-	if configuredNIC == "" || configuredNIC == nn.Spec.NIC || parentNIC == nn.Spec.NIC {
-		return nil
-	}
-
-	if err := v.Teardown(); err != nil {
-		return fmt.Errorf("tear down vlan failed, error: %s, nic: %s", err.Error(), configuredNIC)
+	if configuredNIC != "" && configuredNIC != nn.Spec.NIC {
+		if err := v.Teardown(); err != nil {
+			return fmt.Errorf("tear down vlan failed, error: %s, nic: %s", err.Error(), configuredNIC)
+		}
 	}
 
 	return nil

@@ -23,7 +23,6 @@ const (
 	TypeLoopback = "loopback"
 	TypeDevice   = "device"
 	TypeBond     = "bond"
-	TypeMacVlan  = "macvlan"
 )
 
 type Link struct {
@@ -235,26 +234,6 @@ func (l *Link) DeleteRoutes() error {
 	}
 
 	return nil
-}
-
-// GetSubLink to get or create a macvlan interface
-func (l *Link) GetSubLink(name string) (*Link, error) {
-	macvlan := &netlink.Macvlan{
-		LinkAttrs: netlink.LinkAttrs{
-			Name:        name,
-			ParentIndex: l.LinkAttrs().Index,
-		},
-		Mode: netlink.MACVLAN_MODE_DEFAULT,
-	}
-	if err := netlink.LinkAdd(macvlan); err != nil && err != syscall.EEXIST {
-		return nil, err
-	}
-
-	if err := netlink.LinkSetUp(macvlan); err != nil {
-		return nil, err
-	}
-
-	return GetLinkByName(name)
 }
 
 func (l *Link) Index() int {
