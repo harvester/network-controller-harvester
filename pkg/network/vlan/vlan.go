@@ -130,6 +130,10 @@ func (v *Vlan) Teardown() error {
 
 	v.stopMonitor()
 
+	// delete iptables rule
+	if err := v.bridge.ToLink().DeleteIptForward(); err != nil {
+		return err
+	}
 	// set no master, VIDs will be auto-removed
 	if err := v.nic.SetNoMaster(); err != nil {
 		return fmt.Errorf("set %s no master failed, error: %w", v.nic.Name(), err)

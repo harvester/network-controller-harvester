@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/coreos/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
+	"k8s.io/kubernetes/pkg/util/sysctl"
 	"k8s.io/utils/exec"
 	"k8s.io/utils/net/ebtables"
 )
@@ -17,12 +20,14 @@ import (
 const (
 	defaultPVID = uint16(1)
 
-	EmptyIndex = 0
-	EmptyName  = ""
-
 	TypeLoopback = "loopback"
 	TypeDevice   = "device"
 	TypeBond     = "bond"
+
+	ipv4Forward = "net/ipv4/ip_forward"
+
+	tableFilter  = "filter"
+	chainForward = "FORWARD"
 )
 
 type Link struct {
@@ -198,6 +203,63 @@ func (l *Link) unsetRules4DHCP() error {
 		"--ip-proto", "udp", "--ip-dport", "68", "-j", "DROP")
 	if err := runner.DeleteRule(ebtables.TableBroute, ebtables.ChainBrouting, ruleArgs...); err != nil {
 		return fmt.Errorf("delete ebtables rules failed, error: %w", err)
+	}
+
+	return nil
+}
+
+func (l *Link) EnsureIptForward() error {
+	sysctlInterface := sysctl.New()
+	isForward, err := sysctlInterface.GetSysctl(ipv4Forward)
+	if err != nil {
+		return err
+	}
+	if isForward != 1 {
+		if err := sysctlInterface.SetSysctl(ipv4Forward, 1); err != nil {
+			return err
+		}
+	}
+
+	ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
+	if err != nil {
+		return err
+	}
+	rules, err := ipt.List(tableFilter, chainForward)
+	if err != nil {
+		return err
+	}
+
+	for _, rule := range rules {
+		if strings.HasPrefix(rule, "-P "+chainForward) {
+			if strings.Fields(rule)[2] == "ACCEPT" {
+				return nil
+			}
+			break
+		}
+	}
+
+	if err := ipt.AppendUnique(tableFilter, chainForward, "-i", l.Name(), "-j", "ACCEPT"); err != nil {
+		return err
+	}
+	if err := ipt.AppendUnique(tableFilter, chainForward, "-o", l.Name(), "-j", "ACCEPT"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (l *Link) DeleteIptForward() error {
+	ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
+	if err != nil {
+		return err
+	}
+
+	if err := ipt.DeleteIfExists(tableFilter, chainForward, "-i", l.Name(), "-j", "ACCEPT"); err != nil {
+		return err
+	}
+
+	if err := ipt.DeleteIfExists(tableFilter, chainForward, "-o", l.Name(), "-j", "ACCEPT"); err != nil {
+		return err
 	}
 
 	return nil

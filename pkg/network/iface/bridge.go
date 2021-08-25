@@ -44,6 +44,10 @@ func (br *Bridge) Ensure() error {
 		}
 	}
 
+	if err := br.ToLink().EnsureIptForward(); err != nil {
+		return err
+	}
+
 	if tempBr.OperState != netlink.OperUp {
 		if err := netlink.LinkSetUp(br.bridge); err != nil {
 			return err

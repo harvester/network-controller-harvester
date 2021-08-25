@@ -49,6 +49,7 @@ replace (
 )
 
 require (
+	github.com/coreos/go-iptables v0.6.0
 	github.com/harvester/harvester v0.2.0-rc4
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v0.0.0-20200331171230-d50e42f2b669
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
@@ -62,5 +63,6 @@ require (
 	k8s.io/apimachinery v0.20.4
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog v1.0.0
+	k8s.io/kubernetes v1.20.2
 	k8s.io/utils v0.0.0-20201110183641-67b214c5f920
 )
