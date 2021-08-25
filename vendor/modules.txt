@@ -14,6 +14,8 @@ github.com/c9s/goprocinfo/linux
 github.com/cespare/xxhash/v2
 # github.com/containernetworking/cni v0.8.0
 github.com/containernetworking/cni/pkg/types
+# github.com/coreos/go-iptables v0.6.0
+github.com/coreos/go-iptables/iptables
 # github.com/cpuguy83/go-md2man/v2 v2.0.0
 github.com/cpuguy83/go-md2man/v2/md2man
 # github.com/davecgh/go-spew v1.1.1
@@ -798,6 +800,8 @@ k8s.io/kube-aggregator/pkg/apis/apiregistration/v1
 # k8s.io/kube-openapi v0.0.0-20210113233702-8566a335510f
 k8s.io/kube-openapi/pkg/common
 k8s.io/kube-openapi/pkg/util/proto
+# k8s.io/kubernetes v1.20.2 => k8s.io/kubernetes v1.20.2
+k8s.io/kubernetes/pkg/util/sysctl
 # k8s.io/utils v0.0.0-20201110183641-67b214c5f920
 k8s.io/utils/buffer
 k8s.io/utils/exec
