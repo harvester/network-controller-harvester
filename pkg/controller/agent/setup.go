@@ -6,7 +6,11 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/controller/agent/nodenetwork"
 )
 
-var RegisterFuncList = []config.RegisterFunc{
+var registerFuncList = []config.RegisterFunc{
 	nad.Register,
 	nodenetwork.Register,
+}
+
+func GetRegisterFuncList() []config.RegisterFunc {
+	return registerFuncList
 }

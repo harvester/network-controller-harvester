@@ -17,7 +17,7 @@ import (
 
 // ClusterNetwork controller watches ClusterNetworks with the same name of network type to create or delete NodeNetwork.
 const (
-	controllerName = "harvester-clusternetwork-controller"
+	ControllerName = "harvester-clusternetwork-controller"
 )
 
 type Handler struct {
@@ -41,8 +41,8 @@ func Register(ctx context.Context, management *config.Management) error {
 		return fmt.Errorf("init clusternetwork faield, error: %w", err)
 	}
 
-	clusterNetworks.OnChange(ctx, controllerName, handler.OnChange)
-	clusterNetworks.OnRemove(ctx, controllerName, handler.OnRemove)
+	clusterNetworks.OnChange(ctx, ControllerName, handler.OnChange)
+	clusterNetworks.OnRemove(ctx, ControllerName, handler.OnRemove)
 
 	return nil
 }

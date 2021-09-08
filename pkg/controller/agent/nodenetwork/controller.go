@@ -28,7 +28,7 @@ import (
 
 // NodeNetwork controller watches NodeNetwork to configure network for cluster node
 const (
-	controllerName = "harvester-nodenetwork-controller"
+	ControllerName = "harvester-nodenetwork-controller"
 	resetPeriod    = time.Minute * 30
 
 	bridgeCNIName = "bridge"
@@ -50,7 +50,7 @@ func Register(ctx context.Context, management *config.Management) error {
 		nodeNetworkCtr:   nns,
 		nodeNetworkCache: nns.Cache(),
 		nadCache:         nad.Cache(),
-		recorder:         management.NewRecorder(controllerName, "", ""),
+		recorder:         management.NewRecorder(ControllerName, "", ""),
 	}
 
 	switch management.Options.MgmtNetworkType {
@@ -62,8 +62,8 @@ func Register(ctx context.Context, management *config.Management) error {
 		handler.mgmtNetwork = mgmtNetwork
 	}
 
-	nns.OnChange(ctx, controllerName, handler.OnChange)
-	nns.OnRemove(ctx, controllerName, handler.OnRemove)
+	nns.OnChange(ctx, ControllerName, handler.OnChange)
+	nns.OnRemove(ctx, ControllerName, handler.OnRemove)
 
 	// start network monitoring
 	go network.GetWatcher().Start(ctx)
@@ -117,7 +117,7 @@ func (h Handler) OnRemove(key string, nn *networkv1.NodeNetwork) (*networkv1.Nod
 
 	switch nn.Spec.Type {
 	case networkv1.NetworkTypeVLAN:
-		if err := h.removeVlanNetwork(); err != nil {
+		if err := h.removeVlanNetwork(nn); err != nil {
 			return nil, err
 		}
 	default:
@@ -136,7 +136,7 @@ func (h Handler) configVlanNetwork(nn *networkv1.NodeNetwork) error {
 
 func (h Handler) setupVlan(nn *networkv1.NodeNetwork) error {
 	if nn.Spec.NIC == "" {
-		return h.updateStatus(nn, network.Status{
+		return h.updateReadyStatus(nn, network.Status{
 			Condition: network.Condition{Normal: false, Message: "A physical NIC has not been specified yet"},
 		})
 	}
@@ -148,7 +148,7 @@ func (h Handler) setupVlan(nn *networkv1.NodeNetwork) error {
 	v := vlan.NewVlan(h, h.mgmtNetwork, vids)
 
 	if err = v.Setup(nn.Spec.NIC); err != nil {
-		if statusErr := h.updateStatus(nn, network.Status{
+		if statusErr := h.updateReadyStatus(nn, network.Status{
 			Condition: network.Condition{Normal: false, Message: "Setup VLAN network failed, please try another NIC"},
 		}); statusErr != nil {
 			return statusErr
@@ -160,7 +160,7 @@ func (h Handler) setupVlan(nn *networkv1.NodeNetwork) error {
 	if err != nil {
 		return fmt.Errorf("get status failed, error: %w", err)
 	}
-	return h.updateStatus(nn, *status)
+	return h.updateReadyStatus(nn, *status)
 }
 
 func (h Handler) repealVlan(nn *networkv1.NodeNetwork) error {
@@ -207,7 +207,7 @@ func (h Handler) getNICFromStatus(nn *networkv1.NodeNetwork) string {
 	return ""
 }
 
-func (h Handler) removeVlanNetwork() error {
+func (h Handler) removeVlanNetwork(nn *networkv1.NodeNetwork) error {
 	v, err := vlan.GetVlan()
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) && !errors.As(err, &vlan.SlaveNotFoundError{}) {
 		return err
@@ -220,12 +220,20 @@ func (h Handler) removeVlanNetwork() error {
 		return fmt.Errorf("tear down vlan failed, error: %w", err)
 	}
 
+	// update removed condition
+	nnCopy := nn.DeepCopy()
+	networkv1.NodeNetworkRemoved.SetStatusBool(nnCopy, true)
+	if _, err := h.nodeNetworkCtr.Update(nnCopy); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (h Handler) updateStatus(nn *networkv1.NodeNetwork, status network.Status) error {
+func (h Handler) updateReadyStatus(nn *networkv1.NodeNetwork, status network.Status) error {
 	nnCopy := nn.DeepCopy()
 
+	// update network link status
 	for name := range nn.Status.NetworkLinkStatus {
 		if _, ok := status.IFaces[name]; !ok {
 			delete(nnCopy.Status.NetworkLinkStatus, name)
@@ -247,6 +255,7 @@ func (h Handler) updateStatus(nn *networkv1.NodeNetwork, status network.Status) 
 	}
 	nnCopy.Status.NICs = nics
 
+	// update ready condition
 	networkv1.NodeNetworkReady.SetStatusBool(nnCopy, status.Condition.Normal)
 	networkv1.NodeNetworkReady.Message(nnCopy, status.Condition.Message)
 

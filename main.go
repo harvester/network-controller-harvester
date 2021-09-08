@@ -67,6 +67,11 @@ func main() {
 			Value:  "flannel.1",
 			Usage:  "The device of management network, such as VTEP device flannel.1 of flannel or canal, defaults to flannel.1.",
 		},
+		cli.BoolFlag{
+			Name:   "enable-vip-controller",
+			Usage:  "The bool flag to enable the vip controller in the manager network controller",
+			EnvVar: "ENABLE_VIP_CONTROLLER",
+		},
 	}
 
 	app.Commands = []cli.Command{
@@ -154,9 +159,9 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 }
 
 func managerRun(c *cli.Context) error {
-	return run(c, manager.RegisterFuncList, true)
+	return run(c, manager.GetRegisterFuncList(c), true)
 }
 
 func agentRun(c *cli.Context) error {
-	return run(c, agent.RegisterFuncList, false)
+	return run(c, agent.GetRegisterFuncList(), false)
 }
