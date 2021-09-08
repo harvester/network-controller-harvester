@@ -31,6 +31,9 @@ rules:
   - apiGroups: [ "" ]
     resources: [ "namespaces" ]
     verbs: [ "get", "watch", "list" ]
+  - apiGroups: [ "apps" ]
+    resources: [ "daemonsets" ]
+    verbs: [ "watch", "list", "update" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

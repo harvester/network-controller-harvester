@@ -58,11 +58,12 @@ spec:
       containers:
         - image: rancher/harvester-network-controller:master-head
           imagePullPolicy: IfNotPresent
-          name: network
+          name: harvester-manager-network-controller
           command:
             - harvester-network-controller
           args:
             - manager
+            - --enable-vip-controller
           resources:
             limits:
               cpu: 500m

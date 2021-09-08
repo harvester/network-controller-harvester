@@ -108,6 +108,23 @@ func (l *Link) DelBridgeVlan(vid uint16) error {
 	return nil
 }
 
+// clearSublink to delete all the sublink
+func (l *Link) clearSubLink() error {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return err
+	}
+	for _, link := range links {
+		if link.Attrs().ParentIndex == l.Index() {
+			if err := netlink.LinkDel(link); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func (l *Link) SetMaster(br *Bridge, vids []uint16) error {
 	if err := l.setRules4DHCP(); err != nil {
 		return err
@@ -115,9 +132,14 @@ func (l *Link) SetMaster(br *Bridge, vids []uint16) error {
 	if l.link.Attrs().MasterIndex == br.bridge.Index {
 		return nil
 	}
+
+	if err := l.clearSubLink(); err != nil {
+		return err
+	}
 	if err := netlink.LinkSetMaster(l.link, br.bridge); err != nil {
 		return fmt.Errorf("%s set %s as master failed, error: %w", l.Name(), br.Name(), err)
 	}
+
 	for _, vid := range vids {
 		if err := l.AddBridgeVlan(vid); err != nil {
 			return err
@@ -145,10 +167,18 @@ func (l *Link) SetNoMaster() error {
 	}
 
 	klog.Infof("%s set no master", l.Name())
+	masterLink, err := GetLinkByIndex(l.LinkAttrs().MasterIndex)
+	if err != nil {
+		return err
+	}
+	if err := masterLink.clearSubLink(); err != nil {
+		return err
+	}
 	if err := netlink.LinkSetNoMaster(l.link); err != nil {
 		return err
 	}
 
+	// The link will down after a while. We catch the down signal and set the link up.
 	if isUp {
 		select {
 		case <-ctx.Done():

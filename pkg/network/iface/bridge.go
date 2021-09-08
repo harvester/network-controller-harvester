@@ -73,6 +73,10 @@ func (br *Bridge) SyncIPv4Addr(slave IFace) error {
 }
 
 func (br *Bridge) ClearAddr() error {
+	// Kube-vip may add some ipv4 addresses into the bridge, so we have to fetch the bridge to make sure clear all addresses.
+	if err := br.Fetch(); err != nil {
+		return err
+	}
 	for _, addr := range br.addr {
 		if err := netlink.AddrDel(br.bridge, &addr); err != nil {
 			return fmt.Errorf("delete address of %s failed, error: %w", br.bridge.Name, err)

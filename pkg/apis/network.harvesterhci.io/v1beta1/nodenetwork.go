@@ -119,5 +119,6 @@ type Condition struct {
 }
 
 var (
-	NodeNetworkReady condition.Cond = "Ready"
+	NodeNetworkReady   condition.Cond = "Ready"
+	NodeNetworkRemoved condition.Cond = "Removed"
 )

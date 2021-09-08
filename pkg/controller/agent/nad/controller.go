@@ -18,7 +18,7 @@ import (
 // Harvester network nad watches network-attachment-definition CR, retrieve network configuration and make it effective.
 // For example, the controller get VLAN ID from nad and add it to physical NIC attached with bridge.
 const (
-	controllerName = "harvester-network-nad-controller"
+	ControllerName = "harvester-network-nad-controller"
 )
 
 type Handler struct {
@@ -33,8 +33,8 @@ func Register(ctx context.Context, management *config.Management) error {
 		nodeNetworkCache: nns.Cache(),
 	}
 
-	nad.OnChange(ctx, controllerName, handler.OnChange)
-	nad.OnRemove(ctx, controllerName, handler.OnRemove)
+	nad.OnChange(ctx, ControllerName, handler.OnChange)
+	nad.OnRemove(ctx, ControllerName, handler.OnRemove)
 
 	return nil
 }

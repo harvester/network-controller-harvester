@@ -8,6 +8,7 @@ import (
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/rancher/lasso/pkg/controller"
 	wcrd "github.com/rancher/wrangler/pkg/crd"
+	ctlapps "github.com/rancher/wrangler/pkg/generated/controllers/apps"
 	ctlcore "github.com/rancher/wrangler/pkg/generated/controllers/core"
 	"github.com/rancher/wrangler/pkg/generic"
 	"github.com/rancher/wrangler/pkg/schemes"
@@ -53,6 +54,7 @@ type Management struct {
 
 	CniFactory  *ctlcni.Factory
 	CoreFactory *ctlcore.Factory
+	AppsFactory *ctlapps.Factory
 
 	ClientSet *kubernetes.Clientset
 
@@ -136,6 +138,13 @@ func SetupManagement(ctx context.Context, restConfig *rest.Config, options *Opti
 	}
 	management.CoreFactory = core
 	management.starters = append(management.starters, core)
+
+	apps, err := ctlapps.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+	management.AppsFactory = apps
+	management.starters = append(management.starters, apps)
 
 	cni, err := ctlcni.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {

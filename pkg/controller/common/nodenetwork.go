@@ -50,6 +50,7 @@ func NewNodeNetworkFromNode(node *corev1.Node, networkType networkv1.NetworkType
 	// initialize status
 	networkv1.NodeNetworkReady.SetStatusBool(nn, false)
 	networkv1.NodeNetworkReady.Message(nn, initStatusMsg)
+	networkv1.NodeNetworkRemoved.SetStatusBool(nn, false)
 
 	switch networkType {
 	case networkv1.NetworkTypeVLAN:
