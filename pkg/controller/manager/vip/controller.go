@@ -41,7 +41,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	// The manager network controller and kube-vip should deployed in the same node to make sure they get the same management network NIC.
 	mgmtNetwork, err := mgmt.NewFlannelNetwork(management.Options.MgmtNetworkDevice)
 	if err != nil {
-		return err
+		return fmt.Errorf("new flannel network failed, error: %w", err)
 	}
 	handler.mgmtNIC = mgmtNetwork.NIC().Name()
 

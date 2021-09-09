@@ -74,3 +74,4 @@ spec:
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       serviceAccountName: harvester-network-controller
+      hostNetwork: true
