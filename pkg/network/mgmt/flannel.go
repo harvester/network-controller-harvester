@@ -16,7 +16,7 @@ type FlannelNetwork struct {
 func NewFlannelNetwork(device string) (*FlannelNetwork, error) {
 	l, err := netlink.LinkByName(device)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to find link %s, error: %w", device, err)
 	}
 	vtep, ok := l.(*netlink.Vxlan)
 	if !ok {
@@ -25,7 +25,7 @@ func NewFlannelNetwork(device string) (*FlannelNetwork, error) {
 
 	nic, err := iface.GetLinkByIndex(vtep.VtepDevIndex)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to find link with index %d, error: %w", vtep.VtepDevIndex, err)
 	}
 
 	return &FlannelNetwork{
