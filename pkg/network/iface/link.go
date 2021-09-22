@@ -108,17 +108,18 @@ func (l *Link) DelBridgeVlan(vid uint16) error {
 	return nil
 }
 
-// clearSublink to delete all the sublink
-func (l *Link) clearSubLink() error {
+// clearMacvlan to delete all the macvlan interfaces whose parent index equals l.Index()
+func (l *Link) clearMacVlan() error {
 	links, err := netlink.LinkList()
 	if err != nil {
 		return err
 	}
 	for _, link := range links {
-		if link.Attrs().ParentIndex == l.Index() {
+		if link.Attrs().ParentIndex == l.Index() && link.Type() == "macvlan" {
 			if err := netlink.LinkDel(link); err != nil {
 				return err
 			}
+			klog.Infof("delete macvlan interface %s", link.Attrs().Name)
 		}
 	}
 
@@ -133,7 +134,7 @@ func (l *Link) SetMaster(br *Bridge, vids []uint16) error {
 		return nil
 	}
 
-	if err := l.clearSubLink(); err != nil {
+	if err := l.clearMacVlan(); err != nil {
 		return err
 	}
 	if err := netlink.LinkSetMaster(l.link, br.bridge); err != nil {
@@ -171,7 +172,7 @@ func (l *Link) SetNoMaster() error {
 	if err != nil {
 		return err
 	}
-	if err := masterLink.clearSubLink(); err != nil {
+	if err := masterLink.clearMacVlan(); err != nil {
 		return err
 	}
 	if err := netlink.LinkSetNoMaster(l.link); err != nil {
