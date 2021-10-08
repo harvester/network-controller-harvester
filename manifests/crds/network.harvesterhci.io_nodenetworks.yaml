@@ -30,7 +30,7 @@ spec:
       name: TYPE
       type: string
     - jsonPath: .spec.nic
-      name: NIC
+      name: NetworkInterface
       type: string
     name: v1beta1
     schema:
@@ -162,6 +162,9 @@ spec:
                       type: string
                     usedByManagementNetwork:
                       description: Specify whether used by management network or not
+                      type: boolean
+                    usedByVlanNetwork:
+                      description: Specify whether used by VLAN network or not
                       type: boolean
                   required:
                   - index

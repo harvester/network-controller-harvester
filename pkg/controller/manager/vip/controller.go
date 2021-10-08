@@ -60,25 +60,18 @@ func (h Handler) OnChange(key string, nn *networkv1.NodeNetwork) (*networkv1.Nod
 		return nil, nil
 	}
 
-	var readyStatus, removedStatus bool
+	var readyStatus bool
 	for _, con := range nn.Status.Conditions {
 		if con.Type == networkv1.NodeNetworkReady {
 			readyStatus = con.Status == corev1.ConditionTrue
 		}
-		if con.Type == networkv1.NodeNetworkRemoved {
-			removedStatus = con.Status == corev1.ConditionTrue
-		}
 	}
 
-	// The network has been ready
-	if readyStatus && !removedStatus {
-		return nn, h.updateVipInterface(nn.Spec.NIC)
-	}
-	if removedStatus {
-		return nn, h.updateVipInterface(vlan.BridgeName)
+	if readyStatus {
+		return nn, h.updateVipInterface(nn.Spec.NetworkInterface)
 	}
 
-	return nn, nil
+	return nn, h.updateVipInterface(vlan.BridgeName)
 }
 
 func (h Handler) OnRemove(key string, nn *networkv1.NodeNetwork) (*networkv1.NodeNetwork, error) {
@@ -92,8 +85,8 @@ func (h Handler) OnRemove(key string, nn *networkv1.NodeNetwork) (*networkv1.Nod
 	}
 
 	for _, con := range nn.Status.Conditions {
-		if con.Type == networkv1.NodeNetworkRemoved {
-			if con.Status == corev1.ConditionTrue {
+		if con.Type == networkv1.NodeNetworkReady {
+			if con.Status == corev1.ConditionFalse {
 				return nn, h.updateVipInterface(vlan.BridgeName)
 			}
 			return nil, fmt.Errorf("the vlan network hasn't removed")

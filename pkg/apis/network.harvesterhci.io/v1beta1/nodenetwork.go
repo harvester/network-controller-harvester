@@ -13,7 +13,7 @@ import (
 // +kubebuilder:printcolumn:name="DESCRIPTION",type=string,JSONPath=`.spec.description`
 // +kubebuilder:printcolumn:name="NODENAME",type=string,JSONPath=`.spec.nodeName`
 // +kubebuilder:printcolumn:name="TYPE",type=string,JSONPath=`.spec.type`
-// +kubebuilder:printcolumn:name="NIC",type=string,JSONPath=`.spec.nic`
+// +kubebuilder:printcolumn:name="NetworkInterface",type=string,JSONPath=`.spec.nic`
 
 type NodeNetwork struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -33,7 +33,7 @@ type NodeNetworkSpec struct {
 	Type NetworkType `json:"type,omitempty"`
 
 	// +optional
-	NIC string `json:"nic,omitempty"`
+	NetworkInterface string `json:"nic,omitempty"`
 }
 
 // +kubebuilder:validation:Enum=vlan
@@ -51,13 +51,13 @@ type NodeNetworkStatus struct {
 	NetworkLinkStatus map[string]*LinkStatus `json:"networkLinkStatus,omitempty"`
 
 	// +optional
-	NICs []NIC `json:"nics,omitempty"`
+	NetworkInterfaces []NetworkInterface `json:"nics,omitempty"`
 
 	// +optional
 	Conditions []Condition `json:"conditions,omitempty"`
 }
 
-type NIC struct {
+type NetworkInterface struct {
 	// Index of the NIC
 	Index int `json:"index"`
 	// Index of the NIC's master
@@ -70,6 +70,8 @@ type NIC struct {
 	State string `json:"state"`
 	// Specify whether used by management network or not
 	UsedByMgmtNetwork bool `json:"usedByManagementNetwork,omitempty"`
+	// Specify whether used by VLAN network or not
+	UsedByVlanNetwork bool `json:"usedByVlanNetwork,omitempty"`
 }
 
 type NetworkID int
@@ -119,6 +121,5 @@ type Condition struct {
 }
 
 var (
-	NodeNetworkReady   condition.Cond = "Ready"
-	NodeNetworkRemoved condition.Cond = "Removed"
+	NodeNetworkReady condition.Cond = "Ready"
 )
