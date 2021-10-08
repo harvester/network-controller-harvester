@@ -135,11 +135,12 @@ func (h Handler) configVlanNetwork(nn *networkv1.NodeNetwork) error {
 }
 
 func (h Handler) setupVlan(nn *networkv1.NodeNetwork) error {
-	if nn.Spec.NIC == "" {
+	if nn.Spec.NetworkInterface == "" {
 		return h.updateReadyStatus(nn, network.Status{
-			Condition: network.Condition{Normal: false, Message: "A physical NIC has not been specified yet"},
+			Condition: network.Condition{Normal: false, Message: "No network interface has been specified yet"},
 		})
 	}
+
 	vids, err := h.getNadVidList()
 	if err != nil {
 		return err
@@ -147,13 +148,13 @@ func (h Handler) setupVlan(nn *networkv1.NodeNetwork) error {
 
 	v := vlan.NewVlan(h, h.mgmtNetwork, vids)
 
-	if err = v.Setup(nn.Spec.NIC); err != nil {
+	if err = v.Setup(nn.Spec.NetworkInterface); err != nil {
 		if statusErr := h.updateReadyStatus(nn, network.Status{
-			Condition: network.Condition{Normal: false, Message: "Setup VLAN network failed, please try another NIC"},
+			Condition: network.Condition{Normal: false, Message: "Setup VLAN network failed, please try another network interface"},
 		}); statusErr != nil {
 			return statusErr
 		}
-		return fmt.Errorf("set up vlan failed, error: %w, nic: %s", err, nn.Spec.NIC)
+		return fmt.Errorf("set up vlan failed, error: %w, nic: %s", err, nn.Spec.NetworkInterface)
 	}
 
 	status, err := v.Status(network.Condition{Normal: true, Message: ""})
@@ -173,7 +174,7 @@ func (h Handler) repealVlan(nn *networkv1.NodeNetwork) error {
 	}
 
 	configuredNIC := v.NIC().Name()
-	if configuredNIC != "" && configuredNIC != nn.Spec.NIC {
+	if configuredNIC != "" && configuredNIC != nn.Spec.NetworkInterface {
 		if err := v.Teardown(); err != nil {
 			return fmt.Errorf("tear down vlan failed, error: %s, nic: %s", err.Error(), configuredNIC)
 		}
@@ -220,14 +221,9 @@ func (h Handler) removeVlanNetwork(nn *networkv1.NodeNetwork) error {
 		return fmt.Errorf("tear down vlan failed, error: %w", err)
 	}
 
-	// update removed condition
-	nnCopy := nn.DeepCopy()
-	networkv1.NodeNetworkRemoved.SetStatusBool(nnCopy, true)
-	if _, err := h.nodeNetworkCtr.Update(nnCopy); err != nil {
-		return err
-	}
-
-	return nil
+	return h.updateReadyStatus(nn, network.Status{
+		Condition: network.Condition{Normal: false, Message: "The VLAN network has been torn down"},
+	})
 }
 
 func (h Handler) updateReadyStatus(nn *networkv1.NodeNetwork, status network.Status) error {
@@ -249,11 +245,11 @@ func (h Handler) updateReadyStatus(nn *networkv1.NodeNetwork, status network.Sta
 	}
 
 	// get all physical NICs
-	nics, err := h.getNICs()
+	nis, err := h.getNetworkInterfaces()
 	if err != nil {
 		return err
 	}
-	nnCopy.Status.NICs = nics
+	nnCopy.Status.NetworkInterfaces = nis
 
 	// update ready condition
 	networkv1.NodeNetworkReady.SetStatusBool(nnCopy, status.Condition.Normal)
@@ -314,31 +310,42 @@ func makeLinkStatus(link iface.IFace) *networkv1.LinkStatus {
 	return linkStatus
 }
 
-func (h Handler) getNICs() ([]networkv1.NIC, error) {
+func (h Handler) getNetworkInterfaces() ([]networkv1.NetworkInterface, error) {
 	links, err := iface.ListLinks(map[string]bool{iface.TypeDevice: true, iface.TypeBond: true})
 	if err != nil {
 		return nil, fmt.Errorf("list physical NICs failed")
 	}
 
-	mgmtNICIndex := h.mgmtNetwork.NIC().Index()
+	mgmtNiIndex := h.mgmtNetwork.NIC().Index()
 
-	nics := []networkv1.NIC{}
+	var vlanNiIndex int
+	v, err := vlan.GetVlan()
+	if err == nil {
+		vlanNiIndex = v.NIC().Index()
+	} else {
+		klog.Errorf("Can not get VLAN, error: %v", err)
+	}
+
+	networkInterfaces := make([]networkv1.NetworkInterface, 0)
 	for _, l := range links {
-		nic := networkv1.NIC{
+		networkInterface := networkv1.NetworkInterface{
 			Index:       l.Index(),
 			MasterIndex: l.LinkAttrs().MasterIndex,
 			Name:        l.Name(),
 			Type:        l.Type(),
 			State:       l.LinkAttrs().OperState.String(),
 		}
-		if l.Index() == mgmtNICIndex {
-			nic.UsedByMgmtNetwork = true
+		if l.Index() == mgmtNiIndex {
+			networkInterface.UsedByMgmtNetwork = true
+		}
+		if l.Index() == vlanNiIndex {
+			networkInterface.UsedByVlanNetwork = true
 		}
 
-		nics = append(nics, nic)
+		networkInterfaces = append(networkInterfaces, networkInterface)
 	}
 
-	return nics, nil
+	return networkInterfaces, nil
 }
 
 func (h Handler) SendEvent(e *network.Event, networkType string) error {

@@ -51,7 +51,7 @@ func (h Handler) OnChange(key string, node *corev1.Node) (*corev1.Node, error) {
 	}
 
 	for _, cn := range cns {
-		if cn.Name == string(networkv1alpha1.NetworkTypeVLAN) && cn.Enable {
+		if cn.Name == string(networkv1alpha1.NetworkTypeVLAN) {
 			if _, err := common.CreateNodeNetworkIfNotExist(node, networkv1alpha1.NetworkTypeVLAN, cn,
 				h.nodeNetworkCache, h.nodeNetworkClient); err != nil {
 				return nil, fmt.Errorf("create nodenetwork failed, error:%w", err)

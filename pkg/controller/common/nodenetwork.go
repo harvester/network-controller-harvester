@@ -50,13 +50,12 @@ func NewNodeNetworkFromNode(node *corev1.Node, networkType networkv1.NetworkType
 	// initialize status
 	networkv1.NodeNetworkReady.SetStatusBool(nn, false)
 	networkv1.NodeNetworkReady.Message(nn, initStatusMsg)
-	networkv1.NodeNetworkRemoved.SetStatusBool(nn, false)
 
 	switch networkType {
 	case networkv1.NetworkTypeVLAN:
-		defaultPhysicalNIC, ok := cn.Config[networkv1.KeyDefaultNIC]
+		defaultPhysicalNIC, ok := cn.Config[networkv1.KeyDefaultInterface]
 		if ok {
-			nn.Spec.NIC = defaultPhysicalNIC
+			nn.Spec.NetworkInterface = defaultPhysicalNIC
 		}
 	default:
 	}
@@ -116,6 +115,39 @@ func CreateAllNodeNetworkIfNotExist(networkType networkv1.NetworkType, cn *netwo
 	for _, node := range nodes.Items {
 		if _, err := CreateNodeNetworkIfNotExist(&node, networkType, cn, nodenetworkCache, nodenetworkClient); err != nil {
 			return fmt.Errorf("create nodenetwork CR for node %s failed, error: %w", node.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// if cluster network is open, set the default NIC for all node networks.
+// if cluster network is close, clear the NIC specification of all node networks.
+func SetNICForAllNodeNetworks(enable bool, nic string, cache ctlnetworkv1.NodeNetworkCache, client ctlnetworkv1.NodeNetworkClient) error {
+	nns, err := cache.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	for _, nn := range nns {
+		var nnCopy *networkv1.NodeNetwork
+
+		// set default NIC
+		if enable && nn.Spec.NetworkInterface == "" {
+			nnCopy = nn.DeepCopy()
+			nnCopy.Spec.NetworkInterface = nic
+		}
+
+		// clear NIC specification
+		if !enable && nn.Spec.NetworkInterface != "" {
+			nnCopy = nn.DeepCopy()
+			nnCopy.Spec.NetworkInterface = ""
+		}
+
+		if nnCopy != nil {
+			if _, err := client.Update(nnCopy); err != nil {
+				return err
+			}
 		}
 	}
 

@@ -58,15 +58,13 @@ func (h Handler) OnChange(key string, cn *networkv1.ClusterNetwork) (*networkv1.
 
 	klog.Infof("cluster network configuration %s has been changed", cn.Name)
 
-	if cn.Enable {
-		if err := common.CreateAllNodeNetworkIfNotExist(networkv1.NetworkTypeVLAN, cn, h.nodeClient,
-			h.nodeNetworkCache, h.nodeNetworkClient); err != nil {
-			return nil, fmt.Errorf("create all nodenetwork with type VLAN failed, error: %w", err)
-		}
-	} else {
-		if err := common.DeleteAllNodeNetwork(networkv1.NetworkTypeVLAN, h.nodeNetworkCache, h.nodeNetworkClient); err != nil {
-			return nil, fmt.Errorf("delete all nodenetwork CRs failed, error: %w", err)
-		}
+	var nic string
+	if cn.Config != nil {
+		nic = cn.Config[networkv1.KeyDefaultInterface]
+	}
+
+	if err := common.SetNICForAllNodeNetworks(cn.Enable, nic, h.nodeNetworkCache, h.nodeNetworkClient); err != nil {
+		return nil, err
 	}
 
 	return cn, nil
@@ -79,10 +77,8 @@ func (h Handler) OnRemove(key string, cn *networkv1.ClusterNetwork) (*networkv1.
 
 	klog.Infof("cluster network configuration %s has been deleted", cn.Name)
 
-	if cn.Enable {
-		if err := common.DeleteAllNodeNetwork(networkv1.NetworkTypeVLAN, h.nodeNetworkCache, h.nodeNetworkClient); err != nil {
-			return nil, fmt.Errorf("delete all nodenetwork CRs failed, error: %w", err)
-		}
+	if err := common.DeleteAllNodeNetwork(networkv1.NetworkTypeVLAN, h.nodeNetworkCache, h.nodeNetworkClient); err != nil {
+		return nil, fmt.Errorf("delete all nodenetwork CRs failed, error: %w", err)
 	}
 
 	return cn, nil
