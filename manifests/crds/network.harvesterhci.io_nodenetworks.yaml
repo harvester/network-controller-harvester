@@ -29,7 +29,7 @@ spec:
     - jsonPath: .spec.type
       name: TYPE
       type: string
-    - jsonPath: .spec.nic
+    - jsonPath: .spec.networkInterface
       name: NetworkInterface
       type: string
     name: v1beta1
@@ -48,7 +48,7 @@ spec:
             properties:
               description:
                 type: string
-              nic:
+              networkInterface:
                 type: string
               nodeName:
                 type: string
@@ -90,6 +90,37 @@ spec:
               networkIDs:
                 items:
                   type: integer
+                type: array
+              networkInterfaces:
+                items:
+                  properties:
+                    index:
+                      description: Index of the network interface
+                      type: integer
+                    masterIndex:
+                      description: Index of the network interface's master
+                      type: integer
+                    name:
+                      description: Name of the network interface
+                      type: string
+                    state:
+                      description: State of the network interface, up/down/unknown
+                      type: string
+                    type:
+                      description: Interface type of the network interface
+                      type: string
+                    usedByManagementNetwork:
+                      description: Specify whether used by management network or not
+                      type: boolean
+                    usedByVlanNetwork:
+                      description: Specify whether used by VLAN network or not
+                      type: boolean
+                  required:
+                  - index
+                  - name
+                  - state
+                  - type
+                  type: object
                 type: array
               networkLinkStatus:
                 additionalProperties:
@@ -142,37 +173,6 @@ spec:
                       type: string
                   type: object
                 type: object
-              nics:
-                items:
-                  properties:
-                    index:
-                      description: Index of the NIC
-                      type: integer
-                    masterIndex:
-                      description: Index of the NIC's master
-                      type: integer
-                    name:
-                      description: Name of the NIC
-                      type: string
-                    state:
-                      description: State of the NIC, up/down/unknown
-                      type: string
-                    type:
-                      description: Interface type of the NIC
-                      type: string
-                    usedByManagementNetwork:
-                      description: Specify whether used by management network or not
-                      type: boolean
-                    usedByVlanNetwork:
-                      description: Specify whether used by VLAN network or not
-                      type: boolean
-                  required:
-                  - index
-                  - name
-                  - state
-                  - type
-                  type: object
-                type: array
             type: object
         type: object
     served: true

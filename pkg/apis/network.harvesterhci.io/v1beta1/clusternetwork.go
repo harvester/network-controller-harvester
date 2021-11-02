@@ -21,4 +21,4 @@ type ClusterNetwork struct {
 	Config map[string]string `json:"config,omitempty"`
 }
 
-const KeyDefaultInterface = "defaultPhysicalNIC"
+const KeyDefaultInterface = "defaultNetworkInterface"

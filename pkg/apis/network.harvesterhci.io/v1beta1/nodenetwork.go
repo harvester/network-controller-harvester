@@ -13,7 +13,7 @@ import (
 // +kubebuilder:printcolumn:name="DESCRIPTION",type=string,JSONPath=`.spec.description`
 // +kubebuilder:printcolumn:name="NODENAME",type=string,JSONPath=`.spec.nodeName`
 // +kubebuilder:printcolumn:name="TYPE",type=string,JSONPath=`.spec.type`
-// +kubebuilder:printcolumn:name="NetworkInterface",type=string,JSONPath=`.spec.nic`
+// +kubebuilder:printcolumn:name="NetworkInterface",type=string,JSONPath=`.spec.networkInterface`
 
 type NodeNetwork struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -33,7 +33,7 @@ type NodeNetworkSpec struct {
 	Type NetworkType `json:"type,omitempty"`
 
 	// +optional
-	NetworkInterface string `json:"nic,omitempty"`
+	NetworkInterface string `json:"networkInterface,omitempty"`
 }
 
 // +kubebuilder:validation:Enum=vlan
@@ -51,22 +51,22 @@ type NodeNetworkStatus struct {
 	NetworkLinkStatus map[string]*LinkStatus `json:"networkLinkStatus,omitempty"`
 
 	// +optional
-	NetworkInterfaces []NetworkInterface `json:"nics,omitempty"`
+	NetworkInterfaces []NetworkInterface `json:"networkInterfaces,omitempty"`
 
 	// +optional
 	Conditions []Condition `json:"conditions,omitempty"`
 }
 
 type NetworkInterface struct {
-	// Index of the NIC
+	// Index of the network interface
 	Index int `json:"index"`
-	// Index of the NIC's master
+	// Index of the network interface's master
 	MasterIndex int `json:"masterIndex,omitempty"`
-	// Name of the NIC
+	// Name of the network interface
 	Name string `json:"name"`
-	// Interface type of the NIC
+	// Interface type of the network interface
 	Type string `json:"type"`
-	// State of the NIC, up/down/unknown
+	// State of the network interface, up/down/unknown
 	State string `json:"state"`
 	// Specify whether used by management network or not
 	UsedByMgmtNetwork bool `json:"usedByManagementNetwork,omitempty"`
