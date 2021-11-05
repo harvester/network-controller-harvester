@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/lasso/pkg/controller"
 	wcrd "github.com/rancher/wrangler/pkg/crd"
 	ctlapps "github.com/rancher/wrangler/pkg/generated/controllers/apps"
+	ctlbatch "github.com/rancher/wrangler/pkg/generated/controllers/batch"
 	ctlcore "github.com/rancher/wrangler/pkg/generated/controllers/core"
 	"github.com/rancher/wrangler/pkg/generic"
 	"github.com/rancher/wrangler/pkg/schemes"
@@ -42,19 +43,23 @@ func init() {
 type RegisterFunc func(context.Context, *Management) error
 
 type Options struct {
+	Namespace         string
 	MgmtNetworkType   string
 	MgmtNetworkDevice string
+	HelperImage       string
 }
 
 type Management struct {
-	ctx               context.Context
+	ctx context.Context
+
 	ControllerFactory controller.SharedControllerFactory
 
 	HarvesterNetworkFactory *ctlnetworkv1.Factory
 
-	CniFactory  *ctlcni.Factory
-	CoreFactory *ctlcore.Factory
-	AppsFactory *ctlapps.Factory
+	CniFactory   *ctlcni.Factory
+	CoreFactory  *ctlcore.Factory
+	AppsFactory  *ctlapps.Factory
+	BatchFactory *ctlbatch.Factory
 
 	ClientSet *kubernetes.Clientset
 
@@ -145,6 +150,13 @@ func SetupManagement(ctx context.Context, restConfig *rest.Config, options *Opti
 	}
 	management.AppsFactory = apps
 	management.starters = append(management.starters, apps)
+
+	batch, err := ctlbatch.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+	management.BatchFactory = batch
+	management.starters = append(management.starters, batch)
 
 	cni, err := ctlcni.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {

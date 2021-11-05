@@ -1,8 +1,3 @@
-//go:generate go run pkg/codegen/cleanup/main.go
-//go:generate /bin/rm -rf pkg/generated
-//go:generate go run pkg/codegen/main.go
-//go:generate /bin/bash scripts/generate-manifest
-
 package main
 
 import (
@@ -72,6 +67,12 @@ func main() {
 			Usage:  "The bool flag to enable the vip controller in the manager network controller",
 			EnvVar: "ENABLE_VIP_CONTROLLER",
 		},
+		cli.StringFlag{
+			Name:   "helper-image",
+			EnvVar: "HELPER_IMAGE",
+			Value:  "rancher/harvester-network-helper:master-head",
+			Usage:  "The image of harvester network helper, defaults to rancher/harvester-network-helper.",
+		},
 	}
 
 	app.Commands = []cli.Command{
@@ -101,6 +102,7 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 	threadiness := c.Int("threads")
 	mgmtNetworkType := c.String("management-network-type")
 	mgmtNetworkDevice := c.String("management-network-device")
+	helperImage := c.String("helper-image")
 
 	if threadiness <= 0 {
 		klog.Infof("Can not start with thread count of %d, please pass a proper thread count.", threadiness)
@@ -128,8 +130,10 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 	}
 
 	options := &config.Options{
+		Namespace:         namespace,
 		MgmtNetworkType:   mgmtNetworkType,
 		MgmtNetworkDevice: mgmtNetworkDevice,
+		HelperImage:       helperImage,
 	}
 
 	management, err := config.SetupManagement(ctx, cfg, options)

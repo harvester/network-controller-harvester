@@ -15,7 +15,7 @@ func main() {
 		OutputPackage: "github.com/harvester/harvester-network-controller/pkg/generated",
 		Boilerplate:   "hack/boilerplate.go.txt",
 		Groups: map[string]args.Group{
-			"network.harvesterhci.io": {
+			networkv1.GroupName: {
 				Types: []interface{}{
 					networkv1.NodeNetwork{},
 					networkv1.ClusterNetwork{},

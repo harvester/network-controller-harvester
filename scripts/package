@@ -17,12 +17,17 @@ fi
 
 mkdir -p dist/artifacts
 cp bin/harvester-network-controller dist/artifacts/harvester-network-controller${SUFFIX}
+cp bin/harvester-network-helper dist/artifacts/harvester-network-helper${SUFFIX}
 
-IMAGE=${REPO}/harvester-network-controller:${TAG}
+CONTROLLER_IMAGE=${REPO}/harvester-network-controller:${TAG}
+HELPER_IMAGE=${REPO}/harvester-network-helper:${TAG}
 DOCKERFILE=package/Dockerfile
 if [ -e ${DOCKERFILE}.${ARCH} ]; then
     DOCKERFILE=${DOCKERFILE}.${ARCH}
 fi
 
-docker build -f ${DOCKERFILE} -t ${IMAGE} .
-echo Built ${IMAGE}
+docker build -f ${DOCKERFILE} --target network-controller --tag ${CONTROLLER_IMAGE} .
+echo Built ${CONTROLLER_IMAGE}
+
+docker build -f ${DOCKERFILE} --target network-helper --tag ${HELPER_IMAGE} .
+echo Built ${HELPER_IMAGE}

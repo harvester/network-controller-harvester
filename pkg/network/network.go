@@ -14,8 +14,8 @@ type Network interface {
 
 type IsolatedNetwork interface {
 	Network
-	AddLocalArea(id int) error
-	RemoveLocalArea(id int) error
+	AddLocalArea(id int, cidr string) error
+	RemoveLocalArea(id int, cidr string) error
 }
 
 type Status struct {
