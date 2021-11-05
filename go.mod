@@ -50,7 +50,9 @@ replace (
 
 require (
 	github.com/coreos/go-iptables v0.6.0
+	github.com/go-ping/ping v0.0.0-20211014180314-6e2b003bffdd
 	github.com/harvester/harvester v0.2.0-rc4
+	github.com/insomniacslk/dhcp v0.0.0-20201112113307-4de412bc85d8
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v0.0.0-20200331171230-d50e42f2b669
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/rancher/lasso v0.0.0-20210219160604-9baf1c12751b
@@ -58,6 +60,8 @@ require (
 	github.com/sirupsen/logrus v1.7.0
 	github.com/urfave/cli v1.22.2
 	github.com/vishvananda/netlink v1.1.1-0.20200914145417-7484f55b2263
+	github.com/vishvananda/netns v0.0.0-20211101163701-50045581ed74 // indirect
+	golang.org/x/sys v0.0.0-20211103235746-7861aae1554b // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	k8s.io/api v0.20.4
 	k8s.io/apimachinery v0.20.4
