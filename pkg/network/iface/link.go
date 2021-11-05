@@ -18,8 +18,6 @@ import (
 )
 
 const (
-	defaultPVID = uint16(1)
-
 	TypeLoopback = "loopback"
 	TypeDevice   = "device"
 	TypeBond     = "bond"
@@ -83,10 +81,6 @@ func GetLinkByIndex(index int) (*Link, error) {
 // AddBridgeVlan adds a new vlan filter entry
 // Equivalent to: `bridge vlan add dev DEV vid VID master`
 func (l *Link) AddBridgeVlan(vid uint16) error {
-	if vid == defaultPVID {
-		return nil
-	}
-
 	if err := netlink.BridgeVlanAdd(l.link, vid, false, false, false, true); err != nil {
 		return fmt.Errorf("add iface vlan failed, error: %v, link: %s, vid: %d", err, l.Name(), vid)
 	}
@@ -97,10 +91,6 @@ func (l *Link) AddBridgeVlan(vid uint16) error {
 // DelBridgeVlan adds a new vlan filter entry
 // Equivalent to: `bridge vlan del dev DEV vid VID master`
 func (l *Link) DelBridgeVlan(vid uint16) error {
-	if vid == defaultPVID {
-		return nil
-	}
-
 	if err := netlink.BridgeVlanDel(l.link, vid, false, false, false, true); err != nil {
 		return fmt.Errorf("delete iface vlan failed, error: %v, link: %s, vid: %d", err, l.Name(), vid)
 	}

@@ -15,7 +15,7 @@ import (
 
 const (
 	KeyNodeName      = "NODENAME"
-	KeyLabelNodeName = "network.harvesterhci.io/nodename"
+	KeyLabelNodeName = networkv1.GroupName + "/nodename"
 	initStatusMsg    = "Initializing network configuration"
 )
 

@@ -54,7 +54,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	}
 
 	switch management.Options.MgmtNetworkType {
-	case "flannel":
+	case "flannel", "canal":
 		mgmtNetwork, err := mgmt.NewFlannelNetwork(management.Options.MgmtNetworkDevice)
 		if err != nil {
 			return err
@@ -165,7 +165,7 @@ func (h Handler) setupVlan(nn *networkv1.NodeNetwork) error {
 }
 
 func (h Handler) repealVlan(nn *networkv1.NodeNetwork) error {
-	v, err := vlan.GetVlan()
+	v, err := vlan.GetVlan(h.mgmtNetwork)
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) && !errors.As(err, &vlan.SlaveNotFoundError{}) {
 		return err
 	} else if err != nil {
@@ -209,7 +209,7 @@ func (h Handler) getNICFromStatus(nn *networkv1.NodeNetwork) string {
 }
 
 func (h Handler) removeVlanNetwork(nn *networkv1.NodeNetwork) error {
-	v, err := vlan.GetVlan()
+	v, err := vlan.GetVlan(h.mgmtNetwork)
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) && !errors.As(err, &vlan.SlaveNotFoundError{}) {
 		return err
 	} else if err != nil {
@@ -319,7 +319,7 @@ func (h Handler) getNetworkInterfaces() ([]networkv1.NetworkInterface, error) {
 	mgmtNiIndex := h.mgmtNetwork.NIC().Index()
 
 	var vlanNiIndex int
-	v, err := vlan.GetVlan()
+	v, err := vlan.GetVlan(h.mgmtNetwork)
 	if err == nil {
 		vlanNiIndex = v.NIC().Index()
 	} else {

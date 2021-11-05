@@ -17,16 +17,16 @@ import (
 const (
 	ControllerName = "harvester-vip-controller"
 
-	vipNamespace        = "harvester-system"
 	vipWorkloadName     = "kube-vip"
 	vipContainerName    = "kube-vip"
 	vipInterfaceEnvName = "vip_interface"
 )
 
 type Handler struct {
-	dsCtr   ctlappsv1.DaemonSetController
-	dsCache ctlappsv1.DaemonSetCache
-	mgmtNIC string
+	namespace string
+	dsCtr     ctlappsv1.DaemonSetController
+	dsCache   ctlappsv1.DaemonSetCache
+	mgmtNIC   string
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -34,8 +34,9 @@ func Register(ctx context.Context, management *config.Management) error {
 	nodeNetworks := management.HarvesterNetworkFactory.Network().V1beta1().NodeNetwork()
 
 	handler := &Handler{
-		dsCtr:   ds,
-		dsCache: ds.Cache(),
+		namespace: management.Options.Namespace,
+		dsCtr:     ds,
+		dsCache:   ds.Cache(),
 	}
 
 	// The manager network controller and kube-vip should deployed in the same node to make sure they get the same management network NIC.
@@ -100,7 +101,7 @@ func (h Handler) OnRemove(key string, nn *networkv1.NodeNetwork) (*networkv1.Nod
 // If the NIC is released from the VLAN network and the harvester-br0 is down, we can modify the vip interface to the default NIC.
 func (h Handler) updateVipInterface(unavailableNIC string) error {
 	klog.Infof("update vip interface, unavailable NIC: %s", unavailableNIC)
-	ds, err := h.dsCache.Get(vipNamespace, vipWorkloadName)
+	ds, err := h.dsCache.Get(h.namespace, vipWorkloadName)
 	if err != nil {
 		return fmt.Errorf("get kube-vip daemonset cache failed, error: %w", err)
 	}

@@ -22,7 +22,10 @@ type Vlan struct {
 	vids        []uint16
 }
 
-const BridgeName = "harvester-br0"
+const (
+	BridgeName = "harvester-br0"
+	PVID       = 1
+)
 
 func (v *Vlan) Type() string {
 	return "vlan"
@@ -66,8 +69,8 @@ func (v *Vlan) getSlaveNIC() (*iface.Link, error) {
 	return iface.GetLinkByName(slaveNIC)
 }
 
-func GetVlan() (*Vlan, error) {
-	v := NewVlan(nil, nil, nil)
+func GetVlan(mgmtNetwork network.Network) (*Vlan, error) {
+	v := NewVlan(nil, mgmtNetwork, nil)
 	if err := v.bridge.Fetch(); err != nil {
 		return nil, err
 	}
@@ -172,18 +175,57 @@ func (v *Vlan) stopMonitor() {
 	network.GetWatcher().DelLink(v.nic.Index())
 }
 
-func (v *Vlan) AddLocalArea(id int) error {
+func (v *Vlan) AddLocalArea(id int, cidr string) error {
 	if v.nic == nil {
 		return fmt.Errorf("physical nic vlan network")
 	}
-	return v.nic.AddBridgeVlan(uint16(id))
+	if id == PVID {
+		return nil
+	}
+
+	if err := v.nic.AddBridgeVlan(uint16(id)); err != nil {
+		return fmt.Errorf("add bridge vlan %d failed, error: %w", id, err)
+	}
+
+	if cidr == "" {
+		return nil
+	}
+
+	if err := iface.EnsureRouteViaGateway(cidr); err != nil {
+		return fmt.Errorf("ensure %s to route via gateway failed, error: %w", cidr, err)
+	}
+	// update routes of bridge
+	if v.NIC().Index() == v.mgmtNetwork.NIC().Index() {
+		return v.bridge.Fetch()
+	}
+
+	return nil
 }
 
-func (v *Vlan) RemoveLocalArea(id int) error {
+func (v *Vlan) RemoveLocalArea(id int, cidr string) error {
 	if v.nic == nil {
 		return fmt.Errorf("physical nic vlan network")
 	}
-	return v.nic.DelBridgeVlan(uint16(id))
+	if id == PVID {
+		return nil
+	}
+
+	if err := v.nic.DelBridgeVlan(uint16(id)); err != nil {
+		return fmt.Errorf("remove bridge vlan %d failed, error: %w", id, err)
+	}
+
+	if cidr == "" {
+		return nil
+	}
+
+	if err := iface.DeleteRouteViaGateway(cidr); err != nil {
+		return fmt.Errorf("delete route with dst %s via gateway failed, error: %w", cidr, err)
+	}
+	if v.NIC().Index() == v.mgmtNetwork.NIC().Index() {
+		return v.bridge.Fetch()
+	}
+
+	return nil
 }
 
 func (v *Vlan) Status(condition network.Condition) (*network.Status, error) {
