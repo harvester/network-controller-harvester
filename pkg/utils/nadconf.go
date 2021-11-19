@@ -32,10 +32,11 @@ const (
 type NadSelectedNetworks []nadv1.NetworkSelectionElement
 
 type Layer3NetworkConf struct {
-	Mode         Mode         `json:"mode"`
-	CIDR         string       `json:"cidr"`
-	Gateway      string       `json:"gateway"`
-	Connectivity Connectivity `json:"connectivity"`
+	Mode         Mode         `json:"mode,omitempty"`
+	CIDR         string       `json:"cidr,omitempty"`
+	Gateway      string       `json:"gateway,omitempty"`
+	ServerIPAddr string       `json:"serverIPAddr,omitempty"`
+	Connectivity Connectivity `json:"connectivity,omitempty"`
 }
 
 func NewLayer3NetworkConf(conf string) (*Layer3NetworkConf, error) {
