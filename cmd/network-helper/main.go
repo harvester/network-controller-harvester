@@ -35,9 +35,15 @@ func main() {
 		// example: [{"interface":"net1","name":"vlan178","namespace":"default"}]
 		cli.StringFlag{
 			Name:   "nadnetworks, n",
-			EnvVar: nad.JobEnvName,
+			EnvVar: nad.JobEnvNadNetwork,
 			Value:  "",
 			Usage:  "NAD network information",
+		},
+		cli.StringFlag{
+			Name:   "dhcpserver, d",
+			EnvVar: nad.JobEnvDHCPServer,
+			Value:  "",
+			Usage:  "DHCP server IP address",
 		},
 	}
 	app.Action = func(c *cli.Context) {
@@ -55,6 +61,7 @@ func run(c *cli.Context) error {
 	masterURL := c.String("master")
 	kubeconfig := c.String("kubeconfig")
 	networks := c.String("nadnetworks")
+	dhcpServerIPAddr := c.String("dhcpserver")
 
 	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
 	if err != nil {
@@ -72,7 +79,7 @@ func run(c *cli.Context) error {
 	netHelper := helper.New(cni)
 
 	for _, selectedNetwork := range selectedNetworks {
-		networkConf, err := netHelper.GetVLANLayer3Network(&selectedNetwork)
+		networkConf, err := netHelper.GetVLANLayer3Network(&selectedNetwork, dhcpServerIPAddr)
 		if err != nil {
 			return fmt.Errorf("failed to get vlan layer3 network, selectedNetwork: %+v, error: %w", selectedNetworks, err)
 		}

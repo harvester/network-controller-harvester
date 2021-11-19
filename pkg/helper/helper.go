@@ -1,13 +1,10 @@
 package helper
 
 import (
-	"context"
 	"net"
 
 	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
-	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -24,27 +21,17 @@ func New(cniFactory *ctlcni.Factory) *NetHelper {
 	}
 }
 
-func (n *NetHelper) GetVLANLayer3Network(selectedNetwork *nadv1.NetworkSelectionElement) (*utils.Layer3NetworkConf, error) {
-	broadcast, err := nclient4.New(selectedNetwork.InterfaceRequest)
+func (n *NetHelper) GetVLANLayer3Network(selectedNetwork *nadv1.NetworkSelectionElement, serverIPAddr string) (*utils.Layer3NetworkConf, error) {
+	cidr, gw, err := obtainCIDRAndGw(selectedNetwork.InterfaceRequest, net.ParseIP(serverIPAddr))
 	if err != nil {
 		return nil, err
 	}
-	defer broadcast.Close()
-
-	offer, err := broadcast.DiscoverOffer(context.TODO())
-	if err != nil {
-		return nil, err
-	}
-
-	gateway := offer.ServerIPAddr
-	cidr := &net.IPNet{}
-	cidr.Mask = offer.Options.Get(dhcpv4.OptionSubnetMask)
-	cidr.IP = offer.YourIPAddr.Mask(cidr.Mask)
 
 	return &utils.Layer3NetworkConf{
 		Mode:         utils.Auto,
+		ServerIPAddr: serverIPAddr,
 		CIDR:         cidr.String(),
-		Gateway:      gateway.String(),
+		Gateway:      gw.String(),
 		Connectivity: utils.Unknown,
 	}, nil
 }

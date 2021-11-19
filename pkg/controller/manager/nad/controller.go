@@ -27,7 +27,8 @@ const (
 
 	jobContainerName      = "network-helper"
 	jobServiceAccountName = "harvester-network-helper"
-	JobEnvName            = "NAD_NETWORKS"
+	JobEnvNadNetwork = "NAD_NETWORKS"
+	JobEnvDHCPServer      = "DHCP_SERVER"
 
 	defaultInterface = "net1"
 
@@ -112,7 +113,7 @@ func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 		return nad, nil
 	}
 	// create or update job to get layer 3 network information automatically
-	if err := h.createOrUpdateJob(nad); err != nil {
+	if err := h.createOrUpdateJob(nad, networkConf.ServerIPAddr); err != nil {
 		return nil, err
 	}
 
@@ -152,13 +153,13 @@ func (h Handler) OnRemove(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 	return nad, nil
 }
 
-func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition) error {
+func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition, dhcpServerAddr string) error {
 	job, err := h.jobCache.Get(h.namespace, nad.Namespace+"-"+nad.Name)
 	if err != nil && !errors.IsNotFound(err) {
 		return err
 	} else if err == nil {
 		// update job
-		job, err = constructJob(job, h.namespace, h.helperImage, nad)
+		job, err = constructJob(job, h.namespace, h.helperImage, dhcpServerAddr, nad)
 		if err != nil {
 			return err
 		}
@@ -167,7 +168,7 @@ func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition) error
 		}
 	} else {
 		// create job
-		job, err = constructJob(nil, h.namespace, h.helperImage, nad)
+		job, err = constructJob(nil, h.namespace, h.helperImage, dhcpServerAddr, nad)
 		if err != nil {
 			return err
 		}
@@ -179,7 +180,7 @@ func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition) error
 	return nil
 }
 
-func constructJob(cur *batchv1.Job, namespace, image string, nad *cniv1.NetworkAttachmentDefinition) (*batchv1.Job, error) {
+func constructJob(cur *batchv1.Job, namespace, image, dhcpServerAddr string, nad *cniv1.NetworkAttachmentDefinition) (*batchv1.Job, error) {
 	job := &batchv1.Job{}
 	if cur != nil {
 		job = cur.DeepCopy()
@@ -212,12 +213,16 @@ func constructJob(cur *batchv1.Job, namespace, image string, nad *cniv1.NetworkA
 					Image: image,
 					Env: []corev1.EnvVar{
 						{
-							Name: JobEnvName,
+							Name: JobEnvNadNetwork,
 							ValueFrom: &corev1.EnvVarSource{
 								FieldRef: &corev1.ObjectFieldSelector{
 									FieldPath: fmt.Sprintf("metadata.annotations['%s']", cniv1.NetworkAttachmentAnnot),
 								},
 							},
+						},
+						{
+							Name: JobEnvDHCPServer,
+							Value: dhcpServerAddr,
 						},
 					},
 					ImagePullPolicy: corev1.PullIfNotPresent,
