@@ -57,6 +57,27 @@ steps:
       event:
         - push
 
+  - name: docker-publish-master-helper
+    image: plugins/docker
+    settings:
+      build_args:
+        - ARCH=amd64
+        - VERSION=${DRONE_BRANCH}-${DRONE_COMMIT_SHA:0:8}-head
+      dockerfile: package/Dockerfile
+      password:
+        from_secret: docker_password
+      repo: "rancher/harvester-network-helper"
+      tag: ${DRONE_BRANCH}-head
+      username:
+        from_secret: docker_username
+    when:
+      ref:
+        include:
+          - "refs/heads/master"
+          - "refs/heads/release/v*"
+      event:
+        - push
+
   - name: docker-publish
     image: plugins/docker
     settings:
@@ -64,6 +85,25 @@ steps:
       password:
         from_secret: docker_password
       repo: "rancher/harvester-network-controller"
+      tag: "${DRONE_TAG}"
+      username:
+        from_secret: docker_username
+    when:
+      instance:
+        - drone-publish.rancher.io
+      ref:
+        - refs/head/master
+        - refs/tags/*
+      event:
+        - tag
+
+  - name: docker-publish-helper
+    image: plugins/docker
+    settings:
+      dockerfile: package/Dockerfile
+      password:
+        from_secret: docker_password
+      repo: "rancher/harvester-network-helper"
       tag: "${DRONE_TAG}"
       username:
         from_secret: docker_username
