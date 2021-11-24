@@ -323,7 +323,7 @@ func (h Handler) getNetworkInterfaces() ([]networkv1.NetworkInterface, error) {
 	if err == nil {
 		vlanNiIndex = v.NIC().Index()
 	} else {
-		klog.Errorf("Can not get VLAN, error: %v", err)
+		klog.Infof("couldn't get VLAN, reason: %v", err)
 	}
 
 	networkInterfaces := make([]networkv1.NetworkInterface, 0)
