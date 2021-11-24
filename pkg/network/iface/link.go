@@ -1,13 +1,11 @@
 package iface
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
@@ -149,14 +147,6 @@ func (l *Link) SetNoMaster() error {
 		return nil
 	}
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-	var isUp bool
-	if l.LinkAttrs().OperState == netlink.OperUp {
-		isUp = true
-		go l.reportDown(ctx, cancel)
-	}
-
 	klog.Infof("%s set no master", l.Name())
 	masterLink, err := GetLinkByIndex(l.LinkAttrs().MasterIndex)
 	if err != nil {
@@ -169,34 +159,7 @@ func (l *Link) SetNoMaster() error {
 		return err
 	}
 
-	// The link will down after a while. We catch the down signal and set the link up.
-	if isUp {
-		select {
-		case <-ctx.Done():
-			return netlink.LinkSetUp(l.link)
-		case <-time.After(time.Minute):
-			klog.Infof("Waiting for link down event timeout")
-		}
-	}
-
 	return nil
-}
-
-func (l *Link) reportDown(ctx context.Context, cancel context.CancelFunc) {
-	linkCh := make(chan netlink.LinkUpdate)
-
-	if err := netlink.LinkSubscribe(linkCh, ctx.Done()); err != nil {
-		klog.Errorf("subscribe link failed, error: %s", err.Error())
-		return
-	}
-
-	for update := range linkCh {
-		if int(update.Index) == l.Index() && update.Link.Attrs().OperState == netlink.OperDown {
-			klog.Infof("%+v/n%+v", update, update.Link)
-			cancel()
-			return
-		}
-	}
 }
 
 // allow to receive DHCP packages after attaching with bridge
