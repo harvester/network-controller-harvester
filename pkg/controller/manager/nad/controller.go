@@ -2,11 +2,14 @@ package nad
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/go-ping/ping"
+	hn "github.com/harvester/harvester/pkg/api/network"
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	ctlbatchv1 "github.com/rancher/wrangler/pkg/generated/controllers/batch/v1"
@@ -27,7 +30,7 @@ const (
 
 	jobContainerName      = "network-helper"
 	jobServiceAccountName = "harvester-network-helper"
-	JobEnvNadNetwork = "NAD_NETWORKS"
+	JobEnvNadNetwork      = "NAD_NETWORKS"
 	JobEnvDHCPServer      = "DHCP_SERVER"
 
 	defaultInterface = "net1"
@@ -88,6 +91,12 @@ func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 		return nil, nil
 	}
 
+	klog.Infof("nad configuration %s has been changed: %s", nad.Name, nad.Spec.Config)
+
+	if err := h.ensureLabels(nad); err != nil {
+		return nil, err
+	}
+
 	// check annotations
 	if nad.Annotations == nil || nad.Annotations[utils.KeyNetworkConf] == "" {
 		return nad, nil
@@ -96,6 +105,8 @@ func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 	if err != nil {
 		return nil, fmt.Errorf("invalid layer 3 network configure: %w", err)
 	}
+
+	klog.Infof("netconf: %+v", networkConf)
 
 	if networkConf.CIDR != "" && networkConf.Gateway != "" {
 		// set connectivity as the initial status unknown
@@ -118,6 +129,23 @@ func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 	}
 
 	return nad, nil
+}
+
+func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
+	if _, ok := nad.Labels[utils.KeyVlanLabel]; ok {
+		return nil
+	}
+
+	netconf := &hn.NetConf{}
+	if err := json.Unmarshal([]byte(nad.Spec.Config), netconf); err != nil {
+		return err
+	}
+	nadCopy := nad.DeepCopy()
+	nadCopy.Labels[utils.KeyVlanLabel] = strconv.Itoa(netconf.Vlan)
+
+	_, err := h.nadClient.Update(nadCopy)
+
+	return err
 }
 
 func (h Handler) setUnknown(nad *cniv1.NetworkAttachmentDefinition, networkConf *utils.Layer3NetworkConf) error {
@@ -221,7 +249,7 @@ func constructJob(cur *batchv1.Job, namespace, image, dhcpServerAddr string, nad
 							},
 						},
 						{
-							Name: JobEnvDHCPServer,
+							Name:  JobEnvDHCPServer,
 							Value: dhcpServerAddr,
 						},
 					},
@@ -232,6 +260,8 @@ func constructJob(cur *batchv1.Job, namespace, image, dhcpServerAddr string, nad
 			ServiceAccountName: jobServiceAccountName,
 		},
 	}
+	backoffLimit := int32(2)
+	job.Spec.BackoffLimit = &backoffLimit
 
 	return job, nil
 }
@@ -273,7 +303,7 @@ func pingGW(gw string) (utils.Connectivity, error) {
 	stats := pinger.Statistics()
 
 	if stats.PacketsSent != stats.PacketsRecv {
-		connectivity = utils.Unconnetable
+		connectivity = utils.Unconnectable
 	} else {
 		connectivity = utils.Connectable
 	}

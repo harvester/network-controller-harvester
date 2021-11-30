@@ -2,18 +2,16 @@ package nad
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 
-	hn "github.com/harvester/harvester/pkg/api/network"
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/vishvananda/netlink"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 
-	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network"
@@ -27,7 +25,6 @@ import (
 const (
 	ControllerName = "harvester-network-nad-controller"
 
-	vlanLabelKey = networkv1.GroupName + "/vlan-id"
 )
 
 type Handler struct {
@@ -70,12 +67,16 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 	}
 
 	klog.Infof("nad configuration %s has been changed: %s", nad.Name, nad.Spec.Config)
-	netconf := &hn.NetConf{}
-	if err := json.Unmarshal([]byte(nad.Spec.Config), netconf); err != nil {
-		return nil, err
-	}
-
 	// TODO delete previous vlan id when update nad
+
+	vlanStr, ok := nad.Labels[utils.KeyVlanLabel]
+	if !ok {
+		return nad, nil
+	}
+	vlanID, err := strconv.Atoi(vlanStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid vlan %s", vlanStr)
+	}
 
 	v, err := vlan.GetVlan(h.mgmtNetwork)
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) && !errors.As(err, &vlan.SlaveNotFoundError{}) {
@@ -92,7 +93,8 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 		}
 	}
 
-	if err := v.AddLocalArea(netconf.Vlan, layer3NetworkConf.CIDR); err != nil {
+
+	if err := v.AddLocalArea(vlanID, layer3NetworkConf.CIDR); err != nil {
 		return nil, err
 	}
 
@@ -110,14 +112,17 @@ func (h Handler) OnRemove(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 
 	klog.Infof("nad configuration %s has been deleted.", nad.Name)
 
-	netconf := &hn.NetConf{}
-	if err := json.Unmarshal([]byte(nad.Spec.Config), netconf); err != nil {
-		return nil, err
+	// there may be multiple nad CR with the same vlan id in different namespaces
+	vlanStr, ok := nad.Labels[utils.KeyVlanLabel]
+	if !ok {
+		return nad, nil
 	}
-
-	// there may be multiple nad CR with the same vlan id
+	vlanID, err := strconv.Atoi(vlanStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid vlan %s", vlanStr)
+	}
 	labelSet := labels.Set(map[string]string{
-		vlanLabelKey: strconv.Itoa(netconf.Vlan),
+		utils.KeyVlanLabel: vlanStr,
 	})
 	nads, err := h.nadCache.List("", labelSet.AsSelector())
 	if err != nil {
@@ -143,7 +148,7 @@ func (h Handler) OnRemove(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 		}
 	}
 
-	if err := v.RemoveLocalArea(netconf.Vlan, layer3NetworkConf.CIDR); err != nil {
+	if err := v.RemoveLocalArea(vlanID, layer3NetworkConf.CIDR); err != nil {
 		return nil, err
 	}
 
