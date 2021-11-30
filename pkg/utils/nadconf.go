@@ -11,15 +11,16 @@ import (
 )
 
 const (
-	KeyNetworkConf = networkv1.GroupName + "/layer3-network"
+	KeyNetworkConf = networkv1.GroupName + "/route"
+	KeyVlanLabel   = networkv1.GroupName + "/vlan-id"
 )
 
 type Connectivity string
 
 const (
-	Connectable  Connectivity = "true"
-	Unconnetable Connectivity = "false"
-	Unknown      Connectivity = "unknown"
+	Connectable   Connectivity = "true"
+	Unconnectable Connectivity = "false"
+	Unknown       Connectivity = "unknown"
 )
 
 type Mode string
