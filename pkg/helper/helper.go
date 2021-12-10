@@ -7,6 +7,7 @@ import (
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
@@ -21,19 +22,21 @@ func New(cniFactory *ctlcni.Factory) *NetHelper {
 	}
 }
 
-func (n *NetHelper) GetVLANLayer3Network(selectedNetwork *nadv1.NetworkSelectionElement, serverIPAddr string) (*utils.Layer3NetworkConf, error) {
-	cidr, gw, err := obtainCIDRAndGw(selectedNetwork.InterfaceRequest, net.ParseIP(serverIPAddr))
-	if err != nil {
-		return nil, err
-	}
-
-	return &utils.Layer3NetworkConf{
+func (n *NetHelper) GetVLANLayer3Network(selectedNetwork *nadv1.NetworkSelectionElement, serverIPAddr string) *utils.Layer3NetworkConf {
+	networkConf := &utils.Layer3NetworkConf{
 		Mode:         utils.Auto,
 		ServerIPAddr: serverIPAddr,
-		CIDR:         cidr.String(),
-		Gateway:      gw.String(),
-		Connectivity: utils.Unknown,
-	}, nil
+	}
+	cidr, gw, err := obtainCIDRAndGw(selectedNetwork.InterfaceRequest, net.ParseIP(serverIPAddr))
+	if err == nil {
+		networkConf.CIDR = cidr.String()
+		networkConf.Gateway = gw.String()
+	} else {
+		klog.Errorf("obtain CIDR and gw using DHCP protocol failed, error: %v", err)
+		networkConf.Connectivity = utils.DHCPFailed
+	}
+
+	return networkConf
 }
 
 func (n *NetHelper) RecordToNad(selectedNetwork *nadv1.NetworkSelectionElement, networkConf *utils.Layer3NetworkConf) error {
