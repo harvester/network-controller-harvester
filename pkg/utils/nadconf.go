@@ -20,7 +20,8 @@ type Connectivity string
 const (
 	Connectable   Connectivity = "true"
 	Unconnectable Connectivity = "false"
-	Unknown       Connectivity = "unknown"
+	DHCPFailed    Connectivity = "DHCP failed"
+	PingFailed    Connectivity = "ping failed"
 )
 
 type Mode string
