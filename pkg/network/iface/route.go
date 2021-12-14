@@ -76,10 +76,11 @@ func EnsureRouteViaGateway(cidr string) error {
 		Gw:        gateway,
 		Protocol:  netlink.FAMILY_V4,
 	}
-	if err := netlink.RouteAdd(route); err != nil {
+	if err := netlink.RouteAdd(route); err != nil && err != syscall.EEXIST {
 		return err
+	} else if err == nil {
+		klog.Infof("add route: %+v", route)
 	}
-	klog.Infof("add route: %+v", route)
 
 	return nil
 }
@@ -89,19 +90,21 @@ func DeleteRouteViaGateway(cidr string) error {
 	if err != nil {
 		return err
 	}
-	gateway, _, err := getGateway()
+	gateway, linkIndex, err := getGateway()
 	if err != nil {
 		return err
 	}
 
 	route := &netlink.Route{
-		Dst: network,
-		Gw:  gateway,
+		Dst:       network,
+		Gw:        gateway,
+		LinkIndex: linkIndex,
 	}
 	if err := netlink.RouteDel(route); err != nil && !errors.Is(err, syscall.ESRCH) {
 		return err
+	} else if err == nil {
+		klog.Infof("delete route: %+v", route)
 	}
-	klog.Infof("delete route: %+v", err)
 
 	return nil
 }

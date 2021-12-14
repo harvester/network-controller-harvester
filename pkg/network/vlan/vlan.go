@@ -24,7 +24,6 @@ type Vlan struct {
 
 const (
 	BridgeName = "harvester-br0"
-	PVID       = 1
 )
 
 func (v *Vlan) Type() string {
@@ -179,9 +178,6 @@ func (v *Vlan) AddLocalArea(id int, cidr string) error {
 	if v.nic == nil {
 		return fmt.Errorf("physical nic vlan network")
 	}
-	if id == PVID {
-		return nil
-	}
 
 	if err := v.nic.AddBridgeVlan(uint16(id)); err != nil {
 		return fmt.Errorf("add bridge vlan %d failed, error: %w", id, err)
@@ -205,9 +201,6 @@ func (v *Vlan) AddLocalArea(id int, cidr string) error {
 func (v *Vlan) RemoveLocalArea(id int, cidr string) error {
 	if v.nic == nil {
 		return fmt.Errorf("physical nic vlan network")
-	}
-	if id == PVID {
-		return nil
 	}
 
 	if err := v.nic.DelBridgeVlan(uint16(id)); err != nil {
