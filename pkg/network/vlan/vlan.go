@@ -144,7 +144,11 @@ func (v *Vlan) Teardown() error {
 	if err := v.nic.AddRoutes(v.bridge); err != nil {
 		return err
 	}
-	// delete IPv4 address of bridge, routes of bridge will be auto-removed
+	// delete route of bridge explicitly
+	if err := v.bridge.ToLink().DeleteRoutes(); err != nil {
+		return err
+	}
+	// delete IPv4 address of bridge
 	if err := v.bridge.ClearAddr(); err != nil {
 		return err
 	}
