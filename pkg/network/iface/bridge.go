@@ -6,7 +6,10 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
+	"k8s.io/kubernetes/pkg/util/sysctl"
 )
+
+const bridgeNFCallIptables = "net/bridge/bridge-nf-call-iptables"
 
 type Bridge struct {
 	bridge *netlink.Bridge
@@ -27,6 +30,10 @@ func NewBridge(name string) *Bridge {
 // Ensure bridge
 // set promiscuous mod default
 func (br *Bridge) Ensure() error {
+	if err := disableBridgeNF(); err != nil {
+		return fmt.Errorf("disable net.bridge.bridge-nf-call-iptables failed, error: %w", err)
+	}
+
 	if err := netlink.LinkAdd(br.bridge); err != nil && err != syscall.EEXIST {
 		return fmt.Errorf("add iface failed, error: %w, iface: %v", err, br)
 	}
@@ -57,6 +64,21 @@ func (br *Bridge) Ensure() error {
 
 	// Re-fetch bridge to ensure br.Bridge contains all latest attributes.
 	return br.Fetch()
+}
+
+func disableBridgeNF() error {
+	sysctlInterface := sysctl.New()
+	isForward, err := sysctlInterface.GetSysctl(bridgeNFCallIptables)
+	if err != nil {
+		return err
+	}
+	if isForward != 0 {
+		if err := sysctlInterface.SetSysctl(bridgeNFCallIptables, 0); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Keep the bridge's IPv4 addresses are the same with the slave
