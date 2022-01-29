@@ -135,8 +135,10 @@ func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 }
 
 func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
-	if _, ok := nad.Labels[utils.KeyVlanLabel]; ok {
-		return nil
+	if nad.Labels != nil {
+		if _, ok := nad.Labels[utils.KeyVlanLabel]; ok {
+			return nil
+		}
 	}
 
 	netconf := &hn.NetConf{}
@@ -144,6 +146,9 @@ func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
 		return err
 	}
 	nadCopy := nad.DeepCopy()
+	if nadCopy.Labels == nil {
+		nadCopy.Labels = make(map[string]string)
+	}
 	nadCopy.Labels[utils.KeyVlanLabel] = strconv.Itoa(netconf.Vlan)
 
 	_, err := h.nadClient.Update(nadCopy)
