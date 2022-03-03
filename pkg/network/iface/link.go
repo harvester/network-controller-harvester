@@ -11,8 +11,6 @@ import (
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/sysctl"
-	"k8s.io/utils/exec"
-	"k8s.io/utils/net/ebtables"
 )
 
 const (
@@ -126,9 +124,6 @@ func (l *Link) clearMacVlan() error {
 }
 
 func (l *Link) SetMaster(br *Bridge, vids []uint16) error {
-	if err := l.setRules4DHCP(); err != nil {
-		return err
-	}
 	if l.link.Attrs().MasterIndex == br.bridge.Index {
 		return nil
 	}
@@ -150,10 +145,6 @@ func (l *Link) SetMaster(br *Bridge, vids []uint16) error {
 }
 
 func (l *Link) SetNoMaster() error {
-	if err := l.unsetRules4DHCP(); err != nil {
-		return err
-	}
-
 	if l.LinkAttrs().MasterIndex == 0 {
 		return nil
 	}
@@ -168,36 +159,6 @@ func (l *Link) SetNoMaster() error {
 	}
 	if err := netlink.LinkSetNoMaster(l.link); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-// allow to receive DHCP packages after attaching with bridge
-func (l *Link) setRules4DHCP() error {
-	executor := exec.New()
-	runner := ebtables.New(executor)
-	var ruleArgs []string
-
-	ruleArgs = append(ruleArgs, "-p", "IPv4", "-d", l.link.Attrs().HardwareAddr.String(), "-i", l.Name(),
-		"--ip-proto", "udp", "--ip-dport", "68", "-j", "DROP")
-	_, err := runner.EnsureRule(ebtables.Append, ebtables.TableBroute, ebtables.ChainBrouting, ruleArgs...)
-	if err != nil {
-		return fmt.Errorf("set ebtables rules failed, error: %w", err)
-	}
-
-	return nil
-}
-
-func (l *Link) unsetRules4DHCP() error {
-	executor := exec.New()
-	runner := ebtables.New(executor)
-	var ruleArgs []string
-
-	ruleArgs = append(ruleArgs, "-p", "IPv4", "-d", l.link.Attrs().HardwareAddr.String(), "-i", l.Name(),
-		"--ip-proto", "udp", "--ip-dport", "68", "-j", "DROP")
-	if err := runner.DeleteRule(ebtables.TableBroute, ebtables.ChainBrouting, ruleArgs...); err != nil {
-		return fmt.Errorf("delete ebtables rules failed, error: %w", err)
 	}
 
 	return nil
