@@ -24,7 +24,6 @@ import (
 // For example, the controller get VLAN ID from nad and add it to physical NIC attached with bridge.
 const (
 	ControllerName = "harvester-network-nad-controller"
-
 )
 
 type Handler struct {
@@ -92,7 +91,6 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 			return nil, err
 		}
 	}
-
 
 	if err := v.AddLocalArea(vlanID, layer3NetworkConf.CIDR); err != nil {
 		return nil, err
