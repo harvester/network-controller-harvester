@@ -1,5 +1,5 @@
 /*
-Copyright 2021 Rancher Labs, Inc.
+Copyright 2022 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -360,6 +360,10 @@ func (a *upgradeGeneratingHandler) Remove(key string, obj *v1beta1.Upgrade) (*v1
 }
 
 func (a *upgradeGeneratingHandler) Handle(obj *v1beta1.Upgrade, status v1beta1.UpgradeStatus) (v1beta1.UpgradeStatus, error) {
+	if !obj.DeletionTimestamp.IsZero() {
+		return status, nil
+	}
+
 	objs, newStatus, err := a.UpgradeGeneratingHandler(obj, status)
 	if err != nil {
 		return newStatus, err

@@ -12,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 )
@@ -23,7 +22,7 @@ const (
 
 type Patcher func(namespace, name string, pt types.PatchType, data []byte) (runtime.Object, error)
 
-// return false if the Reconciler did not handler this object
+// Reconciler return false if it did not handle this object
 type Reconciler func(oldObj runtime.Object, newObj runtime.Object) (bool, error)
 
 type ClientFactory func(gvr schema.GroupVersionResource) (dynamic.NamespaceableResourceInterface, error)
@@ -78,6 +77,7 @@ type Apply interface {
 	WithListerNamespace(ns string) Apply
 	WithRateLimiting(ratelimitingQps float32) Apply
 	WithNoDelete() Apply
+	WithNoDeleteGVK(gvks ...schema.GroupVersionKind) Apply
 	WithGVK(gvks ...schema.GroupVersionKind) Apply
 	WithSetOwnerReference(controller, block bool) Apply
 	WithIgnorePreviousApplied() Apply
@@ -89,12 +89,12 @@ type Apply interface {
 }
 
 func NewForConfig(cfg *rest.Config) (Apply, error) {
-	k8s, err := kubernetes.NewForConfig(cfg)
+	discovery, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	return New(k8s.Discovery(), NewClientFactory(cfg)), nil
+	return New(discovery, NewClientFactory(cfg)), nil
 }
 
 func New(discovery discovery.DiscoveryInterface, cf ClientFactory, igs ...InformerGetter) Apply {
@@ -278,6 +278,10 @@ func (a *apply) WithRateLimiting(ratelimitingQps float32) Apply {
 
 func (a *apply) WithNoDelete() Apply {
 	return a.newDesiredSet().WithNoDelete()
+}
+
+func (a *apply) WithNoDeleteGVK(gvks ...schema.GroupVersionKind) Apply {
+	return a.newDesiredSet().WithNoDeleteGVK(gvks...)
 }
 
 func (a *apply) WithSetOwnerReference(controller, block bool) Apply {

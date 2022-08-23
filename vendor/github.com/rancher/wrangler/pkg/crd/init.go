@@ -2,6 +2,7 @@ package crd
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -15,17 +16,24 @@ import (
 	"github.com/rancher/wrangler/pkg/name"
 	"github.com/rancher/wrangler/pkg/schemas/openapi"
 	"github.com/sirupsen/logrus"
-	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
-	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
+	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
+	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiextv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	"k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
+
+	// Ensure the gvks are loaded so that apply works correctly
+	_ "github.com/rancher/wrangler/pkg/generated/controllers/apiextensions.k8s.io/v1"
 )
+
+const CRDKind = "CustomResourceDefinition"
 
 type Factory struct {
 	wg        sync.WaitGroup
@@ -39,19 +47,20 @@ type CRD struct {
 	PluralName   string
 	SingularName string
 	NonNamespace bool
-	Schema       *v1beta1.JSONSchemaProps
+	Schema       *apiextv1.JSONSchemaProps
 	SchemaObject interface{}
-	Columns      []v1beta1.CustomResourceColumnDefinition
+	Columns      []apiextv1.CustomResourceColumnDefinition
 	Status       bool
 	Scale        bool
 	Categories   []string
 	ShortNames   []string
 	Labels       map[string]string
+	Annotations  map[string]string
 
 	Override runtime.Object
 }
 
-func (c CRD) WithSchema(schema *v1beta1.JSONSchemaProps) CRD {
+func (c CRD) WithSchema(schema *apiextv1.JSONSchemaProps) CRD {
 	c.Schema = schema
 	return c
 }
@@ -62,7 +71,7 @@ func (c CRD) WithSchemaFromStruct(obj interface{}) CRD {
 }
 
 func (c CRD) WithColumn(name, path string) CRD {
-	c.Columns = append(c.Columns, v1beta1.CustomResourceColumnDefinition{
+	c.Columns = append(c.Columns, apiextv1.CustomResourceColumnDefinition{
 		Name:     name,
 		Type:     "string",
 		Priority: 0,
@@ -100,8 +109,8 @@ func fieldName(f reflect.StructField) string {
 	return name
 }
 
-func tagToColumn(f reflect.StructField) (v1beta1.CustomResourceColumnDefinition, bool) {
-	c := v1beta1.CustomResourceColumnDefinition{
+func tagToColumn(f reflect.StructField) (apiextv1.CustomResourceColumnDefinition, bool) {
+	c := apiextv1.CustomResourceColumnDefinition{
 		Name: f.Name,
 		Type: "string",
 	}
@@ -132,7 +141,7 @@ func tagToColumn(f reflect.StructField) (v1beta1.CustomResourceColumnDefinition,
 	return c, true
 }
 
-func readCustomColumns(t reflect.Type, path string) (result []v1beta1.CustomResourceColumnDefinition) {
+func readCustomColumns(t reflect.Type, path string) (result []apiextv1.CustomResourceColumnDefinition) {
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		fieldName := fieldName(f)
@@ -160,7 +169,7 @@ func readCustomColumns(t reflect.Type, path string) (result []v1beta1.CustomReso
 	return result
 }
 
-func (c CRD) WithCustomColumn(columns ...v1beta1.CustomResourceColumnDefinition) CRD {
+func (c CRD) WithCustomColumn(columns ...apiextv1.CustomResourceColumnDefinition) CRD {
 	c.Columns = append(c.Columns, columns...)
 	return c
 }
@@ -222,33 +231,33 @@ func (c CRD) ToCustomResourceDefinition() (runtime.Object, error) {
 
 	name := strings.ToLower(plural + "." + c.GVK.Group)
 
-	crd := apiext.CustomResourceDefinition{
+	crd := apiextv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: apiext.CustomResourceDefinitionSpec{
-			AdditionalPrinterColumns: c.Columns,
-			Group:                    c.GVK.Group,
-			Version:                  c.GVK.Version,
-			Versions: []apiext.CustomResourceDefinitionVersion{
+		Spec: apiextv1.CustomResourceDefinitionSpec{
+			Group: c.GVK.Group,
+			Versions: []apiextv1.CustomResourceDefinitionVersion{
 				{
-					Name:    c.GVK.Version,
-					Storage: true,
-					Served:  true,
+					Name:                     c.GVK.Version,
+					Storage:                  true,
+					Served:                   true,
+					AdditionalPrinterColumns: c.Columns,
 				},
 			},
-			Names: apiext.CustomResourceDefinitionNames{
+			Names: apiextv1.CustomResourceDefinitionNames{
 				Plural:     plural,
 				Singular:   singular,
 				Kind:       c.GVK.Kind,
 				Categories: c.Categories,
 				ShortNames: c.ShortNames,
 			},
+			PreserveUnknownFields: false,
 		},
 	}
 
 	if c.Schema != nil {
-		crd.Spec.Validation = &apiext.CustomResourceValidation{
+		crd.Spec.Versions[0].Schema = &apiextv1.CustomResourceValidation{
 			OpenAPIV3Schema: c.Schema,
 		}
 	}
@@ -258,18 +267,35 @@ func (c CRD) ToCustomResourceDefinition() (runtime.Object, error) {
 		if err != nil {
 			return nil, err
 		}
-		crd.Spec.Validation = &apiext.CustomResourceValidation{
+		crd.Spec.Versions[0].Schema = &apiextv1.CustomResourceValidation{
 			OpenAPIV3Schema: schema,
 		}
 	}
 
+	// add a dummy schema because v1 requires OpenAPIV3Schema to be set
+	if crd.Spec.Versions[0].Schema == nil {
+		crd.Spec.Versions[0].Schema = &apiextv1.CustomResourceValidation{
+			OpenAPIV3Schema: &apiextv1.JSONSchemaProps{
+				Type: "object",
+				Properties: map[string]apiextv1.JSONSchemaProps{
+					"spec": {
+						XPreserveUnknownFields: &[]bool{true}[0],
+					},
+					"status": {
+						XPreserveUnknownFields: &[]bool{true}[0],
+					},
+				},
+			},
+		}
+	}
+
 	if c.Status {
-		crd.Spec.Subresources = &apiext.CustomResourceSubresources{
-			Status: &apiext.CustomResourceSubresourceStatus{},
+		crd.Spec.Versions[0].Subresources = &apiextv1.CustomResourceSubresources{
+			Status: &apiextv1.CustomResourceSubresourceStatus{},
 		}
 		if c.Scale {
 			sel := "Spec.Selector"
-			crd.Spec.Subresources.Scale = &apiext.CustomResourceSubresourceScale{
+			crd.Spec.Versions[0].Subresources.Scale = &apiextv1.CustomResourceSubresourceScale{
 				SpecReplicasPath:   "Spec.Replicas",
 				StatusReplicasPath: "Status.Replicas",
 				LabelSelectorPath:  &sel,
@@ -278,13 +304,61 @@ func (c CRD) ToCustomResourceDefinition() (runtime.Object, error) {
 	}
 
 	if c.NonNamespace {
-		crd.Spec.Scope = apiext.ClusterScoped
+		crd.Spec.Scope = apiextv1.ClusterScoped
 	} else {
-		crd.Spec.Scope = apiext.NamespaceScoped
+		crd.Spec.Scope = apiextv1.NamespaceScoped
 	}
 
 	crd.Labels = c.Labels
-	return &crd, nil
+	crd.Annotations = c.Annotations
+
+	// Convert to unstructured to ensure that PreserveUnknownFields=false is set because the struct will omit false
+	mapData, err := convert.EncodeToMap(crd)
+	if err != nil {
+		return nil, err
+	}
+	mapData["kind"] = CRDKind
+	mapData["apiVersion"] = apiextv1.SchemeGroupVersion.String()
+
+	return &unstructured.Unstructured{
+		Object: mapData,
+	}, unstructured.SetNestedField(mapData, false, "spec", "preserveUnknownFields")
+}
+
+func (c CRD) ToCustomResourceDefinitionV1Beta1() (*apiextv1beta1.CustomResourceDefinition, error) {
+	toConvertCRD, err := c.ToCustomResourceDefinition()
+	if err != nil {
+		return nil, err
+	}
+	if toConvertCRD == nil {
+		return nil, fmt.Errorf("cannot convert empty CRD runtime object to apiextensions v1beta1 CRD object")
+	}
+
+	unstructuredCRD, ok := toConvertCRD.(*unstructured.Unstructured)
+	if !ok {
+		return nil, fmt.Errorf("could not convert CRD runtime object to *unstructured.Unstructured")
+	}
+	var v1CRD *apiextv1.CustomResourceDefinition
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredCRD.UnstructuredContent(), &v1CRD); err != nil {
+		return nil, err
+	}
+
+	internalCRD := &apiext.CustomResourceDefinition{}
+	if err := apiextv1.Convert_v1_CustomResourceDefinition_To_apiextensions_CustomResourceDefinition(v1CRD, internalCRD, nil); err != nil {
+		return nil, err
+	}
+	v1beta1CRD := &apiextv1beta1.CustomResourceDefinition{}
+	if err := apiextv1beta1.Convert_apiextensions_CustomResourceDefinition_To_v1beta1_CustomResourceDefinition(internalCRD, v1beta1CRD, nil); err != nil {
+		return nil, err
+	}
+
+	// GVK is dropped during conversion, so we must add it.
+	v1beta1CRD.GetObjectKind().SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   apiextv1beta1.SchemeGroupVersion.Group,
+		Version: apiextv1beta1.SchemeGroupVersion.Version,
+		Kind:    CRDKind,
+	})
+	return v1beta1CRD, nil
 }
 
 func NamespacedType(name string) CRD {
@@ -376,7 +450,7 @@ func (f *Factory) BatchCreateCRDs(ctx context.Context, crds ...CRD) *Factory {
 	return f
 }
 
-func (f *Factory) CreateCRDs(ctx context.Context, crds ...CRD) (map[schema.GroupVersionKind]*apiext.CustomResourceDefinition, error) {
+func (f *Factory) CreateCRDs(ctx context.Context, crds ...CRD) (map[schema.GroupVersionKind]*apiextv1.CustomResourceDefinition, error) {
 	if len(crds) == 0 {
 		return nil, nil
 	}
@@ -388,7 +462,7 @@ func (f *Factory) CreateCRDs(ctx context.Context, crds ...CRD) (map[schema.Group
 		return nil, err
 	}
 
-	crdStatus := map[schema.GroupVersionKind]*apiext.CustomResourceDefinition{}
+	crdStatus := map[schema.GroupVersionKind]*apiextv1.CustomResourceDefinition{}
 
 	ready, err := f.getReadyCRDs(ctx)
 	if err != nil {
@@ -421,7 +495,7 @@ func (f *Factory) CreateCRDs(ctx context.Context, crds ...CRD) (map[schema.Group
 	return crdStatus, nil
 }
 
-func (f *Factory) waitCRD(ctx context.Context, crdName string, gvk schema.GroupVersionKind, crdStatus map[schema.GroupVersionKind]*apiext.CustomResourceDefinition) error {
+func (f *Factory) waitCRD(ctx context.Context, crdName string, gvk schema.GroupVersionKind, crdStatus map[schema.GroupVersionKind]*apiextv1.CustomResourceDefinition) error {
 	logrus.Infof("Waiting for CRD %s to become available", crdName)
 	defer logrus.Infof("Done waiting for CRD %s to become available", crdName)
 
@@ -432,20 +506,20 @@ func (f *Factory) waitCRD(ctx context.Context, crdName string, gvk schema.GroupV
 		}
 		first = false
 
-		crd, err := f.CRDClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(ctx, crdName, metav1.GetOptions{})
+		crd, err := f.CRDClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, crdName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
 
 		for _, cond := range crd.Status.Conditions {
 			switch cond.Type {
-			case apiext.Established:
-				if cond.Status == apiext.ConditionTrue {
+			case apiextv1.Established:
+				if cond.Status == apiextv1.ConditionTrue {
 					crdStatus[gvk] = crd
 					return true, err
 				}
-			case apiext.NamesAccepted:
-				if cond.Status == apiext.ConditionFalse {
+			case apiextv1.NamesAccepted:
+				if cond.Status == apiextv1.ConditionFalse {
 					logrus.Infof("Name conflict on %s: %v\n", crdName, cond.Reason)
 				}
 			}
@@ -455,7 +529,7 @@ func (f *Factory) waitCRD(ctx context.Context, crdName string, gvk schema.GroupV
 	})
 }
 
-func (f *Factory) createCRD(ctx context.Context, crdDef CRD, ready map[string]*apiext.CustomResourceDefinition) (*apiext.CustomResourceDefinition, error) {
+func (f *Factory) createCRD(ctx context.Context, crdDef CRD, ready map[string]*apiextv1.CustomResourceDefinition) (*apiextv1.CustomResourceDefinition, error) {
 	crd, err := crdDef.ToCustomResourceDefinition()
 	if err != nil {
 		return nil, err
@@ -471,30 +545,30 @@ func (f *Factory) createCRD(ctx context.Context, crdDef CRD, ready map[string]*a
 		return nil, err
 	}
 
-	return f.CRDClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(ctx, meta.GetName(), metav1.GetOptions{})
+	return f.CRDClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, meta.GetName(), metav1.GetOptions{})
 }
 
 func (f *Factory) ensureAccess(ctx context.Context) (bool, error) {
-	_, err := f.CRDClient.ApiextensionsV1beta1().CustomResourceDefinitions().List(ctx, metav1.ListOptions{})
+	_, err := f.CRDClient.ApiextensionsV1().CustomResourceDefinitions().List(ctx, metav1.ListOptions{})
 	if apierrors.IsForbidden(err) {
 		return false, nil
 	}
 	return true, err
 }
 
-func (f *Factory) getReadyCRDs(ctx context.Context) (map[string]*apiext.CustomResourceDefinition, error) {
-	list, err := f.CRDClient.ApiextensionsV1beta1().CustomResourceDefinitions().List(ctx, metav1.ListOptions{})
+func (f *Factory) getReadyCRDs(ctx context.Context) (map[string]*apiextv1.CustomResourceDefinition, error) {
+	list, err := f.CRDClient.ApiextensionsV1().CustomResourceDefinitions().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	result := map[string]*apiext.CustomResourceDefinition{}
+	result := map[string]*apiextv1.CustomResourceDefinition{}
 
 	for i, crd := range list.Items {
 		for _, cond := range crd.Status.Conditions {
 			switch cond.Type {
-			case apiext.Established:
-				if cond.Status == apiext.ConditionTrue {
+			case apiextv1.Established:
+				if cond.Status == apiextv1.ConditionTrue {
 					result[crd.Name] = &list.Items[i]
 				}
 			}

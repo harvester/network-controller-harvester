@@ -3,9 +3,13 @@ package config
 import (
 	"context"
 
+	helmv1 "github.com/k3s-io/helm-controller/pkg/generated/controllers/helm.cattle.io"
 	dashboardapi "github.com/kubernetes/dashboard/src/app/backend/auth/api"
 	"github.com/rancher/lasso/pkg/controller"
+	catalogv1 "github.com/rancher/rancher/pkg/generated/controllers/catalog.cattle.io"
 	rancherv3 "github.com/rancher/rancher/pkg/generated/controllers/management.cattle.io"
+	provisioningv1 "github.com/rancher/rancher/pkg/generated/controllers/provisioning.cattle.io"
+	"github.com/rancher/wrangler/pkg/apply"
 	appsv1 "github.com/rancher/wrangler/pkg/generated/controllers/apps"
 	batchv1 "github.com/rancher/wrangler/pkg/generated/controllers/batch"
 	corev1 "github.com/rancher/wrangler/pkg/generated/controllers/core"
@@ -20,13 +24,14 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 
-	"github.com/harvester/harvester/pkg/auth/jwe"
 	"github.com/harvester/harvester/pkg/generated/clientset/versioned/scheme"
-	"github.com/harvester/harvester/pkg/generated/controllers/cdi.kubevirt.io"
+	"github.com/harvester/harvester/pkg/generated/controllers/cluster.x-k8s.io"
+	ctlharvcorev1 "github.com/harvester/harvester/pkg/generated/controllers/core"
 	ctlharvesterv1 "github.com/harvester/harvester/pkg/generated/controllers/harvesterhci.io"
 	cniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
 	"github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io"
 	longhornv1 "github.com/harvester/harvester/pkg/generated/controllers/longhorn.io"
+	"github.com/harvester/harvester/pkg/generated/controllers/networking.k8s.io"
 	snapshotv1 "github.com/harvester/harvester/pkg/generated/controllers/snapshot.storage.k8s.io"
 	"github.com/harvester/harvester/pkg/generated/controllers/upgrade.cattle.io"
 )
@@ -40,22 +45,19 @@ type Options struct {
 	Threadiness     int
 	HTTPListenPort  int
 	HTTPSListenPort int
-	Debug           bool
-	Trace           bool
 
-	SkipAuthentication bool
-	RancherEmbedded    bool
-	RancherURL         string
-	HCIMode            bool
+	RancherEmbedded bool
+	RancherURL      string
+	HCIMode         bool
 }
 
 type Scaled struct {
-	ctx               context.Context
+	Ctx               context.Context
 	ControllerFactory controller.SharedControllerFactory
 
 	VirtFactory              *kubevirt.Factory
-	CDIFactory               *cdi.Factory
 	HarvesterFactory         *ctlharvesterv1.Factory
+	HarvesterCoreFactory     *ctlharvcorev1.Factory
 	CoreFactory              *corev1.Factory
 	AppsFactory              *appsv1.Factory
 	BatchFactory             *batchv1.Factory
@@ -72,10 +74,10 @@ type Scaled struct {
 
 type Management struct {
 	ctx               context.Context
+	Apply             apply.Apply
 	ControllerFactory controller.SharedControllerFactory
 
 	VirtFactory              *kubevirt.Factory
-	CDIFactory               *cdi.Factory
 	HarvesterFactory         *ctlharvesterv1.Factory
 	CoreFactory              *corev1.Factory
 	AppsFactory              *appsv1.Factory
@@ -84,8 +86,14 @@ type Management struct {
 	StorageFactory           *storagev1.Factory
 	SnapshotFactory          *snapshotv1.Factory
 	LonghornFactory          *longhornv1.Factory
+	ProvisioningFactory      *provisioningv1.Factory
+	CatalogFactory           *catalogv1.Factory
 	RancherManagementFactory *rancherv3.Factory
-	UpgradeFactory           *upgrade.Factory
+	HelmFactory              *helmv1.Factory
+
+	NetworkingFactory *networking.Factory
+	UpgradeFactory    *upgrade.Factory
+	ClusterFactory    *cluster.Factory
 
 	ClientSet  *kubernetes.Clientset
 	RestConfig *rest.Config
@@ -95,7 +103,7 @@ type Management struct {
 
 func SetupScaled(ctx context.Context, restConfig *rest.Config, opts *generic.FactoryOptions, namespace string) (context.Context, *Scaled, error) {
 	scaled := &Scaled{
-		ctx: ctx,
+		Ctx: ctx,
 	}
 
 	virt, err := kubevirt.NewFactoryFromConfigWithOptions(restConfig, opts)
@@ -105,18 +113,18 @@ func SetupScaled(ctx context.Context, restConfig *rest.Config, opts *generic.Fac
 	scaled.VirtFactory = virt
 	scaled.starters = append(scaled.starters, virt)
 
-	cdiFactory, err := cdi.NewFactoryFromConfigWithOptions(restConfig, opts)
-	if err != nil {
-		return nil, nil, err
-	}
-	scaled.CDIFactory = cdiFactory
-	scaled.starters = append(scaled.starters, cdiFactory)
-
 	harvesterFactory, err := ctlharvesterv1.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {
 		return nil, nil, err
 	}
 	scaled.HarvesterFactory = harvesterFactory
+	scaled.starters = append(scaled.starters, harvesterFactory)
+
+	harvesterCoreFactory, err := ctlharvcorev1.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	scaled.HarvesterCoreFactory = harvesterCoreFactory
 	scaled.starters = append(scaled.starters, harvesterFactory)
 
 	core, err := corev1.NewFactoryFromConfigWithOptions(restConfig, opts)
@@ -180,11 +188,7 @@ func SetupScaled(ctx context.Context, restConfig *rest.Config, opts *generic.Fac
 		return nil, nil, err
 	}
 
-	scaled.TokenManager, err = jwe.NewJWETokenManager(scaled.CoreFactory.Core().V1().Secret(), namespace)
-	if err != nil {
-		return nil, nil, err
-	}
-	return context.WithValue(scaled.ctx, _scaledKey{}, scaled), scaled, nil
+	return context.WithValue(scaled.Ctx, _scaledKey{}, scaled), scaled, nil
 }
 
 func setupManagement(ctx context.Context, restConfig *rest.Config, opts *generic.FactoryOptions) (*Management, error) {
@@ -192,19 +196,18 @@ func setupManagement(ctx context.Context, restConfig *rest.Config, opts *generic
 		ctx: ctx,
 	}
 
+	apply, err := apply.NewForConfig(restConfig)
+	if err != nil {
+		return nil, err
+	}
+	management.Apply = apply
+
 	virt, err := kubevirt.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {
 		return nil, err
 	}
 	management.VirtFactory = virt
 	management.starters = append(management.starters, virt)
-
-	cdiFactory, err := cdi.NewFactoryFromConfigWithOptions(restConfig, opts)
-	if err != nil {
-		return nil, err
-	}
-	management.CDIFactory = cdiFactory
-	management.starters = append(management.starters, cdiFactory)
 
 	harv, err := ctlharvesterv1.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {
@@ -269,12 +272,47 @@ func setupManagement(ctx context.Context, restConfig *rest.Config, opts *generic
 	management.SnapshotFactory = snapshot
 	management.starters = append(management.starters, snapshot)
 
+	provisioning, err := provisioningv1.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+	management.ProvisioningFactory = provisioning
+	management.starters = append(management.starters, provisioning)
+
+	catalog, err := catalogv1.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+	management.CatalogFactory = catalog
+	management.starters = append(management.starters, catalog)
+
+	helm, err := helmv1.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+	management.HelmFactory = helm
+	management.starters = append(management.starters, helm)
+
+	networking, err := networking.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+	management.NetworkingFactory = networking
+	management.starters = append(management.starters, networking)
+
 	rancher, err := rancherv3.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {
 		return nil, err
 	}
 	management.RancherManagementFactory = rancher
 	management.starters = append(management.starters, rancher)
+
+	cluster, err := cluster.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+	management.ClusterFactory = cluster
+	management.starters = append(management.starters, cluster)
 
 	management.RestConfig = restConfig
 	management.ClientSet, err = kubernetes.NewForConfig(restConfig)
@@ -290,7 +328,7 @@ func ScaledWithContext(ctx context.Context) *Scaled {
 }
 
 func (s *Scaled) Start(threadiness int) error {
-	return start.All(s.ctx, threadiness, s.starters...)
+	return start.All(s.Ctx, threadiness, s.starters...)
 }
 func (s *Management) Start(threadiness int) error {
 	return start.All(s.ctx, threadiness, s.starters...)

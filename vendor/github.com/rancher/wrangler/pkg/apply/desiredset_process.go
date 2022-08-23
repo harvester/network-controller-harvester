@@ -1,17 +1,21 @@
 package apply
 
 import (
+	"context"
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/pkg/errors"
 	gvk2 "github.com/rancher/wrangler/pkg/gvk"
 	"github.com/rancher/wrangler/pkg/merr"
 	"github.com/rancher/wrangler/pkg/objectset"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 	errors2 "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -52,7 +56,7 @@ func (o *desiredSet) getControllerAndClient(debugID string, gvk schema.GroupVers
 	return informer, client, nil
 }
 
-func (o *desiredSet) assignOwnerReference(gvk schema.GroupVersionKind, objs map[objectset.ObjectKey]runtime.Object) error {
+func (o *desiredSet) assignOwnerReference(gvk schema.GroupVersionKind, objs objectset.ObjectByKey) error {
 	if o.owner == nil {
 		return fmt.Errorf("no owner set to assign owner reference")
 	}
@@ -136,7 +140,7 @@ func (o *desiredSet) assignOwnerReference(gvk schema.GroupVersionKind, objs map[
 	return nil
 }
 
-func (o *desiredSet) adjustNamespace(gvk schema.GroupVersionKind, objs map[objectset.ObjectKey]runtime.Object) error {
+func (o *desiredSet) adjustNamespace(gvk schema.GroupVersionKind, objs objectset.ObjectByKey) error {
 	for k, v := range objs {
 		if k.Namespace != "" {
 			continue
@@ -157,7 +161,7 @@ func (o *desiredSet) adjustNamespace(gvk schema.GroupVersionKind, objs map[objec
 	return nil
 }
 
-func (o *desiredSet) clearNamespace(objs map[objectset.ObjectKey]runtime.Object) error {
+func (o *desiredSet) clearNamespace(objs objectset.ObjectByKey) error {
 	for k, v := range objs {
 		if k.Namespace == "" {
 			continue
@@ -203,7 +207,7 @@ func (o *desiredSet) filterCrossVersion(gvk schema.GroupVersionKind, keys []obje
 	return result
 }
 
-func (o *desiredSet) process(debugID string, set labels.Selector, gvk schema.GroupVersionKind, objs map[objectset.ObjectKey]runtime.Object) {
+func (o *desiredSet) process(debugID string, set labels.Selector, gvk schema.GroupVersionKind, objs objectset.ObjectByKey) {
 	controller, client, err := o.getControllerAndClient(debugID, gvk)
 	if err != nil {
 		o.err(err)
@@ -247,7 +251,7 @@ func (o *desiredSet) process(debugID string, set labels.Selector, gvk schema.Gro
 
 	reconciler := o.reconcilers[gvk]
 
-	existing, err := o.list(controller, client, set)
+	existing, err := o.list(nsed, controller, client, set, objs)
 	if err != nil {
 		o.err(errors.Wrapf(err, "failed to list %s for %s", gvk, debugID))
 		return
@@ -304,7 +308,7 @@ func (o *desiredSet) process(debugID string, set labels.Selector, gvk schema.Gro
 	}
 
 	deleteF := func(k objectset.ObjectKey, force bool) {
-		if err := o.delete(nsed, k.Namespace, k.Name, client, force); err != nil {
+		if err := o.delete(nsed, k.Namespace, k.Name, client, force, gvk); err != nil {
 			o.err(errors.Wrapf(err, "failed to delete %s %s for %s", k, gvk, debugID))
 			return
 		}
@@ -334,30 +338,44 @@ func (o *desiredSet) process(debugID string, set labels.Selector, gvk schema.Gro
 	}
 }
 
-func (o *desiredSet) list(informer cache.SharedIndexInformer, client dynamic.NamespaceableResourceInterface, selector labels.Selector) (map[objectset.ObjectKey]runtime.Object, error) {
+func (o *desiredSet) list(namespaced bool, informer cache.SharedIndexInformer, client dynamic.NamespaceableResourceInterface,
+	selector labels.Selector, desiredObjects objectset.ObjectByKey) (map[objectset.ObjectKey]runtime.Object, error) {
 	var (
 		errs []error
-		objs = map[objectset.ObjectKey]runtime.Object{}
+		objs = objectset.ObjectByKey{}
 	)
 
 	if informer == nil {
-		var c dynamic.ResourceInterface
+		// If a lister namespace is set, assume all objects belong to the listerNamespace.  If the
+		// desiredSet has an owner but no lister namespace, list objects from all namespaces to ensure
+		// we're cleaning up any owned resources.  Otherwise, search only objects from the namespaces
+		// used by the objects.  Note: desiredSets without owners will never return objects to delete;
+		// deletion requires an owner to track object references across multiple apply runs.
+		var namespaces []string
 		if o.listerNamespace != "" {
-			c = client.Namespace(o.listerNamespace)
+			namespaces = append(namespaces, o.listerNamespace)
 		} else {
-			c = client
+			namespaces = desiredObjects.Namespaces()
 		}
 
-		list, err := c.List(o.ctx, v1.ListOptions{
-			LabelSelector: selector.String(),
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		for _, obj := range list.Items {
-			copy := obj
-			if err := addObjectToMap(objs, &copy); err != nil {
+		if o.owner != nil && o.listerNamespace == "" {
+			// owner set and unspecified lister namespace, search all namespaces
+			err := allNamespaceList(o.ctx, client, selector, func(obj unstructured.Unstructured) {
+				if err := addObjectToMap(objs, &obj); err != nil {
+					errs = append(errs, err)
+				}
+			})
+			if err != nil {
+				errs = append(errs, err)
+			}
+		} else {
+			// no owner or lister namespace intentionally restricted; only search in specified namespaces
+			err := multiNamespaceList(o.ctx, namespaces, client, selector, func(obj unstructured.Unstructured) {
+				if err := addObjectToMap(objs, &obj); err != nil {
+					errs = append(errs, err)
+				}
+			})
+			if err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -365,7 +383,12 @@ func (o *desiredSet) list(informer cache.SharedIndexInformer, client dynamic.Nam
 		return objs, merr.NewErrors(errs...)
 	}
 
-	err := cache.ListAllByNamespace(informer.GetIndexer(), o.listerNamespace, selector, func(obj interface{}) {
+	var namespace string
+	if namespaced {
+		namespace = o.listerNamespace
+	}
+
+	err := cache.ListAllByNamespace(informer.GetIndexer(), namespace, selector, func(obj interface{}) {
 		if err := addObjectToMap(objs, obj); err != nil {
 			errs = append(errs, err)
 		}
@@ -377,7 +400,15 @@ func (o *desiredSet) list(informer cache.SharedIndexInformer, client dynamic.Nam
 	return objs, merr.NewErrors(errs...)
 }
 
-func compareSets(existingSet, newSet map[objectset.ObjectKey]runtime.Object) (toCreate, toDelete, toUpdate []objectset.ObjectKey) {
+func shouldPrune(obj runtime.Object) bool {
+	meta, err := meta.Accessor(obj)
+	if err != nil {
+		return true
+	}
+	return meta.GetLabels()[LabelPrune] != "false"
+}
+
+func compareSets(existingSet, newSet objectset.ObjectByKey) (toCreate, toDelete, toUpdate []objectset.ObjectKey) {
 	for k := range newSet {
 		if _, ok := existingSet[k]; ok {
 			toUpdate = append(toUpdate, k)
@@ -386,9 +417,11 @@ func compareSets(existingSet, newSet map[objectset.ObjectKey]runtime.Object) (to
 		}
 	}
 
-	for k := range existingSet {
+	for k, obj := range existingSet {
 		if _, ok := newSet[k]; !ok {
-			toDelete = append(toDelete, k)
+			if shouldPrune(obj) {
+				toDelete = append(toDelete, k)
+			}
 		}
 	}
 
@@ -405,7 +438,7 @@ func sortObjectKeys(keys []objectset.ObjectKey) {
 	})
 }
 
-func addObjectToMap(objs map[objectset.ObjectKey]runtime.Object, obj interface{}) error {
+func addObjectToMap(objs objectset.ObjectByKey, obj interface{}) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -417,4 +450,47 @@ func addObjectToMap(objs map[objectset.ObjectKey]runtime.Object, obj interface{}
 	}] = obj.(runtime.Object)
 
 	return nil
+}
+
+// allNamespaceList lists objects across all namespaces.
+func allNamespaceList(ctx context.Context, baseClient dynamic.NamespaceableResourceInterface, selector labels.Selector, appendFn func(obj unstructured.Unstructured)) error {
+	list, err := baseClient.List(ctx, v1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+	if err != nil {
+		return err
+	}
+	for _, obj := range list.Items {
+		appendFn(obj)
+	}
+	return nil
+}
+
+// multiNamespaceList lists objects across all given namespaces, because requests are concurrent it is possible for appendFn to be called before errors are reported.
+func multiNamespaceList(ctx context.Context, namespaces []string, baseClient dynamic.NamespaceableResourceInterface, selector labels.Selector, appendFn func(obj unstructured.Unstructured)) error {
+	var mu sync.Mutex
+	wg, _ctx := errgroup.WithContext(ctx)
+
+	// list all namespaces concurrently
+	for _, namespace := range namespaces {
+		namespace := namespace
+		wg.Go(func() error {
+			list, err := baseClient.Namespace(namespace).List(_ctx, v1.ListOptions{
+				LabelSelector: selector.String(),
+			})
+			if err != nil {
+				return err
+			}
+
+			mu.Lock()
+			for _, obj := range list.Items {
+				appendFn(obj)
+			}
+			mu.Unlock()
+
+			return nil
+		})
+	}
+
+	return wg.Wait()
 }

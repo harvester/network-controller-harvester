@@ -45,12 +45,15 @@ const (
 	duration365d = time.Hour * 24 * 365
 )
 
-// Config contains the basic fields required for creating a certificate
+var ErrStaticCert = errors.New("cannot renew static certificate")
+
+// Config contains the basic fields required for creating a certificate.
 type Config struct {
 	CommonName   string
 	Organization []string
 	AltNames     AltNames
 	Usages       []x509.ExtKeyUsage
+	ExpiresAt    time.Duration
 }
 
 // AltNames contains the domain names and IP addresses that will be added
@@ -86,10 +89,15 @@ func NewSelfSignedCACert(cfg Config, key crypto.Signer) (*x509.Certificate, erro
 	if err != nil {
 		return nil, err
 	}
+
+	logrus.Infof("generated self-signed CA certificate %s: notBefore=%s notAfter=%s",
+		tmpl.Subject, tmpl.NotBefore, tmpl.NotAfter)
+
 	return x509.ParseCertificate(certDERBytes)
 }
 
-// NewSignedCert creates a signed certificate using the given CA certificate and key
+// NewSignedCert creates a signed certificate using the given CA certificate and key based
+// on the given configuration.
 func NewSignedCert(cfg Config, key crypto.Signer, caCert *x509.Certificate, caKey crypto.Signer) (*x509.Certificate, error) {
 	serial, err := rand.Int(rand.Reader, new(big.Int).SetInt64(math.MaxInt64))
 	if err != nil {
@@ -101,6 +109,12 @@ func NewSignedCert(cfg Config, key crypto.Signer, caCert *x509.Certificate, caKe
 	if len(cfg.Usages) == 0 {
 		return nil, errors.New("must specify at least one ExtKeyUsage")
 	}
+	var expiresAt time.Duration
+	if cfg.ExpiresAt > 0 {
+		expiresAt = time.Duration(cfg.ExpiresAt)
+	} else {
+		expiresAt = duration365d
+	}
 
 	certTmpl := x509.Certificate{
 		Subject: pkix.Name{
@@ -111,7 +125,7 @@ func NewSignedCert(cfg Config, key crypto.Signer, caCert *x509.Certificate, caKe
 		IPAddresses:  cfg.AltNames.IPs,
 		SerialNumber: serial,
 		NotBefore:    caCert.NotBefore,
-		NotAfter:     time.Now().Add(duration365d).UTC(),
+		NotAfter:     time.Now().Add(expiresAt).UTC(),
 		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  cfg.Usages,
 	}
@@ -119,7 +133,13 @@ func NewSignedCert(cfg Config, key crypto.Signer, caCert *x509.Certificate, caKe
 	if err != nil {
 		return nil, err
 	}
-	return x509.ParseCertificate(certDERBytes)
+
+	parsedCert, err := x509.ParseCertificate(certDERBytes)
+	if err == nil {
+		logrus.Infof("certificate %s signed by %s: notBefore=%s notAfter=%s",
+			parsedCert.Subject, caCert.Subject, parsedCert.NotBefore, parsedCert.NotAfter)
+	}
+	return parsedCert, err
 }
 
 // MakeEllipticPrivateKeyPEM creates an ECDSA private key
@@ -271,11 +291,11 @@ func ipsToStrings(ips []net.IP) []string {
 }
 
 // IsCertExpired checks if the certificate about to expire
-func IsCertExpired(cert *x509.Certificate) bool {
+func IsCertExpired(cert *x509.Certificate, days int) bool {
 	expirationDate := cert.NotAfter
-	diffDays := expirationDate.Sub(time.Now()).Hours() / 24.0
-	if diffDays <= 90 {
-		logrus.Infof("certificate will expire in %f days", diffDays)
+	diffDays := time.Until(expirationDate).Hours() / 24.0
+	if diffDays <= float64(days) {
+		logrus.Infof("certificate %s will expire in %f days at %s", cert.Subject, diffDays, cert.NotAfter)
 		return true
 	}
 	return false

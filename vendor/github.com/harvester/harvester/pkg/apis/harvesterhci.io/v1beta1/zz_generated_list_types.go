@@ -1,5 +1,5 @@
 /*
-Copyright 2021 Rancher Labs, Inc.
+Copyright 2022 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -94,16 +94,16 @@ func NewUpgrade(namespace, name string, obj Upgrade) *Upgrade {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// UserList is a list of User resources
-type UserList struct {
+// VersionList is a list of Version resources
+type VersionList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
 
-	Items []User `json:"items"`
+	Items []Version `json:"items"`
 }
 
-func NewUser(namespace, name string, obj User) *User {
-	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("User").ToAPIVersionAndKind()
+func NewVersion(namespace, name string, obj Version) *Version {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("Version").ToAPIVersionAndKind()
 	obj.Name = name
 	obj.Namespace = namespace
 	return &obj
@@ -121,23 +121,6 @@ type VirtualMachineBackupList struct {
 
 func NewVirtualMachineBackup(namespace, name string, obj VirtualMachineBackup) *VirtualMachineBackup {
 	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("VirtualMachineBackup").ToAPIVersionAndKind()
-	obj.Name = name
-	obj.Namespace = namespace
-	return &obj
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-// VirtualMachineBackupContentList is a list of VirtualMachineBackupContent resources
-type VirtualMachineBackupContentList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
-
-	Items []VirtualMachineBackupContent `json:"items"`
-}
-
-func NewVirtualMachineBackupContent(namespace, name string, obj VirtualMachineBackupContent) *VirtualMachineBackupContent {
-	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("VirtualMachineBackupContent").ToAPIVersionAndKind()
 	obj.Name = name
 	obj.Namespace = namespace
 	return &obj
@@ -206,6 +189,23 @@ type VirtualMachineTemplateVersionList struct {
 
 func NewVirtualMachineTemplateVersion(namespace, name string, obj VirtualMachineTemplateVersion) *VirtualMachineTemplateVersion {
 	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("VirtualMachineTemplateVersion").ToAPIVersionAndKind()
+	obj.Name = name
+	obj.Namespace = namespace
+	return &obj
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// SupportBundleList is a list of SupportBundle resources
+type SupportBundleList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []SupportBundle `json:"items"`
+}
+
+func NewSupportBundle(namespace, name string, obj SupportBundle) *SupportBundle {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("SupportBundle").ToAPIVersionAndKind()
 	obj.Name = name
 	obj.Namespace = namespace
 	return &obj

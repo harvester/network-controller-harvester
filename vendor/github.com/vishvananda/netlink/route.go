@@ -3,33 +3,31 @@ package netlink
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
-
-	"golang.org/x/sys/unix"
 )
 
 // Scope is an enum representing a route scope.
 type Scope uint8
 
-func (s Scope) String() string {
-	switch s {
-	case SCOPE_UNIVERSE:
-		return "universe"
-	case SCOPE_SITE:
-		return "site"
-	case SCOPE_LINK:
-		return "link"
-	case SCOPE_HOST:
-		return "host"
-	case SCOPE_NOWHERE:
-		return "nowhere"
-	default:
-		return "unknown"
-	}
-}
-
 type NextHopFlag int
+
+const (
+	RT_FILTER_PROTOCOL uint64 = 1 << (1 + iota)
+	RT_FILTER_SCOPE
+	RT_FILTER_TYPE
+	RT_FILTER_TOS
+	RT_FILTER_IIF
+	RT_FILTER_OIF
+	RT_FILTER_DST
+	RT_FILTER_SRC
+	RT_FILTER_GW
+	RT_FILTER_TABLE
+	RT_FILTER_HOPLIMIT
+	RT_FILTER_PRIORITY
+	RT_FILTER_MARK
+	RT_FILTER_MASK
+	RT_FILTER_REALM
+)
 
 type Destination interface {
 	Family() int
@@ -50,57 +48,6 @@ type Encap interface {
 //Protocol describe what was the originator of the route
 type RouteProtocol int
 
-func (p RouteProtocol) String() string {
-	switch int(p) {
-	case unix.RTPROT_BABEL:
-		return "babel"
-	case unix.RTPROT_BGP:
-		return "bgp"
-	case unix.RTPROT_BIRD:
-		return "bird"
-	case unix.RTPROT_BOOT:
-		return "boot"
-	case unix.RTPROT_DHCP:
-		return "dhcp"
-	case unix.RTPROT_DNROUTED:
-		return "dnrouted"
-	case unix.RTPROT_EIGRP:
-		return "eigrp"
-	case unix.RTPROT_GATED:
-		return "gated"
-	case unix.RTPROT_ISIS:
-		return "isis"
-	//case unix.RTPROT_KEEPALIVED:
-	//	return "keepalived"
-	case unix.RTPROT_KERNEL:
-		return "kernel"
-	case unix.RTPROT_MROUTED:
-		return "mrouted"
-	case unix.RTPROT_MRT:
-		return "mrt"
-	case unix.RTPROT_NTK:
-		return "ntk"
-	case unix.RTPROT_OSPF:
-		return "ospf"
-	case unix.RTPROT_RA:
-		return "ra"
-	case unix.RTPROT_REDIRECT:
-		return "redirect"
-	case unix.RTPROT_RIP:
-		return "rip"
-	case unix.RTPROT_STATIC:
-		return "static"
-	case unix.RTPROT_UNSPEC:
-		return "unspec"
-	case unix.RTPROT_XORP:
-		return "xorp"
-	case unix.RTPROT_ZEBRA:
-		return "zebra"
-	default:
-		return strconv.Itoa(int(p))
-	}
-}
-
 // Route represents a netlink route.
 type Route struct {
 	LinkIndex        int
@@ -112,6 +59,7 @@ type Route struct {
 	MultiPath        []*NexthopInfo
 	Protocol         RouteProtocol
 	Priority         int
+	Family           int
 	Table            int
 	Type             int
 	Tos              int
@@ -120,6 +68,7 @@ type Route struct {
 	NewDst           Destination
 	Encap            Encap
 	Via              Destination
+	Realm            int
 	MTU              int
 	Window           int
 	Rtt              int
@@ -165,6 +114,7 @@ func (r Route) String() string {
 	}
 	elems = append(elems, fmt.Sprintf("Flags: %s", r.ListFlags()))
 	elems = append(elems, fmt.Sprintf("Table: %d", r.Table))
+	elems = append(elems, fmt.Sprintf("Realm: %d", r.Realm))
 	return fmt.Sprintf("{%s}", strings.Join(elems, " "))
 }
 
@@ -178,6 +128,7 @@ func (r Route) Equal(x Route) bool {
 		nexthopInfoSlice(r.MultiPath).Equal(x.MultiPath) &&
 		r.Protocol == x.Protocol &&
 		r.Priority == x.Priority &&
+		r.Realm == x.Realm &&
 		r.Table == x.Table &&
 		r.Type == x.Type &&
 		r.Tos == x.Tos &&

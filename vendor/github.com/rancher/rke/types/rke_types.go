@@ -5,7 +5,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiserverv1alpha1 "k8s.io/apiserver/pkg/apis/apiserver/v1alpha1"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
-	apiserverconfig "k8s.io/apiserver/pkg/apis/config"
+	configv1 "k8s.io/apiserver/pkg/apis/config/v1"
 )
 
 type RancherKubernetesEngineConfig struct {
@@ -21,7 +21,7 @@ type RancherKubernetesEngineConfig struct {
 	Addons string `yaml:"addons" json:"addons,omitempty"`
 	// List of urls or paths for addons
 	AddonsInclude []string `yaml:"addons_include" json:"addonsInclude,omitempty"`
-	// List of images used internally for proxy, cert downlaod and kubedns
+	// List of images used internally for proxy, cert download and kubedns
 	SystemImages RKESystemImages `yaml:"system_images" json:"systemImages,omitempty"`
 	// SSH Private Key Path
 	SSHKeyPath string `yaml:"ssh_key_path" json:"sshKeyPath,omitempty" norman:"nocreate,noupdate"`
@@ -33,7 +33,9 @@ type RancherKubernetesEngineConfig struct {
 	Authorization AuthzConfig `yaml:"authorization" json:"authorization,omitempty"`
 	// Enable/disable strict docker version checking
 	IgnoreDockerVersion *bool `yaml:"ignore_docker_version" json:"ignoreDockerVersion" norman:"default=true"`
-	// Kubernetes version to use (if kubernetes image is specifed, image version takes precedence)
+	// Enable/disable using cri-dockerd
+	EnableCRIDockerd *bool `yaml:"enable_cri_dockerd" json:"enableCriDockerd" norman:"default=false"`
+	// Kubernetes version to use (if kubernetes image is specified, image version takes precedence)
 	Version string `yaml:"kubernetes_version" json:"kubernetesVersion,omitempty"`
 	// List of private registries and their credentials
 	PrivateRegistries []PrivateRegistry `yaml:"private_registries" json:"privateRegistries,omitempty"`
@@ -95,6 +97,8 @@ type BastionHost struct {
 	SSHCert string `yaml:"ssh_cert" json:"sshCert,omitempty"`
 	// SSH Certificate Path
 	SSHCertPath string `yaml:"ssh_cert_path" json:"sshCertPath,omitempty"`
+	// Ignore proxy environment variables
+	IgnoreProxyEnvVars bool `yaml:"ignore_proxy_env_vars" json:"ignoreProxyEnvVars,omitempty"`
 }
 
 type PrivateRegistry struct {
@@ -106,6 +110,8 @@ type PrivateRegistry struct {
 	Password string `yaml:"password" json:"password,omitempty" norman:"type=password"`
 	// Default registry
 	IsDefault bool `yaml:"is_default" json:"isDefault,omitempty"`
+	// ECRCredentialPlugin
+	ECRCredentialPlugin *ECRCredentialPlugin `yaml:"ecr_credential_plugin" json:"ecrCredentialPlugin,omitempty"`
 }
 
 type RKESystemImages struct {
@@ -169,6 +175,8 @@ type RKESystemImages struct {
 	Ingress string `yaml:"ingress" json:"ingress,omitempty"`
 	// Ingress Controller Backend image
 	IngressBackend string `yaml:"ingress_backend" json:"ingressBackend,omitempty"`
+	// Ingress Webhook image
+	IngressWebhook string `yaml:"ingress_webhook" json:"ingressWebhook,omitempty"`
 	// Metrics Server image
 	MetricsServer string `yaml:"metrics_server" json:"metricsServer,omitempty"`
 	// Pod infra container image for Windows
@@ -452,6 +460,8 @@ type IngressConfig struct {
 	DefaultHTTPBackendPriorityClassName string `yaml:"default_http_backend_priority_class_name" json:"defaultHttpBackendPriorityClassName,omitempty"`
 	// Priority class name for Nginx-Ingress's "nginx-ingress-controller" daemonset
 	NginxIngressControllerPriorityClassName string `yaml:"nginx_ingress_controller_priority_class_name" json:"nginxIngressControllerPriorityClassName,omitempty"`
+	// Enable or disable nginx default-http-backend
+	DefaultIngressClass *bool `yaml:"default_ingress_class" json:"defaultIngressClass,omitempty" norman:"default=true"`
 }
 
 type ExtraEnv struct {
@@ -548,6 +558,8 @@ type CloudProvider struct {
 	OpenstackCloudProvider *OpenstackCloudProvider `yaml:"openstackCloudProvider,omitempty" json:"openstackCloudProvider,omitempty"`
 	// VsphereCloudProvider
 	VsphereCloudProvider *VsphereCloudProvider `yaml:"vsphereCloudProvider,omitempty" json:"vsphereCloudProvider,omitempty"`
+	// HarvesterCloudProvider
+	HarvesterCloudProvider *HarvesterCloudProvider `yaml:"harvesterCloudProvider,omitempty" json:"harvesterCloudProvider,omitempty"`
 	// CustomCloudProvider is a multiline string that represent a custom cloud config file
 	CustomCloudProvider string `yaml:"customCloudProvider,omitempty" json:"customCloudProvider,omitempty"`
 }
@@ -840,6 +852,9 @@ type AWSCloudProvider struct {
 	ServiceOverride map[string]ServiceOverride `json:"serviceOverride,omitempty" yaml:"service_override,omitempty" ini:"ServiceOverride,omitempty"`
 }
 
+type HarvesterCloudProvider struct {
+	CloudConfig string `json:"cloudConfig" yaml:"cloud_config"`
+}
 type ServiceOverride struct {
 	Service       string `json:"service" yaml:"service" ini:"Service,omitempty"`
 	Region        string `json:"region" yaml:"region" ini:"Region,omitempty"`
@@ -980,7 +995,7 @@ type SecretsEncryptionConfig struct {
 	// Enable/disable secrets encryption provider config
 	Enabled bool `yaml:"enabled" json:"enabled,omitempty"`
 	// Custom Encryption Provider configuration object
-	CustomConfig *apiserverconfig.EncryptionConfiguration `yaml:"custom_config" json:"customConfig,omitempty" norman:"type=map[json]"`
+	CustomConfig *configv1.EncryptionConfiguration `yaml:"custom_config" json:"customConfig,omitempty"`
 }
 
 type File struct {
@@ -1002,4 +1017,10 @@ type NodeDrainInput struct {
 	GracePeriod int `yaml:"grace_period" json:"gracePeriod,omitempty" norman:"default=-1"`
 	// Time to wait (in seconds) before giving up for one try
 	Timeout int `yaml:"timeout" json:"timeout" norman:"min=1,max=10800,default=120"`
+}
+
+type ECRCredentialPlugin struct {
+	AwsAccessKeyID     string `yaml:"aws_access_key_id" json:"awsAccessKeyId,omitempty"`
+	AwsSecretAccessKey string `yaml:"aws_secret_access_key" json:"awsSecretAccessKey,omitempty"`
+	AwsSessionToken    string `yaml:"aws_session_token" json:"awsAccessToken,omitempty"`
 }
