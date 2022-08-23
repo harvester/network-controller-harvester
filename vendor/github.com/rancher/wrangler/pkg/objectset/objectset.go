@@ -7,6 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/rancher/wrangler/pkg/gvk"
+	"github.com/rancher/wrangler/pkg/stringset"
 
 	"github.com/rancher/wrangler/pkg/merr"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -51,7 +52,7 @@ func (o ObjectByGVK) Add(obj runtime.Object) (schema.GroupVersionKind, error) {
 
 	objs := o[gvk]
 	if objs == nil {
-		objs = map[ObjectKey]runtime.Object{}
+		objs = ObjectByKey{}
 		o[gvk] = objs
 	}
 
@@ -167,6 +168,27 @@ func (o *ObjectSet) GVKOrder(known ...schema.GroupVersionKind) []schema.GroupVer
 	return append(o.gvkOrder, rest...)
 }
 
+// Namespaces all distinct namespaces found on the objects in this set.
+func (o *ObjectSet) Namespaces() []string {
+	namespaces := stringset.Set{}
+	for _, objsByKey := range o.ObjectsByGVK() {
+		for objKey := range objsByKey {
+			namespaces.Add(objKey.Namespace)
+		}
+	}
+	return namespaces.Values()
+}
+
+type ObjectByKey map[ObjectKey]runtime.Object
+
+func (o ObjectByKey) Namespaces() []string {
+	namespaces := stringset.Set{}
+	for objKey := range o {
+		namespaces.Add(objKey.Namespace)
+	}
+	return namespaces.Values()
+}
+
 type ObjectByGK map[schema.GroupKind]map[ObjectKey]runtime.Object
 
 func (o ObjectByGK) Add(obj runtime.Object) (schema.GroupKind, error) {
@@ -184,7 +206,7 @@ func (o ObjectByGK) Add(obj runtime.Object) (schema.GroupKind, error) {
 
 	objs := o[gk]
 	if objs == nil {
-		objs = map[ObjectKey]runtime.Object{}
+		objs = ObjectByKey{}
 		o[gk] = objs
 	}
 

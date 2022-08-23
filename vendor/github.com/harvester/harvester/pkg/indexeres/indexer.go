@@ -3,11 +3,10 @@ package indexeres
 import (
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	kubevirtv1 "kubevirt.io/client-go/api/v1"
-	cdiv1beta1 "kubevirt.io/containerized-data-importer/pkg/apis/core/v1beta1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
-	harvesterv1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester/pkg/config"
 	"github.com/harvester/harvester/pkg/ref"
 )
@@ -15,26 +14,20 @@ import (
 const (
 	UserNameIndex           = "auth.harvesterhci.io/user-username-index"
 	RbByRoleAndSubjectIndex = "auth.harvesterhci.io/crb-by-role-and-subject"
-	DataVolumeByVMIndex     = "cdi.harvesterhci.io/datavolume-by-vm"
+	PVCByVMIndex            = "harvesterhci.io/pvc-by-vm-index"
 	VMByNetworkIndex        = "vm.harvesterhci.io/vm-by-network"
 )
 
 func RegisterScaledIndexers(scaled *config.Scaled) {
-	userInformer := scaled.Management.HarvesterFactory.Harvesterhci().V1beta1().User().Cache()
-	userInformer.AddIndexer(UserNameIndex, indexUserByUsername)
 	vmInformer := scaled.Management.VirtFactory.Kubevirt().V1().VirtualMachine().Cache()
-	vmInformer.AddIndexer(VMByNetworkIndex, vmByNetwork)
+	vmInformer.AddIndexer(VMByNetworkIndex, VMByNetwork)
 }
 
 func RegisterManagementIndexers(management *config.Management) {
 	crbInformer := management.RbacFactory.Rbac().V1().ClusterRoleBinding().Cache()
 	crbInformer.AddIndexer(RbByRoleAndSubjectIndex, rbByRoleAndSubject)
-	dataVolumeInformer := management.CDIFactory.Cdi().V1beta1().DataVolume().Cache()
-	dataVolumeInformer.AddIndexer(DataVolumeByVMIndex, dataVolumeByVM)
-}
-
-func indexUserByUsername(obj *harvesterv1.User) ([]string, error) {
-	return []string{obj.Username}, nil
+	pvcInformer := management.CoreFactory.Core().V1().PersistentVolumeClaim().Cache()
+	pvcInformer.AddIndexer(PVCByVMIndex, pvcByVM)
 }
 
 func rbByRoleAndSubject(obj *rbacv1.ClusterRoleBinding) ([]string, error) {
@@ -49,15 +42,15 @@ func RbRoleSubjectKey(roleName string, subject rbacv1.Subject) string {
 	return roleName + "." + subject.Kind + "." + subject.Name
 }
 
-func dataVolumeByVM(obj *cdiv1beta1.DataVolume) ([]string, error) {
+func pvcByVM(obj *corev1.PersistentVolumeClaim) ([]string, error) {
 	annotationSchemaOwners, err := ref.GetSchemaOwnersFromAnnotation(obj)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get schema owners from datavolume %s's annotation: %w", obj.Name, err)
+		return nil, fmt.Errorf("failed to get schema owners from PVC %s's annotation: %w", obj.Name, err)
 	}
 	return annotationSchemaOwners.List(kubevirtv1.VirtualMachineGroupVersionKind.GroupKind()), nil
 }
 
-func vmByNetwork(obj *kubevirtv1.VirtualMachine) ([]string, error) {
+func VMByNetwork(obj *kubevirtv1.VirtualMachine) ([]string, error) {
 	networks := obj.Spec.Template.Spec.Networks
 	networkNameList := make([]string, 0, len(networks))
 	for _, network := range networks {

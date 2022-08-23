@@ -37,6 +37,20 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&InstanceManagerList{},
 		&ShareManager{},
 		&ShareManagerList{},
+		&BackingImage{},
+		&BackingImageList{},
+		&BackingImageManager{},
+		&BackingImageManagerList{},
+		&BackingImageDataSource{},
+		&BackingImageDataSourceList{},
+		&BackupTarget{},
+		&BackupTargetList{},
+		&BackupVolume{},
+		&BackupVolumeList{},
+		&Backup{},
+		&BackupList{},
+		&RecurringJob{},
+		&RecurringJobList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

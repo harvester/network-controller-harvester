@@ -3,7 +3,7 @@ package v1beta1
 import (
 	"github.com/rancher/wrangler/pkg/condition"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kv1 "kubevirt.io/client-go/api/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 )
 
 var (
@@ -56,7 +56,7 @@ type VirtualMachineTemplateVersion struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   VirtualMachineTemplateVersionSpec   `json:"spec,omitempty"`
+	Spec   VirtualMachineTemplateVersionSpec   `json:"spec"`
 	Status VirtualMachineTemplateVersionStatus `json:"status,omitempty"`
 }
 
@@ -74,7 +74,15 @@ type VirtualMachineTemplateVersionSpec struct {
 	KeyPairIDs []string `json:"keyPairIds,omitempty"`
 
 	// +optional
-	VM kv1.VirtualMachineSpec `json:"vm,omitempty"`
+	VM VirtualMachineSourceSpec `json:"vm,omitempty"`
+}
+
+type VirtualMachineSourceSpec struct {
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +optional
+	ObjectMeta metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec kubevirtv1.VirtualMachineSpec `json:"spec,omitempty"`
 }
 
 type VirtualMachineTemplateVersionStatus struct {

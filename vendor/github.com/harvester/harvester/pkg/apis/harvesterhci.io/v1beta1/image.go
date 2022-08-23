@@ -8,14 +8,19 @@ import (
 
 var (
 	ImageInitialized condition.Cond = "Initialized"
+	ImageImported    condition.Cond = "Imported"
+)
+
+const (
+	VirtualMachineImageSourceTypeDownload     = "download"
+	VirtualMachineImageSourceTypeUpload       = "upload"
+	VirtualMachineImageSourceTypeExportVolume = "export-from-volume"
 )
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=vmimage;vmimages,scope=Namespaced
-// +kubebuilder:printcolumn:name="DISPLAY_NAME",type=string,priority=8,JSONPath=`.spec.displayName`
-// +kubebuilder:printcolumn:name="DESCRIPTION",type=string,priority=10,JSONPath=`.spec.description`
-// +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.spec.url`
+// +kubebuilder:printcolumn:name="DISPLAY-NAME",type=string,JSONPath=`.spec.displayName`
 // +kubebuilder:printcolumn:name="SIZE",type=integer,JSONPath=`.status.size`
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=`.metadata.creationTimestamp`
 
@@ -23,22 +28,32 @@ type VirtualMachineImage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   VirtualMachineImageSpec   `json:"spec,omitempty"`
+	Spec   VirtualMachineImageSpec   `json:"spec"`
 	Status VirtualMachineImageStatus `json:"status,omitempty"`
 }
 
 type VirtualMachineImageSpec struct {
 	// +optional
-	URL string `json:"url"`
-
-	// +kubebuilder:validation:Required
-	DisplayName string `json:"displayName,omitempty"`
-
-	// +optional
 	Description string `json:"description,omitempty"`
 
+	// +kubebuilder:validation:Required
+	DisplayName string `json:"displayName"`
+
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=download;upload;export-from-volume
+	SourceType string `json:"sourceType"`
+
 	// +optional
-	SecretRef string `json:"secretRef,omitempty"`
+	PVCName string `json:"pvcName"`
+
+	// +optional
+	PVCNamespace string `json:"pvcNamespace"`
+
+	// +optional
+	URL string `json:"url"`
+
+	// +optional
+	Checksum string `json:"checksum"`
 }
 
 type VirtualMachineImageStatus struct {
@@ -46,7 +61,13 @@ type VirtualMachineImageStatus struct {
 	AppliedURL string `json:"appliedUrl,omitempty"`
 
 	// +optional
+	Progress int `json:"progress,omitempty"`
+
+	// +optional
 	Size int64 `json:"size,omitempty"`
+
+	// +optional
+	StorageClassName string `json:"storageClassName,omitempty"`
 
 	// +optional
 	Conditions []Condition `json:"conditions,omitempty"`

@@ -5,7 +5,9 @@ import (
 	"encoding/gob"
 	"strings"
 
+	aksv1 "github.com/rancher/aks-operator/pkg/apis/aks.cattle.io/v1"
 	eksv1 "github.com/rancher/eks-operator/pkg/apis/eks.cattle.io/v1"
+	gkev1 "github.com/rancher/gke-operator/pkg/apis/gke.cattle.io/v1"
 	"github.com/rancher/norman/condition"
 	"github.com/rancher/norman/types"
 	rketypes "github.com/rancher/rke/types"
@@ -55,9 +57,9 @@ const (
 	ClusterConditionconditionDefaultProjectCreated condition.Cond = "DefaultProjectCreated"
 	// ClusterConditionconditionSystemProjectCreated true when system project has been created
 	ClusterConditionconditionSystemProjectCreated condition.Cond = "SystemProjectCreated"
-	// ClusterConditionDefaultNamespaceAssigned true when cluster's default namespace has been initially assigned
+	// Deprecated: ClusterConditionDefaultNamespaceAssigned true when cluster's default namespace has been initially assigned
 	ClusterConditionDefaultNamespaceAssigned condition.Cond = "DefaultNamespaceAssigned"
-	// ClusterConditionSystemNamespacesAssigned true when cluster's system namespaces has been initially assigned to
+	// Deprecated: ClusterConditionSystemNamespacesAssigned true when cluster's system namespaces has been initially assigned to
 	// a system project
 	ClusterConditionSystemNamespacesAssigned   condition.Cond = "SystemNamespacesAssigned"
 	ClusterConditionAddonDeploy                condition.Cond = "AddonDeploy"
@@ -76,7 +78,9 @@ const (
 	ClusterDriverK3s      = "k3s"
 	ClusterDriverK3os     = "k3os"
 	ClusterDriverRke2     = "rke2"
+	ClusterDriverAKS      = "AKS"
 	ClusterDriverEKS      = "EKS"
+	ClusterDriverGKE      = "GKE"
 	ClusterDriverRancherD = "rancherd"
 )
 
@@ -126,7 +130,9 @@ type ClusterSpec struct {
 	AzureKubernetesServiceConfig        *MapStringInterface         `json:"azureKubernetesServiceConfig,omitempty"`
 	AmazonElasticContainerServiceConfig *MapStringInterface         `json:"amazonElasticContainerServiceConfig,omitempty"`
 	GenericEngineConfig                 *MapStringInterface         `json:"genericEngineConfig,omitempty"`
+	AKSConfig                           *aksv1.AKSClusterConfigSpec `json:"aksConfig,omitempty"`
 	EKSConfig                           *eksv1.EKSClusterConfigSpec `json:"eksConfig,omitempty"`
+	GKEConfig                           *gkev1.GKEClusterConfigSpec `json:"gkeConfig,omitempty"`
 	ClusterTemplateName                 string                      `json:"clusterTemplateName,omitempty" norman:"type=reference[clusterTemplate],nocreate,noupdate"`
 	ClusterTemplateRevisionName         string                      `json:"clusterTemplateRevisionName,omitempty" norman:"type=reference[clusterTemplateRevision]"`
 	ClusterTemplateAnswers              Answer                      `json:"answers,omitempty"`
@@ -167,11 +173,15 @@ type ClusterStatus struct {
 	MonitoringStatus                     *MonitoringStatus           `json:"monitoringStatus,omitempty" norman:"nocreate,noupdate"`
 	NodeVersion                          int                         `json:"nodeVersion,omitempty"`
 	NodeCount                            int                         `json:"nodeCount,omitempty" norman:"nocreate,noupdate"`
+	LinuxWorkerCount                     int                         `json:"linuxWorkerCount,omitempty" norman:"nocreate,noupdate"`
+	WindowsWorkerCount                   int                         `json:"windowsWorkerCount,omitempty" norman:"nocreate,noupdate"`
 	IstioEnabled                         bool                        `json:"istioEnabled,omitempty" norman:"nocreate,noupdate,default=false"`
 	CertificatesExpiration               map[string]CertExpiration   `json:"certificatesExpiration,omitempty"`
 	ScheduledClusterScanStatus           *ScheduledClusterScanStatus `json:"scheduledClusterScanStatus,omitempty"`
 	CurrentCisRunName                    string                      `json:"currentCisRunName,omitempty"`
+	AKSStatus                            AKSStatus                   `json:"aksStatus,omitempty" norman:"nocreate,noupdate"`
 	EKSStatus                            EKSStatus                   `json:"eksStatus,omitempty" norman:"nocreate,noupdate"`
+	GKEStatus                            GKEStatus                   `json:"gkeStatus,omitempty" norman:"nocreate,noupdate"`
 }
 
 type ClusterComponentStatus struct {
@@ -247,12 +257,14 @@ func (c *ClusterRegistrationTokenSpec) ObjClusterName() string {
 }
 
 type ClusterRegistrationTokenStatus struct {
-	InsecureCommand    string `json:"insecureCommand"`
-	Command            string `json:"command"`
-	WindowsNodeCommand string `json:"windowsNodeCommand"`
-	NodeCommand        string `json:"nodeCommand"`
-	ManifestURL        string `json:"manifestUrl"`
-	Token              string `json:"token"`
+	InsecureCommand            string `json:"insecureCommand"`
+	Command                    string `json:"command"`
+	WindowsNodeCommand         string `json:"windowsNodeCommand"`
+	InsecureWindowsNodeCommand string `json:"insecureWindowsNodeCommand"`
+	NodeCommand                string `json:"nodeCommand"`
+	InsecureNodeCommand        string `json:"insecureNodeCommand"`
+	ManifestURL                string `json:"manifestUrl"`
+	Token                      string `json:"token"`
 }
 
 type GenerateKubeConfigOutput struct {
@@ -303,13 +315,15 @@ type IngressCapabilities struct {
 }
 
 type MonitoringInput struct {
-	Version string            `json:"version,omitempty"`
-	Answers map[string]string `json:"answers,omitempty"`
+	Version          string            `json:"version,omitempty"`
+	Answers          map[string]string `json:"answers,omitempty"`
+	AnswersSetString map[string]string `json:"answersSetString,omitempty"`
 }
 
 type MonitoringOutput struct {
-	Version string            `json:"version,omitempty"`
-	Answers map[string]string `json:"answers,omitempty"`
+	Version          string            `json:"version,omitempty"`
+	Answers          map[string]string `json:"answers,omitempty"`
+	AnswersSetString map[string]string `json:"answersSetString,omitempty"`
 }
 
 type RestoreFromEtcdBackupInput struct {
@@ -350,6 +364,12 @@ type SaveAsTemplateOutput struct {
 	ClusterTemplateRevisionName string `json:"clusterTemplateRevisionName,omitempty"`
 }
 
+type AKSStatus struct {
+	UpstreamSpec          *aksv1.AKSClusterConfigSpec `json:"upstreamSpec"`
+	PrivateRequiresTunnel *bool                       `json:"privateRequiresTunnel"`
+	RBACEnabled           *bool                       `json:"rbacEnabled"`
+}
+
 type EKSStatus struct {
 	UpstreamSpec                  *eksv1.EKSClusterConfigSpec `json:"upstreamSpec"`
 	VirtualNetwork                string                      `json:"virtualNetwork"`
@@ -358,4 +378,9 @@ type EKSStatus struct {
 	PrivateRequiresTunnel         *bool                       `json:"privateRequiresTunnel"`
 	ManagedLaunchTemplateID       string                      `json:"managedLaunchTemplateID"`
 	ManagedLaunchTemplateVersions map[string]string           `json:"managedLaunchTemplateVersions"`
+}
+
+type GKEStatus struct {
+	UpstreamSpec          *gkev1.GKEClusterConfigSpec `json:"upstreamSpec"`
+	PrivateRequiresTunnel *bool                       `json:"privateRequiresTunnel"`
 }

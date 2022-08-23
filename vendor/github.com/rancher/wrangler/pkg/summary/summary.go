@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/rancher/wrangler/pkg/data"
+	unstructured2 "github.com/rancher/wrangler/pkg/unstructured"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -66,10 +67,6 @@ func (s *Summary) DeepCopyInto(v *Summary) {
 }
 
 func dedupMessage(messages []string) []string {
-	if len(messages) <= 1 {
-		return messages
-	}
-
 	seen := map[string]bool{}
 	var result []string
 
@@ -91,6 +88,7 @@ func dedupMessage(messages []string) []string {
 func Summarize(runtimeObj runtime.Object) Summary {
 	var (
 		obj     data.Object
+		err     error
 		summary Summary
 	)
 
@@ -100,7 +98,10 @@ func Summarize(runtimeObj runtime.Object) Summary {
 
 	unstr, ok := runtimeObj.(*unstructured.Unstructured)
 	if !ok {
-		return summary
+		unstr, err = unstructured2.ToUnstructured(runtimeObj)
+		if err != nil {
+			return summary
+		}
 	}
 
 	if unstr != nil {

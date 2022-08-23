@@ -1,5 +1,5 @@
 /*
-Copyright 2021 Rancher Labs, Inc.
+Copyright 2022 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
-	v1 "kubevirt.io/client-go/api/v1"
+	v1 "kubevirt.io/api/core/v1"
 )
 
 type VirtualMachineHandler func(string, *v1.VirtualMachine) (*v1.VirtualMachine, error)
@@ -360,6 +360,10 @@ func (a *virtualMachineGeneratingHandler) Remove(key string, obj *v1.VirtualMach
 }
 
 func (a *virtualMachineGeneratingHandler) Handle(obj *v1.VirtualMachine, status v1.VirtualMachineStatus) (v1.VirtualMachineStatus, error) {
+	if !obj.DeletionTimestamp.IsZero() {
+		return status, nil
+	}
+
 	objs, newStatus, err := a.VirtualMachineGeneratingHandler(obj, status)
 	if err != nil {
 		return newStatus, err

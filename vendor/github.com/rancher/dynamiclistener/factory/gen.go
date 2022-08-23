@@ -5,10 +5,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
+	"fmt"
 	"net"
 	"regexp"
 	"sort"
@@ -20,13 +22,13 @@ import (
 )
 
 const (
-	cnPrefix = "listener.cattle.io/cn-"
-	Static   = "listener.cattle.io/static"
-	hashKey  = "listener.cattle.io/hash"
+	cnPrefix    = "listener.cattle.io/cn-"
+	Static      = "listener.cattle.io/static"
+	fingerprint = "listener.cattle.io/fingerprint"
 )
 
 var (
-	cnRegexp = regexp.MustCompile("^([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]$")
+	cnRegexp = regexp.MustCompile("^([A-Za-z0-9:][-A-Za-z0-9_.:]*)?[A-Za-z0-9:]$")
 )
 
 type TLS struct {
@@ -49,16 +51,14 @@ func cns(secret *v1.Secret) (cns []string) {
 	return
 }
 
-func collectCNs(secret *v1.Secret) (domains []string, ips []net.IP, hash string, err error) {
+func collectCNs(secret *v1.Secret) (domains []string, ips []net.IP, err error) {
 	var (
-		cns    = cns(secret)
-		digest = sha256.New()
+		cns = cns(secret)
 	)
 
 	sort.Strings(cns)
 
 	for _, v := range cns {
-		digest.Write([]byte(v))
 		ip := net.ParseIP(v)
 		if ip == nil {
 			domains = append(domains, v)
@@ -67,43 +67,95 @@ func collectCNs(secret *v1.Secret) (domains []string, ips []net.IP, hash string,
 		}
 	}
 
-	hash = hex.EncodeToString(digest.Sum(nil))
 	return
 }
 
+// Merge combines the SAN lists from the target and additional Secrets, and
+// returns a potentially modified Secret, along with a bool indicating if the
+// returned Secret is not the same as the target Secret.
+//
+// If the merge would not add any CNs to the additional Secret, the additional
+// Secret is returned, to allow for certificate rotation/regeneration.
+//
+// If the merge would not add any CNs to the target Secret, the target Secret is
+// returned; no merging is necessary.
+//
+// If neither certificate is acceptable as-is, a new certificate containing
+// the union of the two lists is generated, using the private key from the
+// first Secret. The returned Secret will contain the updated cert.
 func (t *TLS) Merge(target, additional *v1.Secret) (*v1.Secret, bool, error) {
-	return t.AddCN(target, cns(additional)...)
+	// static secrets can't be altered, don't bother trying
+	if IsStatic(target) {
+		return target, false, nil
+	}
+
+	mergedCNs := append(cns(target), cns(additional)...)
+
+	// if the additional secret already has all the CNs, use it in preference to the
+	// current one. This behavior is required to allow for renewal or regeneration.
+	if !NeedsUpdate(0, additional, mergedCNs...) {
+		return additional, true, nil
+	}
+
+	// if the target secret already has all the CNs, continue using it. The additional
+	// cert had only a subset of the current CNs, so nothing needs to be added.
+	if !NeedsUpdate(0, target, mergedCNs...) {
+		return target, false, nil
+	}
+
+	// neither cert currently has all the necessary CNs; generate a new one.
+	return t.generateCert(target, mergedCNs...)
 }
 
-func (t *TLS) Refresh(secret *v1.Secret) (*v1.Secret, error) {
+// Renew returns a copy of the given certificate that has been re-signed
+// to extend the NotAfter date. It is an error to attempt to renew
+// a static (user-provided) certificate.
+func (t *TLS) Renew(secret *v1.Secret) (*v1.Secret, error) {
+	if IsStatic(secret) {
+		return secret, cert.ErrStaticCert
+	}
 	cns := cns(secret)
 	secret = secret.DeepCopy()
 	secret.Annotations = map[string]string{}
-	secret, _, err := t.AddCN(secret, cns...)
+	secret, _, err := t.generateCert(secret, cns...)
 	return secret, err
 }
 
+// Filter ensures that the CNs are all valid accorting to both internal logic, and any filter callbacks.
+// The returned list will contain only approved CN entries.
 func (t *TLS) Filter(cn ...string) []string {
-	if t.FilterCN == nil {
+	if len(cn) == 0 || t.FilterCN == nil {
 		return cn
 	}
 	return t.FilterCN(cn...)
 }
 
+// AddCN attempts to add a list of CN strings to a given Secret, returning the potentially-modified
+// Secret along with a bool indicating whether or not it has been updated. The Secret will not be changed
+// if it has an attribute indicating that it is static (aka user-provided), or if no new CNs were added.
 func (t *TLS) AddCN(secret *v1.Secret, cn ...string) (*v1.Secret, bool, error) {
-	var (
-		err error
-	)
-
 	cn = t.Filter(cn...)
 
-	if !NeedsUpdate(0, secret, cn...) {
+	if IsStatic(secret) || !NeedsUpdate(0, secret, cn...) {
 		return secret, false, nil
 	}
+	return t.generateCert(secret, cn...)
+}
 
+func (t *TLS) Regenerate(secret *v1.Secret) (*v1.Secret, error) {
+	cns := cns(secret)
+	secret, _, err := t.generateCert(nil, cns...)
+	return secret, err
+}
+
+func (t *TLS) generateCert(secret *v1.Secret, cn ...string) (*v1.Secret, bool, error) {
 	secret = secret.DeepCopy()
 	if secret == nil {
 		secret = &v1.Secret{}
+	}
+
+	if err := t.Verify(secret); err != nil {
+		logrus.Warnf("unable to verify existing certificate: %v - signing operation may change certificate issuer", err)
 	}
 
 	secret = populateCN(secret, cn...)
@@ -113,7 +165,7 @@ func (t *TLS) AddCN(secret *v1.Secret, cn ...string) (*v1.Secret, bool, error) {
 		return nil, false, err
 	}
 
-	domains, ips, hash, err := collectCNs(secret)
+	domains, ips, err := collectCNs(secret)
 	if err != nil {
 		return nil, false, err
 	}
@@ -123,7 +175,7 @@ func (t *TLS) AddCN(secret *v1.Secret, cn ...string) (*v1.Secret, bool, error) {
 		return nil, false, err
 	}
 
-	certBytes, keyBytes, err := Marshal(newCert, privateKey)
+	keyBytes, certBytes, err := MarshalChain(privateKey, newCert, t.CACert)
 	if err != nil {
 		return nil, false, err
 	}
@@ -131,11 +183,35 @@ func (t *TLS) AddCN(secret *v1.Secret, cn ...string) (*v1.Secret, bool, error) {
 	if secret.Data == nil {
 		secret.Data = map[string][]byte{}
 	}
+	secret.Type = v1.SecretTypeTLS
 	secret.Data[v1.TLSCertKey] = certBytes
 	secret.Data[v1.TLSPrivateKeyKey] = keyBytes
-	secret.Annotations[hashKey] = hash
+	secret.Annotations[fingerprint] = fmt.Sprintf("SHA1=%X", sha1.Sum(newCert.Raw))
 
 	return secret, true, nil
+}
+
+func (t *TLS) Verify(secret *v1.Secret) error {
+	certsPem := secret.Data[v1.TLSCertKey]
+	if len(certsPem) == 0 {
+		return nil
+	}
+
+	certificates, err := cert.ParseCertsPEM(certsPem)
+	if err != nil || len(certificates) == 0 {
+		return err
+	}
+
+	verifyOpts := x509.VerifyOptions{
+		Roots: x509.NewCertPool(),
+		KeyUsages: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageAny,
+		},
+	}
+	verifyOpts.Roots.AddCert(t.CACert)
+
+	_, err = certificates[0].Verify(verifyOpts)
+	return err
 }
 
 func (t *TLS) newCert(domains []string, ips []net.IP, privateKey crypto.Signer) (*x509.Certificate, error) {
@@ -149,7 +225,7 @@ func populateCN(secret *v1.Secret, cn ...string) *v1.Secret {
 	}
 	for _, cn := range cn {
 		if cnRegexp.MatchString(cn) {
-			secret.Annotations[cnPrefix+cn] = cn
+			secret.Annotations[getAnnotationKey(cn)] = cn
 		} else {
 			logrus.Errorf("dropping invalid CN: %s", cn)
 		}
@@ -157,17 +233,26 @@ func populateCN(secret *v1.Secret, cn ...string) *v1.Secret {
 	return secret
 }
 
+// IsStatic returns true if the Secret has an attribute indicating that it contains
+// a static (aka user-provided) certificate, which should not be modified.
+func IsStatic(secret *v1.Secret) bool {
+	if secret != nil && secret.Annotations != nil {
+		return secret.Annotations[Static] == "true"
+	}
+	return false
+}
+
+// NeedsUpdate returns true if any of the CNs are not currently present on the
+// secret's Certificate, as recorded in the cnPrefix annotations. It will return
+// false if all requested CNs are already present, or if maxSANs is non-zero and has
+// been exceeded.
 func NeedsUpdate(maxSANs int, secret *v1.Secret, cn ...string) bool {
 	if secret == nil {
 		return true
 	}
 
-	if secret.Annotations[Static] == "true" {
-		return false
-	}
-
 	for _, cn := range cn {
-		if secret.Annotations[cnPrefix+cn] == "" {
+		if secret.Annotations[getAnnotationKey(cn)] == "" {
 			if maxSANs > 0 && len(cns(secret)) >= maxSANs {
 				return false
 			}
@@ -192,13 +277,33 @@ func getPrivateKey(secret *v1.Secret) (crypto.Signer, error) {
 	return NewPrivateKey()
 }
 
-func Marshal(x509Cert *x509.Certificate, privateKey crypto.Signer) ([]byte, []byte, error) {
+// MarshalChain returns given key and certificates as byte slices.
+func MarshalChain(privateKey crypto.Signer, certs ...*x509.Certificate) (keyBytes, certChainBytes []byte, err error) {
+	keyBytes, err = cert.MarshalPrivateKeyToPEM(privateKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, cert := range certs {
+		if cert != nil {
+			certBlock := pem.Block{
+				Type:  CertificateBlockType,
+				Bytes: cert.Raw,
+			}
+			certChainBytes = append(certChainBytes, pem.EncodeToMemory(&certBlock)...)
+		}
+	}
+	return keyBytes, certChainBytes, nil
+}
+
+// Marshal returns the given cert and key as byte slices.
+func Marshal(x509Cert *x509.Certificate, privateKey crypto.Signer) (certBytes, keyBytes []byte, err error) {
 	certBlock := pem.Block{
 		Type:  CertificateBlockType,
 		Bytes: x509Cert.Raw,
 	}
 
-	keyBytes, err := cert.MarshalPrivateKeyToPEM(privateKey)
+	keyBytes, err = cert.MarshalPrivateKeyToPEM(privateKey)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -206,6 +311,26 @@ func Marshal(x509Cert *x509.Certificate, privateKey crypto.Signer) ([]byte, []by
 	return pem.EncodeToMemory(&certBlock), keyBytes, nil
 }
 
+// NewPrivateKey returnes a new ECDSA key
 func NewPrivateKey() (crypto.Signer, error) {
 	return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+}
+
+// getAnnotationKey return the key to use for a given CN. IPv4 addresses and short hostnames
+// are safe to store as-is, but longer hostnames and IPv6 address must be truncated and/or undergo
+// character replacement in order to be used as an annotation key. If the CN requires modification,
+// a portion of the SHA256 sum of the original value is used as the suffix, to reduce the likelihood
+// of collisions in modified values.
+func getAnnotationKey(cn string) string {
+	cn = cnPrefix + cn
+	cnLen := len(cn)
+	if cnLen < 64 && !strings.ContainsRune(cn, ':') {
+		return cn
+	}
+	digest := sha256.Sum256([]byte(cn))
+	cn = strings.ReplaceAll(cn, ":", "_")
+	if cnLen > 56 {
+		cnLen = 56
+	}
+	return cn[0:cnLen] + "-" + hex.EncodeToString(digest[0:])[0:6]
 }

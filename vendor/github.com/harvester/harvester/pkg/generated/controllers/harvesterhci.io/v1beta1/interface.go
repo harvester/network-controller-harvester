@@ -1,5 +1,5 @@
 /*
-Copyright 2021 Rancher Labs, Inc.
+Copyright 2022 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,10 +33,10 @@ type Interface interface {
 	KeyPair() KeyPairController
 	Preference() PreferenceController
 	Setting() SettingController
+	SupportBundle() SupportBundleController
 	Upgrade() UpgradeController
-	User() UserController
+	Version() VersionController
 	VirtualMachineBackup() VirtualMachineBackupController
-	VirtualMachineBackupContent() VirtualMachineBackupContentController
 	VirtualMachineImage() VirtualMachineImageController
 	VirtualMachineRestore() VirtualMachineRestoreController
 	VirtualMachineTemplate() VirtualMachineTemplateController
@@ -62,17 +62,17 @@ func (c *version) Preference() PreferenceController {
 func (c *version) Setting() SettingController {
 	return NewSettingController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "Setting"}, "settings", false, c.controllerFactory)
 }
+func (c *version) SupportBundle() SupportBundleController {
+	return NewSupportBundleController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "SupportBundle"}, "supportbundles", true, c.controllerFactory)
+}
 func (c *version) Upgrade() UpgradeController {
 	return NewUpgradeController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "Upgrade"}, "upgrades", true, c.controllerFactory)
 }
-func (c *version) User() UserController {
-	return NewUserController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "User"}, "users", false, c.controllerFactory)
+func (c *version) Version() VersionController {
+	return NewVersionController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "Version"}, "versions", true, c.controllerFactory)
 }
 func (c *version) VirtualMachineBackup() VirtualMachineBackupController {
 	return NewVirtualMachineBackupController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "VirtualMachineBackup"}, "virtualmachinebackups", true, c.controllerFactory)
-}
-func (c *version) VirtualMachineBackupContent() VirtualMachineBackupContentController {
-	return NewVirtualMachineBackupContentController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "VirtualMachineBackupContent"}, "virtualmachinebackupcontents", true, c.controllerFactory)
 }
 func (c *version) VirtualMachineImage() VirtualMachineImageController {
 	return NewVirtualMachineImageController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "VirtualMachineImage"}, "virtualmachineimages", true, c.controllerFactory)

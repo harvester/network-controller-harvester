@@ -1,5 +1,5 @@
 /*
-Copyright 2021 Rancher Labs, Inc.
+Copyright 2022 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -360,6 +360,10 @@ func (a *virtualMachineTemplateVersionGeneratingHandler) Remove(key string, obj 
 }
 
 func (a *virtualMachineTemplateVersionGeneratingHandler) Handle(obj *v1beta1.VirtualMachineTemplateVersion, status v1beta1.VirtualMachineTemplateVersionStatus) (v1beta1.VirtualMachineTemplateVersionStatus, error) {
+	if !obj.DeletionTimestamp.IsZero() {
+		return status, nil
+	}
+
 	objs, newStatus, err := a.VirtualMachineTemplateVersionGeneratingHandler(obj, status)
 	if err != nil {
 		return newStatus, err
