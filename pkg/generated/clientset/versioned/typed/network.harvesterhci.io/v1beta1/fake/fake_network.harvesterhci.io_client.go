@@ -32,8 +32,12 @@ func (c *FakeNetworkV1beta1) ClusterNetworks() v1beta1.ClusterNetworkInterface {
 	return &FakeClusterNetworks{c}
 }
 
-func (c *FakeNetworkV1beta1) NodeNetworks() v1beta1.NodeNetworkInterface {
-	return &FakeNodeNetworks{c}
+func (c *FakeNetworkV1beta1) VlanConfigs() v1beta1.VlanConfigInterface {
+	return &FakeVlanConfigs{c}
+}
+
+func (c *FakeNetworkV1beta1) VlanStatuses() v1beta1.VlanStatusInterface {
+	return &FakeVlanStatuses{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate

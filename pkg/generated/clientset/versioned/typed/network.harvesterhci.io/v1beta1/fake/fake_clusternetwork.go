@@ -99,7 +99,7 @@ func (c *FakeClusterNetworks) Update(ctx context.Context, clusterNetwork *v1beta
 // Delete takes name of the clusterNetwork and deletes it. Returns an error if one occurs.
 func (c *FakeClusterNetworks) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(clusternetworksResource, name), &v1beta1.ClusterNetwork{})
+		Invokes(testing.NewRootDeleteActionWithOptions(clusternetworksResource, name, opts), &v1beta1.ClusterNetwork{})
 	return err
 }
 
