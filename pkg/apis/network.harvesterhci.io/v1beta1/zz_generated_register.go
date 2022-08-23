@@ -29,7 +29,8 @@ import (
 
 var (
 	ClusterNetworkResourceName = "clusternetworks"
-	NodeNetworkResourceName    = "nodenetworks"
+	VlanConfigResourceName     = "vlanconfigs"
+	VlanStatusResourceName     = "vlanstatuses"
 )
 
 // SchemeGroupVersion is group version used to register these objects
@@ -55,8 +56,10 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&ClusterNetwork{},
 		&ClusterNetworkList{},
-		&NodeNetwork{},
-		&NodeNetworkList{},
+		&VlanConfig{},
+		&VlanConfigList{},
+		&VlanStatus{},
+		&VlanStatusList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

@@ -26,23 +26,6 @@ import (
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// NodeNetworkList is a list of NodeNetwork resources
-type NodeNetworkList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
-
-	Items []NodeNetwork `json:"items"`
-}
-
-func NewNodeNetwork(namespace, name string, obj NodeNetwork) *NodeNetwork {
-	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("NodeNetwork").ToAPIVersionAndKind()
-	obj.Name = name
-	obj.Namespace = namespace
-	return &obj
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
 // ClusterNetworkList is a list of ClusterNetwork resources
 type ClusterNetworkList struct {
 	metav1.TypeMeta `json:",inline"`
@@ -53,6 +36,40 @@ type ClusterNetworkList struct {
 
 func NewClusterNetwork(namespace, name string, obj ClusterNetwork) *ClusterNetwork {
 	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("ClusterNetwork").ToAPIVersionAndKind()
+	obj.Name = name
+	obj.Namespace = namespace
+	return &obj
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// VlanConfigList is a list of VlanConfig resources
+type VlanConfigList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []VlanConfig `json:"items"`
+}
+
+func NewVlanConfig(namespace, name string, obj VlanConfig) *VlanConfig {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("VlanConfig").ToAPIVersionAndKind()
+	obj.Name = name
+	obj.Namespace = namespace
+	return &obj
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// VlanStatusList is a list of VlanStatus resources
+type VlanStatusList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []VlanStatus `json:"items"`
+}
+
+func NewVlanStatus(namespace, name string, obj VlanStatus) *VlanStatus {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("VlanStatus").ToAPIVersionAndKind()
 	obj.Name = name
 	obj.Namespace = namespace
 	return &obj
