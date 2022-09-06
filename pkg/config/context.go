@@ -24,7 +24,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
-	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
+	ctlnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
 )
 
 var (
@@ -43,10 +43,9 @@ func init() {
 type RegisterFunc func(context.Context, *Management) error
 
 type Options struct {
-	Namespace         string
-	MgmtNetworkType   string
-	MgmtNetworkDevice string
-	HelperImage       string
+	Namespace   string
+	HelperImage string
+	NodeName    string
 }
 
 type Management struct {
@@ -54,7 +53,7 @@ type Management struct {
 
 	ControllerFactory controller.SharedControllerFactory
 
-	HarvesterNetworkFactory *ctlnetworkv1.Factory
+	HarvesterNetworkFactory *ctlnetwork.Factory
 
 	CniFactory   *ctlcni.Factory
 	CoreFactory  *ctlcore.Factory
@@ -100,16 +99,13 @@ func createCRDsIfNotExisted(ctx context.Context, config *rest.Config) error {
 	}
 	return factory.
 		BatchCreateCRDsIfNotExisted(
-			crd.NonNamespacedFromGV(networkv1.SchemeGroupVersion, "NodeNetwork"),
-		).
-		BatchCreateCRDsIfNotExisted(
 			createNetworkAttachmentDefinitionCRD(),
 		).
 		BatchWait()
 }
 
 func createNetworkAttachmentDefinitionCRD() wcrd.CRD {
-	nad := crd.FromGV(cniv1.SchemeGroupVersion, "NetworkAttachmentDefinition")
+	nad := crd.FromGV(cniv1.SchemeGroupVersion, "NetworkAttachmentDefinition", &cniv1.NetworkAttachmentDefinition{})
 	nad.PluralName = "network-attachment-definitions"
 	nad.SingularName = "network-attachment-definition"
 	return nad
@@ -130,7 +126,7 @@ func SetupManagement(ctx context.Context, restConfig *rest.Config, options *Opti
 		Options: options,
 	}
 
-	harvesterNetwork, err := ctlnetworkv1.NewFactoryFromConfigWithOptions(restConfig, opts)
+	harvesterNetwork, err := ctlnetwork.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {
 		return nil, err
 	}

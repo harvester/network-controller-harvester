@@ -27,6 +27,12 @@ func main() {
 	app.Usage = "Harvester Network Controller, to help with cluster network configuration. Options kubeconfig or masterurl are required."
 	commonFlags := []cli.Flag{
 		cli.StringFlag{
+			Name:   "node-name",
+			EnvVar: "NODENAME",
+			Value:  "",
+			Usage:  "node name",
+		},
+		cli.StringFlag{
 			Name:   "kubeconfig, k",
 			EnvVar: "KUBECONFIG",
 			Value:  "",
@@ -49,18 +55,6 @@ func main() {
 			EnvVar: "THREADS",
 			Value:  2,
 			Usage:  "Threadiness level to set, defaults to 2.",
-		},
-		cli.StringFlag{
-			Name:   "management-network-type",
-			EnvVar: "MANAGEMENT_NETWORK_TYPE",
-			Value:  "flannel",
-			Usage:  "The type of management network, defaults to flannel",
-		},
-		cli.StringFlag{
-			Name:   "management-network-device",
-			EnvVar: "MANAGEMENT_NETWORK_DEVICE",
-			Value:  "flannel.1",
-			Usage:  "The device of management network, such as VTEP device flannel.1 of flannel or canal, defaults to flannel.1.",
 		},
 		cli.BoolFlag{
 			Name:   "enable-vip-controller",
@@ -100,8 +94,7 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 	kubeconfig := c.String("kubeconfig")
 	namespace := c.String("namespace")
 	threadiness := c.Int("threads")
-	mgmtNetworkType := c.String("management-network-type")
-	mgmtNetworkDevice := c.String("management-network-device")
+	nodeName := c.String("node-name")
 	helperImage := c.String("helper-image")
 
 	if threadiness <= 0 {
@@ -117,7 +110,7 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 		klog.Infof("Starting network controller in namespace: %s.", namespace)
 	}
 
-	ctx := signals.SetupSignalHandler(context.Background())
+	ctx := signals.SetupSignalContext()
 
 	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
 	if err != nil {
@@ -130,10 +123,9 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 	}
 
 	options := &config.Options{
-		Namespace:         namespace,
-		MgmtNetworkType:   mgmtNetworkType,
-		MgmtNetworkDevice: mgmtNetworkDevice,
-		HelperImage:       helperImage,
+		Namespace:   namespace,
+		NodeName:    nodeName,
+		HelperImage: helperImage,
 	}
 
 	management, err := config.SetupManagement(ctx, cfg, options)
@@ -163,9 +155,9 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 }
 
 func managerRun(c *cli.Context) error {
-	return run(c, manager.GetRegisterFuncList(c), true)
+	return run(c, manager.RegisterFuncList, true)
 }
 
 func agentRun(c *cli.Context) error {
-	return run(c, agent.GetRegisterFuncList(), false)
+	return run(c, agent.RegisterFuncList, false)
 }

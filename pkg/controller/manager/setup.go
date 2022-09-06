@@ -1,20 +1,14 @@
 package manager
 
 import (
-	"github.com/urfave/cli"
-
 	"github.com/harvester/harvester-network-controller/pkg/config"
-	"github.com/harvester/harvester-network-controller/pkg/controller/manager/clusternetwork"
 	"github.com/harvester/harvester-network-controller/pkg/controller/manager/nad"
 	"github.com/harvester/harvester-network-controller/pkg/controller/manager/node"
+	"github.com/harvester/harvester-network-controller/pkg/controller/manager/vlanconfig"
 )
 
-var registerFuncList = []config.RegisterFunc{
-	clusternetwork.Register,
-	node.Register,
+var RegisterFuncList = []config.RegisterFunc{
 	nad.Register,
-}
-
-func GetRegisterFuncList(c *cli.Context) []config.RegisterFunc {
-	return registerFuncList
+	vlanconfig.Register,
+	node.Register,
 }

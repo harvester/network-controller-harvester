@@ -5,14 +5,8 @@ import (
 	"fmt"
 	"net"
 
+	cniv1 "github.com/containernetworking/cni/pkg/types"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-
-	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
-)
-
-const (
-	KeyNetworkConf = networkv1.GroupName + "/route"
-	KeyVlanLabel   = networkv1.GroupName + "/vlan-id"
 )
 
 type Connectivity string
@@ -87,4 +81,17 @@ func (n NadSelectedNetworks) ToString() (string, error) {
 	}
 
 	return string(bytes), nil
+}
+
+type NetConf struct {
+	cniv1.NetConf
+	BrName       string `json:"bridge"`
+	IsGW         bool   `json:"isGateway"`
+	IsDefaultGW  bool   `json:"isDefaultGateway"`
+	ForceAddress bool   `json:"forceAddress"`
+	IPMasq       bool   `json:"ipMasq"`
+	MTU          int    `json:"mtu"`
+	HairpinMode  bool   `json:"hairpinMode"`
+	PromiscMode  bool   `json:"promiscMode"`
+	Vlan         int    `json:"vlan"`
 }
