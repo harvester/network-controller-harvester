@@ -18,11 +18,14 @@ fi
 mkdir -p dist/artifacts
 cp bin/harvester-network-controller dist/artifacts/harvester-network-controller${SUFFIX}
 cp bin/harvester-network-helper dist/artifacts/harvester-network-helper${SUFFIX}
+cp bin/harvester-network-webhook dist/artifacts/harvester-network-webhook${SUFFIX}
 
 CONTROLLER_IMAGE=${REPO}/harvester-network-controller:${TAG}
 HELPER_IMAGE=${REPO}/harvester-network-helper:${TAG}
+WEBHOOK_IMAGE=${REPO}/harvester-network-webhook:${TAG}
 DOCKERFILE_CONTROLLER=package/Dockerfile
 DOCKERFILE_HELPER=package/Dockerfile.helper
+DOCKERFILE_WEBHOOK=package/Dockerfile.webhook
 if [ -e ${DOCKERFILE}.${ARCH} ]; then
     DOCKERFILE=${DOCKERFILE}.${ARCH}
 fi
@@ -32,3 +35,6 @@ echo Built ${CONTROLLER_IMAGE}
 
 docker build -f ${DOCKERFILE_HELPER} -t ${HELPER_IMAGE} .
 echo Built ${HELPER_IMAGE}
+
+docker build -f ${DOCKERFILE_WEBHOOK} -t ${WEBHOOK_IMAGE} .
+echo Built ${WEBHOOK_IMAGE}
