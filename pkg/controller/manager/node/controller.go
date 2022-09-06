@@ -2,62 +2,91 @@ package node
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/deckarep/golang-set/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
-	networkv1alpha1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
+	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
-	"github.com/harvester/harvester-network-controller/pkg/controller/common"
-	ctl "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
+	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
-// Harvester network node controller watches node to create or delete NodeNetwork CR
-const (
-	ControllerName = "harvester-network-node-controller"
-)
+const controllerName = "harvester-network-manager-node-controller"
 
 type Handler struct {
-	nodeNetworkClient   ctl.NodeNetworkClient
-	nodeNetworkCache    ctl.NodeNetworkCache
-	clusterNetworkCache ctl.ClusterNetworkCache
+	vcCache  ctlnetworkv1.VlanConfigCache
+	vcClient ctlnetworkv1.VlanConfigClient
 }
 
 func Register(ctx context.Context, management *config.Management) error {
 	nodes := management.CoreFactory.Core().V1().Node()
-	nodeNetworks := management.HarvesterNetworkFactory.Network().V1beta1().NodeNetwork()
-	clusterNetworks := management.HarvesterNetworkFactory.Network().V1beta1().ClusterNetwork()
+	vcs := management.HarvesterNetworkFactory.Network().V1beta1().VlanConfig()
 
-	handler := &Handler{
-		nodeNetworkClient:   nodeNetworks,
-		nodeNetworkCache:    nodeNetworks.Cache(),
-		clusterNetworkCache: clusterNetworks.Cache(),
+	h := Handler{
+		vcClient: vcs,
+		vcCache:  vcs.Cache(),
 	}
 
-	nodes.OnChange(ctx, ControllerName, handler.OnChange)
+	nodes.OnChange(ctx, controllerName, h.OnChange)
 
 	return nil
 }
 
-func (h Handler) OnChange(key string, node *corev1.Node) (*corev1.Node, error) {
+func (h Handler) OnChange(_ string, node *corev1.Node) (*corev1.Node, error) {
 	if node == nil || node.DeletionTimestamp != nil {
 		return nil, nil
 	}
 
-	cns, err := h.clusterNetworkCache.List(labels.Everything())
+	vcs, err := h.vcCache.List(labels.Everything())
 	if err != nil {
-		return nil, fmt.Errorf("get clusternetwork failed, error: %w", err)
+		return nil, err
 	}
 
-	for _, cn := range cns {
-		if cn.Name == string(networkv1alpha1.NetworkTypeVLAN) {
-			if _, err := common.CreateNodeNetworkIfNotExist(node, networkv1alpha1.NetworkTypeVLAN, cn,
-				h.nodeNetworkCache, h.nodeNetworkClient); err != nil {
-				return nil, fmt.Errorf("create nodenetwork failed, error:%w", err)
-			}
+	for _, vc := range vcs {
+		if err := h.updateMatchedNodeAnnotation(vc, node); err != nil {
+			return nil, err
 		}
 	}
 
-	return node, nil
+	return nil, nil
+}
+
+func (h Handler) updateMatchedNodeAnnotation(vc *networkv1.VlanConfig, node *corev1.Node) error {
+	selector, err := utils.NewSelector(vc.Spec.NodeSelector)
+	if err != nil {
+		return err
+	}
+
+	s := mapset.NewSet[string]()
+	if err := s.UnmarshalJSON([]byte(vc.Annotations[utils.KeyMatchedNodes])); err != nil {
+		return err
+	}
+
+	newSet := s.Clone()
+	if ok := selector.Matches(labels.Set(node.Labels)); ok {
+		newSet.Add(node.Name)
+	} else {
+		newSet.Remove(node.Name)
+	}
+
+	if newSet.Equal(s) {
+		return nil
+	}
+
+	vcCopy := vc.DeepCopy()
+	if vcCopy.Annotations == nil {
+		vcCopy.Annotations = map[string]string{}
+	}
+	bytes, err := newSet.MarshalJSON()
+	if err != nil {
+		return err
+	}
+	vcCopy.Annotations[utils.KeyMatchedNodes] = string(bytes)
+	if _, err := h.vcClient.Update(vcCopy); err != nil {
+		return err
+	}
+
+	return nil
 }

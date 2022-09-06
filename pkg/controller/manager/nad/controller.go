@@ -2,26 +2,23 @@ package nad
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/go-ping/ping"
-	hn "github.com/harvester/harvester/pkg/api/network"
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	ctlbatchv1 "github.com/rancher/wrangler/pkg/generated/controllers/batch/v1"
-	"k8s.io/klog"
-
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/config"
+	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
@@ -59,21 +56,26 @@ type Handler struct {
 	jobCache  ctlbatchv1.JobCache
 	nadClient ctlcniv1.NetworkAttachmentDefinitionClient
 	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
+	cnClient  ctlnetworkv1.ClusterNetworkClient
+	cnCache   ctlnetworkv1.ClusterNetworkCache
 
 	*checkMap
 }
 
 func Register(ctx context.Context, management *config.Management) error {
-	job := management.BatchFactory.Batch().V1().Job()
-	nad := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
+	jobs := management.BatchFactory.Batch().V1().Job()
+	nads := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
+	cns := management.HarvesterNetworkFactory.Network().V1beta1().ClusterNetwork()
 
 	handler := &Handler{
 		namespace:   management.Options.Namespace,
 		helperImage: management.Options.HelperImage,
-		jobClient:   job,
-		jobCache:    job.Cache(),
-		nadClient:   nad,
-		nadCache:    nad.Cache(),
+		jobClient:   jobs,
+		jobCache:    jobs.Cache(),
+		nadClient:   nads,
+		nadCache:    nads.Cache(),
+		cnClient:    cns,
+		cnCache:     cns.Cache(),
 		checkMap: &checkMap{
 			items: make(map[nameWithNamespace]string),
 			mutex: new(sync.RWMutex),
@@ -82,29 +84,45 @@ func Register(ctx context.Context, management *config.Management) error {
 
 	go handler.CheckConnectivityPeriodically()
 
-	nad.OnChange(ctx, ControllerName, handler.OnChange)
-	nad.OnRemove(ctx, ControllerName, handler.OnRemove)
+	nads.OnChange(ctx, ControllerName, handler.OnChange)
+	nads.OnRemove(ctx, ControllerName, handler.OnRemove)
 
 	return nil
 }
 
-func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
+func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
 	if nad == nil || nad.DeletionTimestamp != nil {
 		return nil, nil
 	}
 
 	klog.Infof("nad configuration %s has been changed: %s", nad.Name, nad.Spec.Config)
 
-	if err := h.ensureLabels(nad); err != nil {
+	if err := h.EnsureJob2GetLayer3NetworkInfo(nad); err != nil {
 		return nil, err
 	}
 
+	return nad, nil
+}
+
+func (h Handler) OnRemove(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
+	if nad == nil {
+		return nil, nil
+	}
+
+	if err := h.ClearJob(nad); err != nil {
+		return nil, err
+	}
+
+	return nad, nil
+}
+
+func (h Handler) EnsureJob2GetLayer3NetworkInfo(nad *cniv1.NetworkAttachmentDefinition) error {
 	networkConf := &utils.Layer3NetworkConf{}
 	if nad.Annotations != nil && nad.Annotations[utils.KeyNetworkConf] != "" {
 		var err error
 		networkConf, err = utils.NewLayer3NetworkConf(nad.Annotations[utils.KeyNetworkConf])
 		if err != nil {
-			return nil, fmt.Errorf("invalid layer 3 network configure: %w", err)
+			return fmt.Errorf("invalid layer 3 network configure: %w", err)
 		}
 	}
 	klog.Infof("netconf: %+v", networkConf)
@@ -120,59 +138,31 @@ func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 		}
 		// add item to map
 		h.addItem(nad.Namespace, nad.Name, networkConf.Gateway)
-		return nad, nil
+		return nil
 	}
 
 	if networkConf.Mode != utils.Auto {
-		return nad, nil
+		return nil
 	}
 	// create or update job to get layer 3 network information automatically
 	if err := h.createOrUpdateJob(nad, networkConf.ServerIPAddr); err != nil {
-		return nil, err
-	}
-
-	return nad, nil
-}
-
-func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
-	if nad.Labels != nil {
-		if _, ok := nad.Labels[utils.KeyVlanLabel]; ok {
-			return nil
-		}
-	}
-
-	netconf := &hn.NetConf{}
-	if err := json.Unmarshal([]byte(nad.Spec.Config), netconf); err != nil {
 		return err
 	}
-	nadCopy := nad.DeepCopy()
-	if nadCopy.Labels == nil {
-		nadCopy.Labels = make(map[string]string)
-	}
-	nadCopy.Labels[utils.KeyVlanLabel] = strconv.Itoa(netconf.Vlan)
 
-	_, err := h.nadClient.Update(nadCopy)
-
-	return err
+	return nil
 }
 
-func (h Handler) OnRemove(key string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
-	if nad == nil {
-		return nil, nil
-	}
-
+func (h Handler) ClearJob(nad *cniv1.NetworkAttachmentDefinition) error {
 	name := nad.Namespace + "-" + nad.Name
 	if _, err := h.jobCache.Get(h.namespace, name); err != nil && !apierrors.IsNotFound(err) {
-		return nil, err
+		return err
 	} else if err == nil {
 		if err := h.jobClient.Delete(h.namespace, name, &metav1.DeleteOptions{}); err != nil {
-			return nil, err
+			return err
 		}
 	}
-
 	h.removeItem(nad.Namespace, nad.Name)
-
-	return nad, nil
+	return nil
 }
 
 func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition, dhcpServerAddr string) error {

@@ -3,14 +3,10 @@ package agent
 import (
 	"github.com/harvester/harvester-network-controller/pkg/config"
 	"github.com/harvester/harvester-network-controller/pkg/controller/agent/nad"
-	"github.com/harvester/harvester-network-controller/pkg/controller/agent/nodenetwork"
+	"github.com/harvester/harvester-network-controller/pkg/controller/agent/vlanconfig"
 )
 
-var registerFuncList = []config.RegisterFunc{
+var RegisterFuncList = []config.RegisterFunc{
 	nad.Register,
-	nodenetwork.Register,
-}
-
-func GetRegisterFuncList() []config.RegisterFunc {
-	return registerFuncList
+	vlanconfig.Register,
 }
