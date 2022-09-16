@@ -95,18 +95,29 @@ spec:
                       type: boolean
                     state:
                       type: string
+                    string:
+                      type: string
                     type:
                       type: string
+                  required:
+                  - string
+                  type: object
+                type: array
+              localAreas:
+                items:
+                  properties:
+                    cidr:
+                      type: string
+                    vlanID:
+                      type: integer
+                  required:
+                  - vlanID
                   type: object
                 type: array
               node:
                 type: string
               vlanConfig:
                 type: string
-              vlanIds:
-                items:
-                  type: integer
-                type: array
             required:
             - clusterNetwork
             - node
