@@ -55,6 +55,7 @@ replace (
 
 require (
 	github.com/achanda/go-sysctl v0.0.0-20160222034550-6be7678c45d2
+	github.com/cenk/backoff v2.2.1+incompatible
 	github.com/containernetworking/cni v0.8.1
 	github.com/coreos/go-iptables v0.6.0
 	github.com/deckarep/golang-set/v2 v2.1.0
