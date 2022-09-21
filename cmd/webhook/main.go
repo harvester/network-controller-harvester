@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/harvester/harvester/pkg/indexeres"
 	"os"
 
 	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
@@ -11,7 +12,6 @@ import (
 	ctlcore "github.com/rancher/wrangler/pkg/generated/controllers/core"
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	"github.com/rancher/wrangler/pkg/kubeconfig"
-	"github.com/rancher/wrangler/pkg/leader"
 	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/rancher/wrangler/pkg/start"
 	"github.com/sirupsen/logrus"
@@ -19,7 +19,6 @@ import (
 	"github.com/yaocw2020/webhook/pkg/config"
 	"github.com/yaocw2020/webhook/pkg/server"
 	"github.com/yaocw2020/webhook/pkg/types"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	ctlnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
@@ -84,7 +83,6 @@ func main() {
 		logrus.Fatal(err)
 	}
 
-	client := kubernetes.NewForConfigOrDie(cfg)
 	ctx := signals.SetupSignalContext()
 
 	app := cli.NewApp()
@@ -96,11 +94,9 @@ func main() {
 		}
 	}
 
-	leader.RunOrDie(ctx, options.Namespace, name, client, func(ctx context.Context) {
-		if err := app.Run(os.Args); err != nil {
-			logrus.Fatalf("run webhook server failed: %v", err)
-		}
-	})
+	if err := app.Run(os.Args); err != nil {
+		logrus.Fatalf("run webhook server failed: %v", err)
+	}
 }
 
 func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
@@ -144,13 +140,15 @@ func newCaches(ctx context.Context, cfg *rest.Config, threadiness int) (*caches,
 	starters = append(starters, harvesterNetworkFactory)
 	coreFactory := ctlcore.NewFactoryFromConfigOrDie(cfg)
 	starters = append(starters, coreFactory)
-	// must declare cache before starting the factories
+	// must declare cache before starting informers
 	c := &caches{
 		vmCache:   kubevirtFactory.Kubevirt().V1().VirtualMachine().Cache(),
 		nadCache:  cniFactory.K8s().V1().NetworkAttachmentDefinition().Cache(),
 		vsCache:   harvesterNetworkFactory.Network().V1beta1().VlanStatus().Cache(),
 		nodeCache: coreFactory.Core().V1().Node().Cache(),
 	}
+	// Indexer must be added before starting the informer, otherwise panic `cannot add indexers to running index` happens
+	c.vmCache.AddIndexer(indexeres.VMByNetworkIndex, indexeres.VMByNetwork)
 
 	if err := start.All(ctx, threadiness, starters...); err != nil {
 		return nil, err

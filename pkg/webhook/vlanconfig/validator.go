@@ -19,7 +19,7 @@ import (
 const (
 	createErr = "could not create vlanConfig %s because %w"
 	updateErr = "could not update vlanConfig %s because %w"
-	deleteErr = "cloud not delete vlanConfig %s because %w"
+	deleteErr = "could not delete vlanConfig %s because %w"
 )
 
 type vlanConfigValidator struct {
@@ -61,6 +61,7 @@ func (v *vlanConfigValidator) Delete(_ *types.Request, oldObj runtime.Object) er
 	if err != nil {
 		return fmt.Errorf(deleteErr, vc.Name, err)
 	}
+
 	nads, err := v.nadCache.List("", labels.Set(map[string]string{
 		utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork,
 	}).AsSelector())
@@ -82,7 +83,7 @@ func (v *vlanConfigValidator) Delete(_ *types.Request, oldObj runtime.Object) er
 
 func (v *vlanConfigValidator) Resource() types.Resource {
 	return types.Resource{
-		Names:      []string{"vlanconfs"},
+		Names:      []string{"vlanconfigs"},
 		Scope:      admissionregv1.ClusterScope,
 		APIGroup:   networkv1.SchemeGroupVersion.Group,
 		APIVersion: networkv1.SchemeGroupVersion.Version,

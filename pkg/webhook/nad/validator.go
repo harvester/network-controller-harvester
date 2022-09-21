@@ -29,7 +29,6 @@ type nadValidator struct {
 var _ types.Validator = &nadValidator{}
 
 func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache) *nadValidator {
-	vmCache.AddIndexer(indexeres.VMByNetworkIndex, indexeres.VMByNetwork)
 	return &nadValidator{
 		vmCache: vmCache,
 	}

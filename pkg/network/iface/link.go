@@ -100,7 +100,7 @@ func (l *Link) clearMacVlan() error {
 	return nil
 }
 
-func (l *Link) SetMaster(br *Bridge, vids []uint16) error {
+func (l *Link) SetMaster(br *Bridge) error {
 	if l.Attrs().MasterIndex == br.Index {
 		return nil
 	}
@@ -110,12 +110,6 @@ func (l *Link) SetMaster(br *Bridge, vids []uint16) error {
 	}
 	if err := netlink.LinkSetMaster(l, br); err != nil {
 		return fmt.Errorf("%s set %s as master failed, error: %w", l.Attrs().Name, br.Name, err)
-	}
-
-	for _, vid := range vids {
-		if err := l.AddBridgeVlan(vid); err != nil {
-			return err
-		}
 	}
 
 	return nil

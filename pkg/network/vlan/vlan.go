@@ -8,10 +8,15 @@ import (
 )
 
 type Vlan struct {
-	name   string
-	bridge *iface.Bridge
-	uplink *iface.Link
-	vids   []uint16
+	name       string
+	bridge     *iface.Bridge
+	uplink     *iface.Link
+	localAreas []*LocalArea
+}
+
+type LocalArea struct {
+	Vid  uint16
+	Cidr string
 }
 
 func (v *Vlan) Type() string {
@@ -20,13 +25,13 @@ func (v *Vlan) Type() string {
 
 // The bridge of a pure VLAN may have no latest information
 // The NIC of a pure VLAN can be empty
-func NewVlan(name string, vids []uint16) *Vlan {
+func NewVlan(name string, localAreas []*LocalArea) *Vlan {
 	br := iface.NewBridge(iface.GenerateName(name, iface.BridgeSuffix))
 
 	return &Vlan{
-		name:   name,
-		bridge: br,
-		vids:   vids,
+		name:       name,
+		bridge:     br,
+		localAreas: localAreas,
 	}
 }
 
@@ -66,11 +71,6 @@ func GetVlan(name string) (*Vlan, error) {
 	}
 	v.uplink = uplink
 
-	v.vids, err = v.uplink.ListBridgeVlan()
-	if err != nil {
-		return nil, err
-	}
-
 	return v, nil
 }
 
@@ -81,11 +81,16 @@ func (v *Vlan) Setup(l *iface.Link) error {
 	}
 
 	// set master
-	if err := l.SetMaster(v.bridge, v.vids); err != nil {
+	if err := l.SetMaster(v.bridge); err != nil {
 		return err
 	}
-
 	v.uplink = l
+
+	for _, la := range v.localAreas {
+		if err := v.AddLocalArea(la); err != nil {
+			return fmt.Errorf("add local area %v failed, error: %w", la, err)
+		}
+	}
 
 	return nil
 }
@@ -114,58 +119,60 @@ func (v *Vlan) Teardown() error {
 	return nil
 }
 
-func (v *Vlan) AddLocalArea(vid uint16, cidr string) error {
+func (v *Vlan) AddLocalArea(la *LocalArea) error {
 	if v.uplink == nil {
 		return fmt.Errorf("bridge %s hasn't attached an uplink", v.bridge.Name)
 	}
-	if ok, _ := v.findVid(vid); ok {
+	if ok, _ := v.findVid(la.Vid); ok {
 		return nil
 	}
 
-	if err := v.uplink.AddBridgeVlan(vid); err != nil {
-		return fmt.Errorf("add bridge vlanconfig %d failed, error: %w", vid, err)
+	if err := v.uplink.AddBridgeVlan(la.Vid); err != nil {
+		return fmt.Errorf("add bridge vlanconfig %d failed, error: %w", la.Vid, err)
 	}
-	v.vids = append(v.vids, vid)
 
-	if cidr == "" {
+	if la.Cidr == "" {
+		v.localAreas = append(v.localAreas, la)
 		return nil
 	}
 
-	if err := iface.EnsureRouteViaGateway(cidr); err != nil {
-		return fmt.Errorf("ensure %s to route via gateway failed, error: %w", cidr, err)
+	if err := iface.EnsureRouteViaGateway(la.Cidr); err != nil {
+		return fmt.Errorf("ensure %s to route via gateway failed, error: %w", la.Cidr, err)
 	}
 
+	v.localAreas = append(v.localAreas, la)
 	return nil
 }
 
-func (v *Vlan) RemoveLocalArea(vid uint16, cidr string) error {
+func (v *Vlan) RemoveLocalArea(la *LocalArea) error {
 	if v.uplink == nil {
 		return fmt.Errorf("bridge %s hasn't attached an uplink", v.bridge.Name)
 	}
 
-	ok, index := v.findVid(vid)
+	ok, index := v.findVid(la.Vid)
 	if !ok {
 		return nil
 	}
 
-	if err := v.uplink.DelBridgeVlan(vid); err != nil {
-		return fmt.Errorf("remove bridge vlanconfig %d failed, error: %w", vid, err)
+	if err := v.uplink.DelBridgeVlan(la.Vid); err != nil {
+		return fmt.Errorf("remove bridge vlanconfig %d failed, error: %w", la.Vid, err)
 	}
-	v.vids = append(v.vids[:index], v.vids[index+1:]...)
 
-	if cidr == "" {
+	if la.Cidr == "" {
+		v.localAreas = append(v.localAreas[:index], v.localAreas[index+1:]...)
 		return nil
 	}
 
-	if err := iface.DeleteRouteViaGateway(cidr); err != nil {
-		return fmt.Errorf("delete route with dst %s via gateway failed, error: %w", cidr, err)
+	if err := iface.DeleteRouteViaGateway(la.Cidr); err != nil {
+		return fmt.Errorf("delete route with dst %s via gateway failed, error: %w", la.Cidr, err)
 	}
 
+	v.localAreas = append(v.localAreas[:index], v.localAreas[index+1:]...)
 	return nil
 }
 
-func (v *Vlan) ListLocalArea() []uint16 {
-	return v.vids
+func (v *Vlan) ListLocalArea() []*LocalArea {
+	return v.localAreas
 }
 
 func (v *Vlan) Bridge() *iface.Bridge {
@@ -177,8 +184,8 @@ func (v *Vlan) Uplink() *iface.Link {
 }
 
 func (v *Vlan) findVid(vid uint16) (bool, int) {
-	for i, v := range v.vids {
-		if v == vid {
+	for i, la := range v.localAreas {
+		if la.Vid == vid {
 			return true, i
 		}
 	}

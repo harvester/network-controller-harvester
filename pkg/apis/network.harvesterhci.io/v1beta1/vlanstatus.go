@@ -30,14 +30,20 @@ type VlStatus struct {
 
 	Node string `json:"node"`
 	// +optional
-	VLANIDs []uint16 `json:"vlanIds,omitempty"`
+	LocalAreas []LocalArea `json:"localAreas,omitempty"`
 	// +optional
 	LinkStatus []LinkStatus `json:"linkStatus,omitempty"`
 	// +optional
 	Conditions []Condition `json:"conditions,omitempty"`
 }
 
+type LocalArea struct {
+	VID  uint16 `json:"vlanID"`
+	CIDR string `json:"cidr,omitempty"`
+}
+
 type LinkStatus struct {
+	Name string `json:"name"`
 	// +optional
 	Index int `json:"index,omitempty"`
 	// +optional

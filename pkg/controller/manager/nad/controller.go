@@ -3,6 +3,7 @@ package nad
 import (
 	"context"
 	"fmt"
+	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
 	"sync"
 	"time"
 
@@ -90,7 +91,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
+func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
 	if nad == nil || nad.DeletionTimestamp != nil {
 		return nil, nil
 	}
@@ -104,7 +105,7 @@ func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 	return nad, nil
 }
 
-func (h Handler) OnRemove(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
+func (h Handler) OnRemove(key string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
 	if nad == nil {
 		return nil, nil
 	}
@@ -240,7 +241,26 @@ func constructJob(cur *batchv1.Job, namespace, image, dhcpServerAddr string, nad
 			ImagePullPolicy: corev1.PullIfNotPresent,
 		},
 	}
-
+	// Add nodeAffinity to prove the job pod is scheduled to the proper node with the specified cluster network
+	job.Spec.Template.Spec.Affinity = &corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{
+					{
+						MatchExpressions: []corev1.NodeSelectorRequirement{
+							{
+								Key:      network.GroupName + "/" + nad.Labels[utils.KeyClusterNetworkLabel],
+								Operator: corev1.NodeSelectorOpIn,
+								Values: []string{
+									utils.ValueTrue,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 	job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 	job.Spec.Template.Spec.ServiceAccountName = jobServiceAccountName
 	backoffLimit := int32(1)

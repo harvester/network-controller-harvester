@@ -10,4 +10,6 @@ const (
 	KeyNodeLabel           = network.GroupName + "/node"
 
 	KeyMatchedNodes = network.GroupName + "/matched-nodes"
+
+	ValueTrue = "true"
 )

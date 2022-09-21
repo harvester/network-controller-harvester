@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 
-	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	"github.com/vishvananda/netlink"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,10 +17,12 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
+	"github.com/harvester/harvester-network-controller/pkg/controller/agent/nad"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/network/vlan"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
+	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 )
 
 const (
@@ -65,7 +67,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func (h Handler) OnChange(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
+func (h Handler) OnChange(key string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
 	if vc == nil || vc.DeletionTimestamp != nil {
 		return nil, nil
 	}
@@ -95,7 +97,7 @@ func (h Handler) OnChange(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanCo
 	return vc, nil
 }
 
-func (h Handler) OnRemove(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
+func (h Handler) OnRemove(key string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
 	klog.Infof("vlan config %s has been removed", vc.Name)
 
 	if err := h.removeVLAN(vc); err != nil {
@@ -105,6 +107,10 @@ func (h Handler) OnRemove(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanCo
 }
 
 func (h Handler) MatchNode(vc *networkv1.VlanConfig) (bool, string, error) {
+	if vc.Annotations == nil || vc.Annotations[utils.KeyMatchedNodes] == "" {
+		return false, "", nil
+	}
+
 	var matchedNodes []string
 	if err := json.Unmarshal([]byte(vc.Annotations[utils.KeyMatchedNodes]), &matchedNodes); err != nil {
 		return false, "", nil
@@ -116,8 +122,7 @@ func (h Handler) MatchNode(vc *networkv1.VlanConfig) (bool, string, error) {
 			if err != nil {
 				return false, "", err
 			}
-			key := network.GroupName + "/" + vc.Spec.ClusterNetwork
-			return true, node.Labels[key], nil
+			return true, node.Labels[utils.KeyVlanConfigLabel], nil
 		}
 	}
 
@@ -127,10 +132,10 @@ func (h Handler) MatchNode(vc *networkv1.VlanConfig) (bool, string, error) {
 func (h Handler) setupVLAN(vc *networkv1.VlanConfig) error {
 	var v *vlan.Vlan
 	var setupErr error
-	var vids []uint16
+	var localAreas []*vlan.LocalArea
 	var uplink *iface.Link
 	// get VIDs
-	vids, setupErr = h.getNadVidList(iface.GenerateName(vc.Spec.ClusterNetwork, iface.BridgeSuffix))
+	localAreas, setupErr = h.getLocalAreas(iface.GenerateName(vc.Spec.ClusterNetwork, iface.BridgeSuffix))
 	if setupErr != nil {
 		goto updateStatus
 	}
@@ -140,13 +145,14 @@ func (h Handler) setupVLAN(vc *networkv1.VlanConfig) error {
 		goto updateStatus
 	}
 	// set up VLAN
-	v = vlan.NewVlan(vc.Spec.ClusterNetwork, vids)
+	v = vlan.NewVlan(vc.Spec.ClusterNetwork, localAreas)
 	setupErr = v.Setup(uplink)
 
 updateStatus:
 	// Update status and still return setup error if not nil
 	if err := h.updateStatus(vc, v, setupErr); err != nil {
-		return fmt.Errorf("update status into vlanstatus %s", h.statusName(vc.Name))
+		return fmt.Errorf("update status into vlanstatus %s failed, error: %w, setup error: %v",
+			h.statusName(vc.Name), err, setupErr)
 	}
 	if setupErr != nil {
 		return fmt.Errorf("set up VLAN failed, vlanconfig: %s, node: %s, error: %w", vc.Name, h.nodeName, setupErr)
@@ -180,7 +186,8 @@ updateStatus:
 		return err
 	}
 	if err := h.deleteStatus(vc, teardownErr); err != nil {
-		return fmt.Errorf("update status into vlanstatus %s", h.statusName(vc.Name))
+		return fmt.Errorf("update status into vlanstatus %s failed, error: %w, teardown error: %v",
+			h.statusName(vc.Name), err, teardownErr)
 	}
 	if teardownErr != nil {
 		return fmt.Errorf("tear down VLAN failed, vlanconfig: %s, node: %s, error: %w", vc.Name, h.nodeName, teardownErr)
@@ -207,7 +214,7 @@ func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 	// Note: do not use &netlink.Bond{}
 	bond := netlink.NewLinkBond(linkAttrs)
 	// set bonding mode
-	mode := netlink.BOND_MODE_BALANCE_TLB
+	mode := netlink.BOND_MODE_ACTIVE_BACKUP
 	if vc.Spec.Uplink.BondOptions != nil && vc.Spec.Uplink.BondOptions.Mode != "" {
 		mode = netlink.StringToBondMode(string(vc.Spec.Uplink.BondOptions.Mode))
 	}
@@ -225,14 +232,13 @@ func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 	return &iface.Link{Link: b}, nil
 }
 
-func (h Handler) getNadVidList(bridgeName string) ([]uint16, error) {
+func (h Handler) getLocalAreas(bridgeName string) ([]*vlan.LocalArea, error) {
 	nads, err := h.nadCache.List("", labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("list nad failed, error: %v", err)
 	}
 
-	vidList := make([]uint16, 0)
-
+	localAreas := make([]*vlan.LocalArea, 0)
 	for _, n := range nads {
 		netconf := &utils.NetConf{}
 		if err := json.Unmarshal([]byte(n.Spec.Config), netconf); err != nil {
@@ -241,11 +247,15 @@ func (h Handler) getNadVidList(bridgeName string) ([]uint16, error) {
 
 		if netconf.Type == bridgeCNIName && netconf.BrName == bridgeName {
 			klog.Infof("add nad:%s with vid:%d to the list", n.Name, netconf.Vlan)
-			vidList = append(vidList, uint16(netconf.Vlan))
+			localArea, err := nad.GetLocalArea(n)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get local area from nad %s/%s, error: %w", n.Namespace, n.Name, err)
+			}
+			localAreas = append(localAreas, localArea)
 		}
 	}
 
-	return vidList, nil
+	return localAreas, nil
 }
 
 func (h Handler) updateStatus(vc *networkv1.VlanConfig, v *vlan.Vlan, setupErr error) error {
@@ -288,9 +298,16 @@ func (h Handler) updateStatus(vc *networkv1.VlanConfig, v *vlan.Vlan, setupErr e
 	if setupErr == nil {
 		networkv1.Ready.SetStatusBool(vStatus, true)
 		networkv1.Ready.Message(vStatus, "")
-		vStatus.Status.VLANIDs = v.ListLocalArea()
+		vStatus.Status.LocalAreas = []networkv1.LocalArea{}
+		for _, la := range v.ListLocalArea() {
+			vStatus.Status.LocalAreas = append(vStatus.Status.LocalAreas, networkv1.LocalArea{
+				VID:  la.Vid,
+				CIDR: la.Cidr,
+			})
+		}
 		vStatus.Status.LinkStatus = []networkv1.LinkStatus{
 			{
+				Name:        v.Bridge().Name,
 				Index:       v.Bridge().Index,
 				Type:        v.Bridge().Type(),
 				MAC:         v.Bridge().HardwareAddr.String(),
@@ -299,6 +316,7 @@ func (h Handler) updateStatus(vc *networkv1.VlanConfig, v *vlan.Vlan, setupErr e
 				MasterIndex: v.Bridge().MasterIndex,
 			},
 			{
+				Name:        v.Uplink().Attrs().Name,
 				Index:       v.Uplink().Attrs().Index,
 				Type:        v.Uplink().Type(),
 				MAC:         v.Uplink().Attrs().HardwareAddr.String(),
@@ -350,13 +368,18 @@ func (h Handler) deleteStatus(vc *networkv1.VlanConfig, teardownErr error) error
 	return nil
 }
 
+// vlanstatus name: <vc name>-<node name>-<crc32 checksum>
 func (h Handler) statusName(vcName string) string {
 	name := vcName + "-" + h.nodeName
-	if len(name) > 63 {
-		name = name[:63]
+	digest := crc32.ChecksumIEEE([]byte(name))
+	suffix := fmt.Sprintf("%08x", digest)
+	// The name contains no more than 63 characters
+	maxLengthOfName := 63 - 1 - len(suffix)
+	if len(name) > maxLengthOfName {
+		name = name[:maxLengthOfName]
 	}
 
-	return name
+	return name + "-" + suffix
 }
 
 func (h Handler) addNodeLabel(vc *networkv1.VlanConfig) error {
@@ -364,9 +387,10 @@ func (h Handler) addNodeLabel(vc *networkv1.VlanConfig) error {
 	if err != nil {
 		return err
 	}
+	// Since the length of cluster network isn't bigger than 12, the length of key will less than 63.
 	key := network.GroupName + "/" + vc.Spec.ClusterNetwork
-
-	if node.Labels != nil && node.Labels[key] == vc.Name {
+	if node.Labels != nil && node.Labels[key] == utils.ValueTrue &&
+		node.Labels[utils.KeyVlanConfigLabel] == vc.Name {
 		return nil
 	}
 
@@ -374,10 +398,11 @@ func (h Handler) addNodeLabel(vc *networkv1.VlanConfig) error {
 	if nodeCopy.Labels == nil {
 		nodeCopy.Labels = make(map[string]string)
 	}
-	nodeCopy.Labels[key] = vc.Name
+	nodeCopy.Labels[key] = utils.ValueTrue
+	nodeCopy.Labels[utils.KeyVlanConfigLabel] = vc.Name
 
 	if _, err := h.nodeClient.Update(nodeCopy); err != nil {
-		return fmt.Errorf("add VLAN labels %s=true to node %s failed, error: %w", key, h.nodeName, err)
+		return fmt.Errorf("add labels for vlanconfig %s to node %s failed, error: %w", vc.Name, h.nodeName, err)
 	}
 
 	return nil
@@ -388,13 +413,15 @@ func (h Handler) removeNodeLabel(vc *networkv1.VlanConfig) error {
 	if err != nil {
 		return err
 	}
-	key := network.GroupName + vc.Spec.ClusterNetwork
 
-	if node.Labels != nil && node.Labels[key] == vc.Name {
+	key := network.GroupName + "/" + vc.Spec.ClusterNetwork
+	if node.Labels != nil && (node.Labels[key] == utils.ValueTrue ||
+		node.Labels[utils.KeyVlanConfigLabel] == vc.Name) {
 		nodeCopy := node.DeepCopy()
 		delete(nodeCopy.Labels, key)
+		delete(nodeCopy.Labels, utils.KeyVlanConfigLabel)
 		if _, err := h.nodeClient.Update(nodeCopy); err != nil {
-			return fmt.Errorf("remove VLAN labels %s=true from node %s failed, error: %w", key, h.nodeName, err)
+			return fmt.Errorf("remove labels for vlanconfig %s from node %s failed, error: %w", vc.Name, h.nodeName, err)
 		}
 	}
 

@@ -73,7 +73,6 @@ func disableBridgeNF() error {
 
 func (br *Bridge) Fetch() error {
 	l, err := netlink.LinkByName(br.Name)
-	// TODO bridge not found
 	if err != nil {
 		return fmt.Errorf("could not lookup link %s, error: %w", br.Name, err)
 	}

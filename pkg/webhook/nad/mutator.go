@@ -24,7 +24,7 @@ func NewNadMutator() *nadMutator {
 	return &nadMutator{}
 }
 
-func (n *nadMutator) Create(request *types.Request, newObj runtime.Object) (types.Patch, error) {
+func (n *nadMutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, error) {
 	netAttachDef := newObj.(*cniv1.NetworkAttachmentDefinition)
 
 	labels := netAttachDef.Labels
@@ -39,8 +39,9 @@ func (n *nadMutator) Create(request *types.Request, newObj runtime.Object) (type
 	labels[utils.KeyVlanLabel] = strconv.Itoa(netconf.Vlan)
 
 	lenOfBrName := len(netconf.BrName)
-	if lenOfBrName < 3 {
-		return nil, fmt.Errorf(createErr, netAttachDef.Namespace, netAttachDef.Name, fmt.Errorf("the length of brName must be more than 3"))
+	if lenOfBrName < len(iface.BridgeSuffix) {
+		return nil, fmt.Errorf(createErr, netAttachDef.Namespace, netAttachDef.Name,
+			fmt.Errorf("the length of brName must be more than %d", len(iface.BridgeSuffix)))
 	}
 	labels[utils.KeyClusterNetworkLabel] = netconf.BrName[:lenOfBrName-len(iface.BridgeSuffix)]
 
