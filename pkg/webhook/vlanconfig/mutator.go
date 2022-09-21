@@ -59,7 +59,7 @@ func (v *vlanConfigMutator) Update(_ *types.Request, oldObj, newObj runtime.Obje
 }
 
 func getCnLabelPatch(v *networkv1.VlanConfig) types.Patch {
-	if v.Labels[utils.KeyClusterNetworkLabel] == v.Spec.ClusterNetwork {
+	if v.Labels != nil && v.Labels[utils.KeyClusterNetworkLabel] == v.Spec.ClusterNetwork {
 		return nil
 	}
 
@@ -87,7 +87,12 @@ func (v *vlanConfigMutator) matchNodes(vc *networkv1.VlanConfig) (types.Patch, e
 		return nil, err
 	}
 
-	matchedNodes := make([]string, len(nodes))
+	lenOfNodes := len(nodes)
+	if lenOfNodes == 0 {
+		return nil, nil
+	}
+
+	matchedNodes := make([]string, lenOfNodes)
 	for i, node := range nodes {
 		matchedNodes[i] = node.Name
 	}

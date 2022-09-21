@@ -3,6 +3,7 @@ package iface
 import (
 	"errors"
 	"fmt"
+	"net"
 
 	"github.com/vishvananda/netlink"
 )
@@ -81,16 +82,21 @@ func (b *Bond) ensureBondSlaves() error {
 			if l.Attrs().MasterIndex != 0 && l.Attrs().MasterIndex != b.Index {
 				return fmt.Errorf("%s has been enslaved by the link with index %d", l.Attrs().Name, l.Attrs().MasterIndex)
 			}
+			// The slave link should be down before enslaved, otherwise, there will be error like `operation not permitted`.
+			if err := netlink.LinkSetDown(l); err != nil {
+				return fmt.Errorf("set slave %s down failed, error: %w", slave, err)
+			}
 			if err := netlink.LinkSetBondSlave(l, b.Bond); err != nil {
 				return fmt.Errorf("add slave %s to bond %s failed, error: %w", slave, b.Name, err)
 			}
 		}
 
-		if l.Attrs().OperState != netlink.OperUp {
+		if l.Attrs().Flags&net.FlagUp == 0 {
 			if err := netlink.LinkSetUp(l); err != nil {
 				return err
 			}
 		}
+
 		// delete the handled slave
 		delete(slaveMap, slave)
 	}

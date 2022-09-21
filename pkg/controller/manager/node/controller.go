@@ -2,6 +2,10 @@ package node
 
 import (
 	"context"
+	"fmt"
+	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
+	"github.com/harvester/harvester-network-controller/pkg/controller/manager/common"
+	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 
 	"github.com/deckarep/golang-set/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -16,8 +20,9 @@ import (
 const controllerName = "harvester-network-manager-node-controller"
 
 type Handler struct {
-	vcCache  ctlnetworkv1.VlanConfigCache
-	vcClient ctlnetworkv1.VlanConfigClient
+	nodeClient ctlcorev1.NodeClient
+	vcCache    ctlnetworkv1.VlanConfigCache
+	vcClient   ctlnetworkv1.VlanConfigClient
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -25,8 +30,9 @@ func Register(ctx context.Context, management *config.Management) error {
 	vcs := management.HarvesterNetworkFactory.Network().V1beta1().VlanConfig()
 
 	h := Handler{
-		vcClient: vcs,
-		vcCache:  vcs.Cache(),
+		nodeClient: nodes,
+		vcCache:    vcs.Cache(),
+		vcClient:   vcs,
 	}
 
 	nodes.OnChange(ctx, controllerName, h.OnChange)
@@ -34,23 +40,27 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func (h Handler) OnChange(_ string, node *corev1.Node) (*corev1.Node, error) {
+func (h Handler) OnChange(key string, node *corev1.Node) (*corev1.Node, error) {
 	if node == nil || node.DeletionTimestamp != nil {
 		return nil, nil
+	}
+
+	if err := h.ensureMgmtLabels(node); err != nil {
+		return nil, err
 	}
 
 	vcs, err := h.vcCache.List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
-
 	for _, vc := range vcs {
 		if err := h.updateMatchedNodeAnnotation(vc, node); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to update matched node annotation, vc: %s, node: %s, error: %w",
+				vc.Name, node.Name, err)
 		}
 	}
 
-	return nil, nil
+	return node, nil
 }
 
 func (h Handler) updateMatchedNodeAnnotation(vc *networkv1.VlanConfig, node *corev1.Node) error {
@@ -86,6 +96,24 @@ func (h Handler) updateMatchedNodeAnnotation(vc *networkv1.VlanConfig, node *cor
 	vcCopy.Annotations[utils.KeyMatchedNodes] = string(bytes)
 	if _, err := h.vcClient.Update(vcCopy); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (h Handler) ensureMgmtLabels(node *corev1.Node) error {
+	key := network.GroupName + "/" + common.ManagementClusterNetworkName
+	if node.Labels != nil && node.Labels[key] == utils.ValueTrue {
+		return nil
+	}
+
+	nodeCopy := node.DeepCopy()
+	if nodeCopy.Labels == nil {
+		nodeCopy.Labels = make(map[string]string)
+	}
+	nodeCopy.Labels[key] = utils.ValueTrue
+	if _, err := h.nodeClient.Update(nodeCopy); err != nil {
+		return fmt.Errorf("update node %s failed, error: %w", node.Name, err)
 	}
 
 	return nil

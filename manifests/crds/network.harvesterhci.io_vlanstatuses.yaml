@@ -91,16 +91,16 @@ spec:
                       type: string
                     masterIndex:
                       type: integer
+                    name:
+                      type: string
                     promiscuous:
                       type: boolean
                     state:
                       type: string
-                    string:
-                      type: string
                     type:
                       type: string
                   required:
-                  - string
+                  - name
                   type: object
                 type: array
               localAreas:

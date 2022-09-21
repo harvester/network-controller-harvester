@@ -36,7 +36,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func (h Handler) OnChange(_ string, nad *nadv1.NetworkAttachmentDefinition) (*nadv1.NetworkAttachmentDefinition, error) {
+func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*nadv1.NetworkAttachmentDefinition, error) {
 	if nad == nil || nad.DeletionTimestamp != nil {
 		return nil, nil
 	}
@@ -54,7 +54,7 @@ func (h Handler) OnChange(_ string, nad *nadv1.NetworkAttachmentDefinition) (*na
 	return nad, nil
 }
 
-func (h Handler) OnRemove(_ string, nad *nadv1.NetworkAttachmentDefinition) (*nadv1.NetworkAttachmentDefinition, error) {
+func (h Handler) OnRemove(key string, nad *nadv1.NetworkAttachmentDefinition) (*nadv1.NetworkAttachmentDefinition, error) {
 	if nad == nil {
 		return nil, nil
 	}
@@ -78,11 +78,6 @@ func (h Handler) OnRemove(_ string, nad *nadv1.NetworkAttachmentDefinition) (*na
 }
 
 func (h Handler) addLocalArea(nad *nadv1.NetworkAttachmentDefinition) error {
-	vlanID, err := strconv.Atoi(nad.Labels[utils.KeyVlanLabel])
-	if err != nil {
-		return fmt.Errorf("invalid vlanconfig %s", nad.Labels[utils.KeyVlanLabel])
-	}
-
 	v, err := vlan.GetVlan(nad.Labels[utils.KeyClusterNetworkLabel])
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) {
 		return err
@@ -90,14 +85,12 @@ func (h Handler) addLocalArea(nad *nadv1.NetworkAttachmentDefinition) error {
 		return nil
 	}
 
-	layer3NetworkConf := &utils.Layer3NetworkConf{}
-	if nad.Annotations != nil && nad.Annotations[utils.KeyNetworkConf] != "" {
-		if layer3NetworkConf, err = utils.NewLayer3NetworkConf(nad.Annotations[utils.KeyNetworkConf]); err != nil {
-			return err
-		}
+	localArea, err := GetLocalArea(nad)
+	if err != nil {
+		return fmt.Errorf("failed to get local area from nad %s/%s, error: %w", nad.Namespace, nad.Name, err)
 	}
 
-	return v.AddLocalArea(uint16(vlanID), layer3NetworkConf.CIDR)
+	return v.AddLocalArea(localArea)
 }
 
 func (h Handler) existDuplicateNad(vlanIdStr, cn string) (bool, error) {
@@ -113,11 +106,6 @@ func (h Handler) existDuplicateNad(vlanIdStr, cn string) (bool, error) {
 }
 
 func (h Handler) removeLocalArea(nad *nadv1.NetworkAttachmentDefinition) error {
-	vlanID, err := strconv.Atoi(nad.Labels[utils.KeyVlanLabel])
-	if err != nil {
-		return fmt.Errorf("invalid vlanconfig %s", nad.Labels[utils.KeyVlanLabel])
-	}
-
 	v, err := vlan.GetVlan(nad.Labels[utils.KeyClusterNetworkLabel])
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) {
 		return err
@@ -125,13 +113,29 @@ func (h Handler) removeLocalArea(nad *nadv1.NetworkAttachmentDefinition) error {
 		return nil
 	}
 
+	localArea, err := GetLocalArea(nad)
+	if err != nil {
+		return fmt.Errorf("failed to get local area from nad %s/%s, error: %w", nad.Namespace, nad.Name, err)
+	}
+
+	return v.RemoveLocalArea(localArea)
+}
+
+func GetLocalArea(nad *nadv1.NetworkAttachmentDefinition) (*vlan.LocalArea, error) {
+	vlanID, err := strconv.Atoi(nad.Labels[utils.KeyVlanLabel])
+	if err != nil {
+		return nil, fmt.Errorf("invalid vlanconfig %s", nad.Labels[utils.KeyVlanLabel])
+	}
+
 	layer3NetworkConf := &utils.Layer3NetworkConf{}
 	if nad.Annotations != nil && nad.Annotations[utils.KeyNetworkConf] != "" {
-		layer3NetworkConf, err = utils.NewLayer3NetworkConf(nad.Annotations[utils.KeyNetworkConf])
-		if err != nil {
-			return err
+		if layer3NetworkConf, err = utils.NewLayer3NetworkConf(nad.Annotations[utils.KeyNetworkConf]); err != nil {
+			return nil, err
 		}
 	}
 
-	return v.RemoveLocalArea(uint16(vlanID), layer3NetworkConf.CIDR)
+	return &vlan.LocalArea{
+		Vid:  uint16(vlanID),
+		Cidr: layer3NetworkConf.CIDR,
+	}, nil
 }
