@@ -25,7 +25,10 @@ import (
 	v1beta1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/rancher/lasso/pkg/client"
 	"github.com/rancher/lasso/pkg/controller"
+	"github.com/rancher/wrangler/pkg/apply"
+	"github.com/rancher/wrangler/pkg/condition"
 	"github.com/rancher/wrangler/pkg/generic"
+	"github.com/rancher/wrangler/pkg/kv"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -55,7 +58,7 @@ type ClusterNetworkController interface {
 type ClusterNetworkClient interface {
 	Create(*v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error)
 	Update(*v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error)
-
+	UpdateStatus(*v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error)
 	Delete(name string, options *metav1.DeleteOptions) error
 	Get(name string, options metav1.GetOptions) (*v1beta1.ClusterNetwork, error)
 	List(opts metav1.ListOptions) (*v1beta1.ClusterNetworkList, error)
@@ -184,6 +187,11 @@ func (c *clusterNetworkController) Update(obj *v1beta1.ClusterNetwork) (*v1beta1
 	return result, c.client.Update(context.TODO(), "", obj, result, metav1.UpdateOptions{})
 }
 
+func (c *clusterNetworkController) UpdateStatus(obj *v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error) {
+	result := &v1beta1.ClusterNetwork{}
+	return result, c.client.UpdateStatus(context.TODO(), "", obj, result, metav1.UpdateOptions{})
+}
+
 func (c *clusterNetworkController) Delete(name string, options *metav1.DeleteOptions) error {
 	if options == nil {
 		options = &metav1.DeleteOptions{}
@@ -253,4 +261,116 @@ func (c *clusterNetworkCache) GetByIndex(indexName, key string) (result []*v1bet
 		result = append(result, obj.(*v1beta1.ClusterNetwork))
 	}
 	return result, nil
+}
+
+type ClusterNetworkStatusHandler func(obj *v1beta1.ClusterNetwork, status v1beta1.ClusterNetworkStatus) (v1beta1.ClusterNetworkStatus, error)
+
+type ClusterNetworkGeneratingHandler func(obj *v1beta1.ClusterNetwork, status v1beta1.ClusterNetworkStatus) ([]runtime.Object, v1beta1.ClusterNetworkStatus, error)
+
+func RegisterClusterNetworkStatusHandler(ctx context.Context, controller ClusterNetworkController, condition condition.Cond, name string, handler ClusterNetworkStatusHandler) {
+	statusHandler := &clusterNetworkStatusHandler{
+		client:    controller,
+		condition: condition,
+		handler:   handler,
+	}
+	controller.AddGenericHandler(ctx, name, FromClusterNetworkHandlerToHandler(statusHandler.sync))
+}
+
+func RegisterClusterNetworkGeneratingHandler(ctx context.Context, controller ClusterNetworkController, apply apply.Apply,
+	condition condition.Cond, name string, handler ClusterNetworkGeneratingHandler, opts *generic.GeneratingHandlerOptions) {
+	statusHandler := &clusterNetworkGeneratingHandler{
+		ClusterNetworkGeneratingHandler: handler,
+		apply:                           apply,
+		name:                            name,
+		gvk:                             controller.GroupVersionKind(),
+	}
+	if opts != nil {
+		statusHandler.opts = *opts
+	}
+	controller.OnChange(ctx, name, statusHandler.Remove)
+	RegisterClusterNetworkStatusHandler(ctx, controller, condition, name, statusHandler.Handle)
+}
+
+type clusterNetworkStatusHandler struct {
+	client    ClusterNetworkClient
+	condition condition.Cond
+	handler   ClusterNetworkStatusHandler
+}
+
+func (a *clusterNetworkStatusHandler) sync(key string, obj *v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error) {
+	if obj == nil {
+		return obj, nil
+	}
+
+	origStatus := obj.Status.DeepCopy()
+	obj = obj.DeepCopy()
+	newStatus, err := a.handler(obj, obj.Status)
+	if err != nil {
+		// Revert to old status on error
+		newStatus = *origStatus.DeepCopy()
+	}
+
+	if a.condition != "" {
+		if errors.IsConflict(err) {
+			a.condition.SetError(&newStatus, "", nil)
+		} else {
+			a.condition.SetError(&newStatus, "", err)
+		}
+	}
+	if !equality.Semantic.DeepEqual(origStatus, &newStatus) {
+		if a.condition != "" {
+			// Since status has changed, update the lastUpdatedTime
+			a.condition.LastUpdated(&newStatus, time.Now().UTC().Format(time.RFC3339))
+		}
+
+		var newErr error
+		obj.Status = newStatus
+		newObj, newErr := a.client.UpdateStatus(obj)
+		if err == nil {
+			err = newErr
+		}
+		if newErr == nil {
+			obj = newObj
+		}
+	}
+	return obj, err
+}
+
+type clusterNetworkGeneratingHandler struct {
+	ClusterNetworkGeneratingHandler
+	apply apply.Apply
+	opts  generic.GeneratingHandlerOptions
+	gvk   schema.GroupVersionKind
+	name  string
+}
+
+func (a *clusterNetworkGeneratingHandler) Remove(key string, obj *v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error) {
+	if obj != nil {
+		return obj, nil
+	}
+
+	obj = &v1beta1.ClusterNetwork{}
+	obj.Namespace, obj.Name = kv.RSplit(key, "/")
+	obj.SetGroupVersionKind(a.gvk)
+
+	return nil, generic.ConfigureApplyForObject(a.apply, obj, &a.opts).
+		WithOwner(obj).
+		WithSetID(a.name).
+		ApplyObjects()
+}
+
+func (a *clusterNetworkGeneratingHandler) Handle(obj *v1beta1.ClusterNetwork, status v1beta1.ClusterNetworkStatus) (v1beta1.ClusterNetworkStatus, error) {
+	if !obj.DeletionTimestamp.IsZero() {
+		return status, nil
+	}
+
+	objs, newStatus, err := a.ClusterNetworkGeneratingHandler(obj, status)
+	if err != nil {
+		return newStatus, err
+	}
+
+	return newStatus, generic.ConfigureApplyForObject(a.apply, obj, &a.opts).
+		WithOwner(obj).
+		WithSetID(a.name).
+		ApplyObjects(objs...)
 }
