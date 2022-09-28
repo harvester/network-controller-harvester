@@ -96,6 +96,17 @@ func (c *FakeClusterNetworks) Update(ctx context.Context, clusterNetwork *v1beta
 	return obj.(*v1beta1.ClusterNetwork), err
 }
 
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *FakeClusterNetworks) UpdateStatus(ctx context.Context, clusterNetwork *v1beta1.ClusterNetwork, opts v1.UpdateOptions) (*v1beta1.ClusterNetwork, error) {
+	obj, err := c.Fake.
+		Invokes(testing.NewRootUpdateSubresourceAction(clusternetworksResource, "status", clusterNetwork), &v1beta1.ClusterNetwork{})
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1beta1.ClusterNetwork), err
+}
+
 // Delete takes name of the clusterNetwork and deletes it. Returns an error if one occurs.
 func (c *FakeClusterNetworks) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
