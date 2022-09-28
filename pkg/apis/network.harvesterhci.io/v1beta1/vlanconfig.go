@@ -11,6 +11,7 @@ import (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=vc;vcs,scope=Cluster
 // +kubebuilder:printcolumn:name="CLUSTERNETWORK",type=string,JSONPath=`.spec.clusterNetwork`
+// +kubebuilder:printcolumn:name="PAUSED",type=boolean,JSONPath=`.spec.paused`
 // +kubebuilder:printcolumn:name="DESCRIPTION",type=string,JSONPath=`.spec.description`
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=`.metadata.creationTimestamp`
 
@@ -22,10 +23,12 @@ type VlanConfig struct {
 
 type VlanConfigSpec struct {
 	// +optional
-	Description    string            `json:"description,omitempty"`
-	ClusterNetwork string            `json:"clusterNetwork"`
-	NodeSelector   map[string]string `json:"nodeSelector,omitempty"`
-	Uplink         Uplink            `json:"uplink"`
+	Description    string `json:"description,omitempty"`
+	ClusterNetwork string `json:"clusterNetwork"`
+	// optional
+	Paused       bool              `json:"paused,omitempty"`
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	Uplink       Uplink            `json:"uplink"`
 }
 
 type Uplink struct {
