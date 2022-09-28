@@ -1,3 +1,3 @@
-package common
+package utils
 
 const ManagementClusterNetworkName = "mgmt"

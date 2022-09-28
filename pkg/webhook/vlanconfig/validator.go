@@ -2,7 +2,6 @@ package vlanconfig
 
 import (
 	"fmt"
-	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"k8s.io/apimachinery/pkg/labels"
 	"strings"
 
@@ -14,6 +13,7 @@ import (
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 const (
@@ -41,11 +41,27 @@ var _ types.Validator = &vlanConfigValidator{}
 func (v *vlanConfigValidator) Create(_ *types.Request, newObj runtime.Object) error {
 	vc := newObj.(*networkv1.VlanConfig)
 
+	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
+		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("cluster network could not be %s",
+			utils.ManagementClusterNetworkName))
+	}
+
 	maxClusterNetworkNameLen := iface.MaxDeviceNameLen - len(iface.BridgeSuffix)
 
 	if len(vc.Spec.ClusterNetwork) > maxClusterNetworkNameLen {
 		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("the length of the clusterNetwork value is "+
 			"more than %d", maxClusterNetworkNameLen))
+	}
+
+	return nil
+}
+
+func (v *vlanConfigValidator) Update(_ *types.Request, oldObj, newObj runtime.Object) error {
+	vc := newObj.(*networkv1.VlanConfig)
+
+	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
+		return fmt.Errorf(updateErr, vc.Name, fmt.Errorf("cluster network could not be %s",
+			utils.ManagementClusterNetworkName))
 	}
 
 	return nil
@@ -90,6 +106,7 @@ func (v *vlanConfigValidator) Resource() types.Resource {
 		ObjectType: &networkv1.VlanConfig{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
+			admissionregv1.Update,
 			admissionregv1.Delete,
 		},
 	}
