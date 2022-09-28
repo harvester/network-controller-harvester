@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"github.com/harvester/harvester/pkg/indexeres"
 	"os"
 
 	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	ctlkubevirt "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io"
 	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
+	"github.com/harvester/harvester/pkg/indexeres"
 	ctlcore "github.com/rancher/wrangler/pkg/generated/controllers/core"
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	"github.com/rancher/wrangler/pkg/kubeconfig"
@@ -23,6 +23,7 @@ import (
 
 	ctlnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
+	"github.com/harvester/harvester-network-controller/pkg/webhook/clusternetwork"
 	"github.com/harvester/harvester-network-controller/pkg/webhook/nad"
 	"github.com/harvester/harvester-network-controller/pkg/webhook/vlanconfig"
 )
@@ -109,8 +110,9 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 	admitters := []types.Admitter{
 		types.Validator2Admitter(nad.NewNadValidator(c.vmCache)),
 		types.Validator2Admitter(vlanconfig.NewVlanConfigValidator(c.nadCache, c.vsCache)),
+		types.Validator2Admitter(clusternetwork.NewCnValidator(c.vcCache)),
 		nad.NewNadMutator(),
-		vlanconfig.NewNadMutator(c.nodeCache),
+		vlanconfig.NewNadMutator(c.nodeCache, c.vsCache),
 	}
 	webhookServer.Register(admitters)
 	if err := webhookServer.Start(); err != nil {
@@ -125,6 +127,7 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 type caches struct {
 	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
 	vmCache   ctlkubevirtv1.VirtualMachineCache
+	vcCache   ctlnetworkv1.VlanConfigCache
 	vsCache   ctlnetworkv1.VlanStatusCache
 	nodeCache ctlcorev1.NodeCache
 }
@@ -144,6 +147,7 @@ func newCaches(ctx context.Context, cfg *rest.Config, threadiness int) (*caches,
 	c := &caches{
 		vmCache:   kubevirtFactory.Kubevirt().V1().VirtualMachine().Cache(),
 		nadCache:  cniFactory.K8s().V1().NetworkAttachmentDefinition().Cache(),
+		vcCache:   harvesterNetworkFactory.Network().V1beta1().VlanConfig().Cache(),
 		vsCache:   harvesterNetworkFactory.Network().V1beta1().VlanStatus().Cache(),
 		nodeCache: coreFactory.Core().V1().Node().Cache(),
 	}

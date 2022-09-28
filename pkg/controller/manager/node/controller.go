@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
-	"github.com/harvester/harvester-network-controller/pkg/controller/manager/common"
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 
 	"github.com/deckarep/golang-set/v2"
@@ -102,7 +101,7 @@ func (h Handler) updateMatchedNodeAnnotation(vc *networkv1.VlanConfig, node *cor
 }
 
 func (h Handler) ensureMgmtLabels(node *corev1.Node) error {
-	key := network.GroupName + "/" + common.ManagementClusterNetworkName
+	key := network.GroupName + "/" + utils.ManagementClusterNetworkName
 	if node.Labels != nil && node.Labels[key] == utils.ValueTrue {
 		return nil
 	}
