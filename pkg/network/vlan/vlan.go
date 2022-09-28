@@ -2,6 +2,8 @@ package vlan
 
 import (
 	"fmt"
+
+	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
@@ -36,27 +38,12 @@ func NewVlan(name string, localAreas []*LocalArea) *Vlan {
 }
 
 func (v *Vlan) getUplink() (*iface.Link, error) {
-	ifaces, err := iface.ListLinks(map[string]bool{iface.TypeDevice: true, iface.TypeBond: true})
+	l, err := netlink.LinkByName(iface.GenerateName(v.name, iface.BondSuffix))
 	if err != nil {
-		return nil, fmt.Errorf("get uplink of VLAN %s failed, error: %w", v.name, err)
+		return nil, err
 	}
 
-	var number int
-	var uplink *iface.Link
-	for _, i := range ifaces {
-		if i.Attrs().MasterIndex == v.bridge.Index {
-			uplink = i
-			number++
-		}
-	}
-	if number > 1 {
-		return nil, fmt.Errorf("the number of uplinks of %s can not be over one, actual numbers: %d", v.name, number)
-	}
-	if number == 0 {
-		return nil, fmt.Errorf("uplink of %s not found", v.name)
-	}
-
-	return uplink, nil
+	return iface.NewLink(l), nil
 }
 
 func GetVlan(name string) (*Vlan, error) {
