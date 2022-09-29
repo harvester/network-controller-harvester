@@ -57,9 +57,6 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
-              paused:
-                description: optional
-                type: boolean
               uplink:
                 properties:
                   bondOptions:
