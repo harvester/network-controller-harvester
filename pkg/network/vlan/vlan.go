@@ -7,6 +7,7 @@ import (
 	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 type Vlan struct {
@@ -114,8 +115,10 @@ func (v *Vlan) AddLocalArea(la *LocalArea) error {
 		return nil
 	}
 
-	if err := v.uplink.AddBridgeVlan(la.Vid); err != nil {
-		return fmt.Errorf("add bridge vlanconfig %d failed, error: %w", la.Vid, err)
+	if v.name != utils.ManagementClusterNetworkName {
+		if err := v.uplink.AddBridgeVlan(la.Vid); err != nil {
+			return fmt.Errorf("add bridge vlanconfig %d failed, error: %w", la.Vid, err)
+		}
 	}
 
 	if la.Cidr == "" {
@@ -141,8 +144,10 @@ func (v *Vlan) RemoveLocalArea(la *LocalArea) error {
 		return nil
 	}
 
-	if err := v.uplink.DelBridgeVlan(la.Vid); err != nil {
-		return fmt.Errorf("remove bridge vlanconfig %d failed, error: %w", la.Vid, err)
+	if v.name != utils.ManagementClusterNetworkName {
+		if err := v.uplink.DelBridgeVlan(la.Vid); err != nil {
+			return fmt.Errorf("remove bridge vlanconfig %d failed, error: %w", la.Vid, err)
+		}
 	}
 
 	if la.Cidr == "" {
