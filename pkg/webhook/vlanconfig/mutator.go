@@ -7,12 +7,10 @@ import (
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	"github.com/yaocw2020/webhook/pkg/types"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
-	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
@@ -20,15 +18,13 @@ type vlanConfigMutator struct {
 	types.DefaultMutator
 
 	nodeCache ctlcorev1.NodeCache
-	vsCache   ctlnetworkv1.VlanStatusCache
 }
 
 var _ types.Mutator = &vlanConfigMutator{}
 
-func NewNadMutator(nodeCache ctlcorev1.NodeCache, vsCache ctlnetworkv1.VlanStatusCache) *vlanConfigMutator {
+func NewNadMutator(nodeCache ctlcorev1.NodeCache) *vlanConfigMutator {
 	return &vlanConfigMutator{
 		nodeCache: nodeCache,
-		vsCache:   vsCache,
 	}
 }
 
@@ -88,55 +84,33 @@ func (v *vlanConfigMutator) matchNodes(vc *networkv1.VlanConfig) (types.Patch, e
 		return nil, nil
 	}
 
-	matchedNodes, pausedNodes := make([]string, 0, len(nodes)), make([]string, 0, len(nodes))
+	matchedNodes := make([]string, 0, len(nodes))
 	for _, node := range nodes {
-		vsName := utils.Name("", vc.Spec.ClusterNetwork, node.Name)
-		if vs, err := v.vsCache.Get(vsName); err != nil && !apierrors.IsNotFound(err) {
-			return nil, err
-		} else if err == nil && vs.Status.VlanConfig != vc.Name {
-			// The vlanconfig is found means a vlanconfig with the same clusternetwork
-			// has been taken effect on this node. We have to pause the new vlanconfig.
-			pausedNodes = append(pausedNodes, node.Name)
-		}
 		matchedNodes = append(matchedNodes, node.Name)
 	}
 
-	return matchedNodesToPatch(vc, matchedNodes, pausedNodes)
+	return matchedNodesToPatch(vc, matchedNodes)
 }
 
-func matchedNodesToPatch(vc *networkv1.VlanConfig, matchedNodes, pausedNodes []string) (types.Patch, error) {
+func matchedNodesToPatch(vc *networkv1.VlanConfig, matchedNodes []string) (types.Patch, error) {
 	annotations := vc.Annotations
 	if annotations == nil {
 		annotations = map[string]string{}
 	}
+
 	nodesBytes, err := json.Marshal(matchedNodes)
 	if err != nil {
 		return nil, err
 	}
 	annotations[utils.KeyMatchedNodes] = string(nodesBytes)
-	pausedNodesBytes, err := json.Marshal(pausedNodes)
-	if err != nil {
-		return nil, err
-	}
-	annotations[utils.KeyPausedNodes] = string(pausedNodesBytes)
-	// add matched-nodes and paused-nodes annotations
-	patch := types.Patch{
+
+	return types.Patch{
 		types.PatchOp{
 			Op:    types.PatchOpReplace,
 			Path:  "/metadata/annotations",
 			Value: annotations,
 		},
-	}
-	// modify paused to be true
-	if len(pausedNodes) > 0 {
-		patch = append(patch, types.PatchOp{
-			Op:    types.PatchOpReplace,
-			Path:  "/spec/paused",
-			Value: true,
-		})
-	}
-
-	return patch, nil
+	}, nil
 }
 
 func (v *vlanConfigMutator) Resource() types.Resource {

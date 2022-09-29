@@ -68,7 +68,7 @@ func Register(ctx context.Context, management *config.Management) error {
 }
 
 func (h Handler) OnChange(key string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
-	if vc == nil || vc.DeletionTimestamp != nil || vc.Spec.Paused {
+	if vc == nil || vc.DeletionTimestamp != nil {
 		return nil, nil
 	}
 	klog.Infof("vlan config %s has been changed, spec: %+v", vc.Name, vc.Spec)
@@ -77,13 +77,13 @@ func (h Handler) OnChange(key string, vc *networkv1.VlanConfig) (*networkv1.Vlan
 	if err != nil {
 		return nil, err
 	}
-	isInEffect, err := h.inEffect(vc)
+	isApplied, err := h.isApplied(vc)
 	if err != nil {
 		return nil, err
 	}
 
 	if !isMatched {
-		if isInEffect {
+		if isApplied {
 			if err := h.removeVLAN(vc); err != nil {
 				return nil, err
 			}
@@ -104,7 +104,7 @@ func (h Handler) OnRemove(key string, vc *networkv1.VlanConfig) (*networkv1.Vlan
 		return nil, nil
 	}
 
-	if isInEffect, err := h.inEffect(vc); err != nil {
+	if isInEffect, err := h.isApplied(vc); err != nil {
 		return nil, err
 	} else if !isInEffect {
 		return vc, nil
@@ -140,7 +140,7 @@ func (h Handler) MatchNode(vc *networkv1.VlanConfig) (bool, error) {
 	return false, nil
 }
 
-func (h Handler) inEffect(vc *networkv1.VlanConfig) (bool, error) {
+func (h Handler) isApplied(vc *networkv1.VlanConfig) (bool, error) {
 	if vs, err := h.vsCache.Get(h.statusName(vc.Spec.ClusterNetwork)); err != nil && !apierrors.IsNotFound(err) {
 		return false, err
 	} else if err == nil && vs.Status.VlanConfig == vc.Name {

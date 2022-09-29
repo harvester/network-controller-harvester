@@ -112,7 +112,7 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 		types.Validator2Admitter(vlanconfig.NewVlanConfigValidator(c.nadCache, c.vsCache)),
 		types.Validator2Admitter(clusternetwork.NewCnValidator(c.vcCache)),
 		nad.NewNadMutator(),
-		vlanconfig.NewNadMutator(c.nodeCache, c.vsCache),
+		vlanconfig.NewNadMutator(c.nodeCache),
 	}
 	webhookServer.Register(admitters)
 	if err := webhookServer.Start(); err != nil {

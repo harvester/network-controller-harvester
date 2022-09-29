@@ -1,13 +1,15 @@
 package vlanconfig
 
 import (
+	"encoding/json"
 	"fmt"
-	"k8s.io/apimachinery/pkg/labels"
 	"strings"
 
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	"github.com/yaocw2020/webhook/pkg/types"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
@@ -46,6 +48,10 @@ func (v *vlanConfigValidator) Create(_ *types.Request, newObj runtime.Object) er
 			utils.ManagementClusterNetworkName))
 	}
 
+	if err := v.checkOverlaps(vc); err != nil {
+		return fmt.Errorf(createErr, vc.Name, err)
+	}
+
 	maxClusterNetworkNameLen := iface.MaxDeviceNameLen - len(iface.BridgeSuffix)
 
 	if len(vc.Spec.ClusterNetwork) > maxClusterNetworkNameLen {
@@ -62,6 +68,10 @@ func (v *vlanConfigValidator) Update(_ *types.Request, oldObj, newObj runtime.Ob
 	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
 		return fmt.Errorf(updateErr, vc.Name, fmt.Errorf("cluster network could not be %s",
 			utils.ManagementClusterNetworkName))
+	}
+
+	if err := v.checkOverlaps(vc); err != nil {
+		return fmt.Errorf(updateErr, vc.Name, err)
 	}
 
 	return nil
@@ -110,4 +120,34 @@ func (v *vlanConfigValidator) Resource() types.Resource {
 			admissionregv1.Delete,
 		},
 	}
+}
+
+func (v *vlanConfigValidator) checkOverlaps(vc *networkv1.VlanConfig) error {
+	var matchedNodes []string
+	if vc.Annotations == nil || vc.Annotations[utils.KeyMatchedNodes] == "" {
+		return nil
+	}
+	if err := json.Unmarshal([]byte(vc.Annotations[utils.KeyMatchedNodes]), &matchedNodes); err != nil {
+		return err
+	}
+	if len(matchedNodes) == 0 {
+		return nil
+	}
+
+	pausedNodes := make([]string, 0, len(matchedNodes))
+	for _, node := range matchedNodes {
+		vsName := utils.Name("", vc.Spec.ClusterNetwork, node)
+		if vs, err := v.vsCache.Get(vsName); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		} else if err == nil && vs.Status.VlanConfig != vc.Name {
+			// The vlanconfig is found means a vlanconfig with the same clusternetwork  has been taken effect on this node.
+			pausedNodes = append(pausedNodes, node)
+		}
+	}
+
+	if len(pausedNodes) > 0 {
+		return fmt.Errorf("it overlaps with other vlanconfigs matching node(s) %v", pausedNodes)
+	}
+
+	return nil
 }
