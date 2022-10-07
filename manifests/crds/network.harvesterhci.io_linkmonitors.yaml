@@ -5,36 +5,20 @@ metadata:
   annotations:
     {}
   creationTimestamp: null
-  name: vlanstatuses.network.harvesterhci.io
+  name: linkmonitors.network.harvesterhci.io
 spec:
   group: network.harvesterhci.io
   names:
-    kind: VlanStatus
-    listKind: VlanStatusList
-    plural: vlanstatuses
+    kind: LinkMonitor
+    listKind: LinkMonitorList
+    plural: linkmonitors
     shortNames:
-    - vs
-    - vss
-    singular: vlanstatus
+    - lm
+    - lms
+    singular: linkmonitor
   scope: Cluster
   versions:
-  - additionalPrinterColumns:
-    - jsonPath: .status.clusterNetwork
-      name: CLUSTERNETWORK
-      type: string
-    - jsonPath: .status.vlanConfig
-      name: VLANCONFIG
-      type: string
-    - jsonPath: .status.node
-      name: NODE
-      type: string
-    - jsonPath: .spec.description
-      name: DESCRIPTION
-      type: string
-    - jsonPath: .metadata.creationTimestamp
-      name: AGE
-      type: date
-    name: v1beta1
+  - name: v1beta1
     schema:
       openAPIV3Schema:
         properties:
@@ -50,10 +34,26 @@ spec:
             type: string
           metadata:
             type: object
+          spec:
+            properties:
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                type: object
+              targetLinkRule:
+                properties:
+                  nameRule:
+                    description: Support regular expression and empty value means
+                      matching all
+                    type: string
+                  typeRule:
+                    description: Support regular expression and empty value means
+                      matching all
+                    type: string
+                type: object
+            type: object
           status:
             properties:
-              clusterNetwork:
-                type: string
               conditions:
                 items:
                   properties:
@@ -82,32 +82,35 @@ spec:
                   - type
                   type: object
                 type: array
-              linkMonitor:
-                type: string
-              localAreas:
-                items:
-                  properties:
-                    cidr:
-                      type: string
-                    vlanID:
-                      type: integer
-                  required:
-                  - vlanID
-                  type: object
-                type: array
-              node:
-                type: string
-              vlanConfig:
-                type: string
-            required:
-            - clusterNetwork
-            - linkMonitor
-            - node
-            - vlanConfig
+              linkStatus:
+                additionalProperties:
+                  items:
+                    properties:
+                      index:
+                        type: integer
+                      mac:
+                        type: string
+                      masterIndex:
+                        type: integer
+                      name:
+                        type: string
+                      promiscuous:
+                        type: boolean
+                      state:
+                        enum:
+                        - up
+                        - down
+                        type: string
+                      type:
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  type: array
+                type: object
             type: object
         required:
-        - status
+        - spec
         type: object
     served: true
     storage: true
-    subresources: {}

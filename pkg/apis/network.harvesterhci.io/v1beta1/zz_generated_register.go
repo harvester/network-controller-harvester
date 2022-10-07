@@ -29,6 +29,7 @@ import (
 
 var (
 	ClusterNetworkResourceName = "clusternetworks"
+	LinkMonitorResourceName    = "linkmonitors"
 	NodeNetworkResourceName    = "nodenetworks"
 	VlanConfigResourceName     = "vlanconfigs"
 	VlanStatusResourceName     = "vlanstatuses"
@@ -57,6 +58,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&ClusterNetwork{},
 		&ClusterNetworkList{},
+		&LinkMonitor{},
+		&LinkMonitorList{},
 		&NodeNetwork{},
 		&NodeNetworkList{},
 		&VlanConfig{},

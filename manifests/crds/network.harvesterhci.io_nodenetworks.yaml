@@ -111,6 +111,9 @@ spec:
                     promiscuous:
                       type: boolean
                     state:
+                      enum:
+                      - up
+                      - down
                       type: string
                     type:
                       type: string
