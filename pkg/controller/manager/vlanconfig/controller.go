@@ -3,7 +3,7 @@ package vlanconfig
 import (
 	"context"
 	"fmt"
-	"github.com/cenk/backoff"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -34,10 +34,6 @@ func Register(ctx context.Context, management *config.Management) error {
 		cnClient: cns,
 		cnCache:  cns.Cache(),
 		vsCache:  vss.Cache(),
-	}
-
-	if err := handler.initialize(); err != nil {
-		return fmt.Errorf("initialize error: %w", err)
 	}
 
 	vcs.OnChange(ctx, ControllerName, handler.EnsureClusterNetwork)
@@ -148,27 +144,6 @@ func (h Handler) setClusterNetworkUnready(vs *networkv1.VlanStatus) error {
 	cnCopy := cn.DeepCopy()
 	networkv1.Ready.False(&cnCopy.Status)
 	if _, err := h.cnClient.Update(cnCopy); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (h Handler) initialize() error {
-	if err := backoff.Retry(func() error {
-		// It's not allowed to use the local cache to get the cluster network in the register period
-		// because the factory hasn't started. We just create the cluster network and ignore the `AlreadyExists` error.
-		mgmtCn := &networkv1.ClusterNetwork{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: utils.ManagementClusterNetworkName,
-			},
-		}
-		networkv1.Ready.True(&mgmtCn.Status)
-		if _, err := h.cnClient.Create(mgmtCn); err != nil && !apierrors.IsAlreadyExists(err) {
-			return fmt.Errorf("create %s failed, error: %w", utils.ManagementClusterNetworkName, err)
-		}
-		return nil
-	}, backoff.NewExponentialBackOff()); err != nil {
 		return err
 	}
 

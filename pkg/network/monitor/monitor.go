@@ -2,44 +2,52 @@ package monitor
 
 import (
 	"context"
+	"regexp"
 	"sync"
 	"syscall"
 
 	"github.com/vishvananda/netlink"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
+
+	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 )
 
-// netlink event type
-// link:  RTM_NEWLINK  RTM_DELLINK
-// addr:  RTM_NEWADDR  RTM_DELADDR
-// route: RTM_NEWROUTE RTM_DELROUTE
-
 type Monitor struct {
-	handlers map[int]Handler
-	mutex    sync.Mutex
+	rule  map[string]*Pattern
+	mutex sync.RWMutex
+
+	handler *Handler
 
 	done chan struct{}
-
 	// every monitor can start/stop once
 	startOnce sync.Once
 }
 
-func NewMonitor() *Monitor {
+type Pattern struct {
+	Type string
+	Name string
+}
+
+func NewPattern(typeRegexp, nameRegexp string) *Pattern {
+	return &Pattern{
+		Type: typeRegexp,
+		Name: nameRegexp,
+	}
+}
+
+func NewMonitor(h *Handler) *Monitor {
 	return &Monitor{
-		handlers:  make(map[int]Handler),
-		mutex:     sync.Mutex{},
+		rule:      make(map[string]*Pattern),
+		mutex:     sync.RWMutex{},
+		handler:   h,
 		done:      make(chan struct{}),
 		startOnce: sync.Once{},
 	}
 }
 
 type Handler struct {
-	NewLink  func(link netlink.LinkUpdate)
-	DelLink  func(link netlink.LinkUpdate)
-	NewAddr  func(addr netlink.AddrUpdate)
-	DelAddr  func(addr netlink.AddrUpdate)
-	NewRoute func(route netlink.RouteUpdate)
-	DelRoute func(route netlink.RouteUpdate)
+	NewLink func(key string, update *netlink.LinkUpdate) error
+	DelLink func(key string, update *netlink.LinkUpdate) error
 }
 
 func (m *Monitor) Start(ctx context.Context) {
@@ -51,117 +59,134 @@ func (m *Monitor) Start(ctx context.Context) {
 func (m *Monitor) start(ctx context.Context) {
 	klog.Info("Start Monitor")
 	linkCh := make(chan netlink.LinkUpdate)
-	routeCh := make(chan netlink.RouteUpdate)
-	addrCh := make(chan netlink.AddrUpdate)
 
 	if err := netlink.LinkSubscribe(linkCh, ctx.Done()); err != nil {
 		klog.Errorf("subscribe link failed, error: %s", err.Error())
-		return
-	}
-	if err := netlink.RouteSubscribe(routeCh, ctx.Done()); err != nil {
-		klog.Errorf("subscribe route failed, error: %s", err.Error())
-		return
-	}
-	if err := netlink.AddrSubscribe(addrCh, ctx.Done()); err != nil {
-		klog.Errorf("subscribe addr failed, error: %s", err.Error())
 		return
 	}
 
 	for {
 		select {
 		case l := <-linkCh:
-			m.handleLink(l)
-		case a := <-addrCh:
-			m.handleAddr(a)
-		case r := <-routeCh:
-			m.handleRoute(r)
+			if err := m.handleLink(&l); err != nil {
+				klog.Errorf("monitor handles link %s failed, error: %s", l.Link.Attrs().Name, err.Error())
+			}
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (m *Monitor) handleLink(update netlink.LinkUpdate) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	handler, ok := m.handlers[int(update.Index)]
+func (m *Monitor) handleLink(update *netlink.LinkUpdate) error {
+	klog.V(5).Infof("netlink event: %+v", update)
+
+	ok, key, err := m.match(update.Link)
+	if err != nil {
+		return err
+	}
 	if !ok {
-		return
+		return nil
 	}
 
+	// link update message type: RTM_NEWLINK  RTM_DELLINK
 	switch update.Header.Type {
 	case syscall.RTM_NEWLINK:
-		if handler.NewLink != nil {
-			handler.NewLink(update)
+		if m.handler.NewLink != nil {
+			if err := m.handler.NewLink(key, update); err != nil {
+				return err
+			}
 		}
 	case syscall.RTM_DELLINK:
-		if handler.DelLink != nil {
-			handler.DelLink(update)
+		if m.handler.DelLink != nil {
+			if err := m.handler.DelLink(key, update); err != nil {
+				return err
+			}
 		}
 	default:
 
 	}
+
+	return nil
 }
 
-func (m *Monitor) handleAddr(update netlink.AddrUpdate) {
+func (m *Monitor) match(l netlink.Link) (bool, string, error) {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	for name, pattern := range m.rule {
+		isMatch, err := pattern.match(l)
+		if err != nil {
+			return false, "", err
+		}
+		if isMatch {
+			return true, name, nil
+		}
+	}
+
+	return false, "", nil
+}
+
+func (m *Monitor) AddPattern(key string, pattern *Pattern) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	handler, ok := m.handlers[int(update.LinkIndex)]
-	if !ok {
-		return
+	m.rule[key] = pattern
+}
+
+func (m *Monitor) ScanLinks(pattern *Pattern) ([]netlink.Link, error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return nil, err
 	}
 
-	// ignore IPv6
-	if ip := update.LinkAddress.IP.To4(); ip == nil {
-		return
-	}
-
-	if update.NewAddr {
-		if handler.NewAddr != nil {
-			handler.NewAddr(update)
+	matchingLinks := make([]netlink.Link, 0, len(links))
+	for _, link := range links {
+		if ok, err := pattern.match(link); err != nil {
+			return nil, err
+		} else if ok {
+			matchingLinks = append(matchingLinks, link)
 		}
+	}
+
+	return matchingLinks, nil
+}
+
+func (m *Monitor) DeletePattern(key string) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	delete(m.rule, key)
+}
+
+func (m *Monitor) GetPattern(key string) *Pattern {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	return m.rule[key]
+}
+
+func (p *Pattern) match(l netlink.Link) (bool, error) {
+	var isMatchName, isMatchType bool
+	var err error
+
+	// always ignore loopback device
+	if l.Attrs().EncapType == iface.TypeLoopback {
+		return false, nil
+	}
+
+	if p.Name == "" {
+		isMatchName = true
 	} else {
-		if handler.DelAddr != nil {
-			handler.DelAddr(update)
+		if isMatchName, err = regexp.MatchString(p.Name, l.Attrs().Name); err != nil {
+			return false, err
 		}
 	}
-}
 
-func (m *Monitor) handleRoute(update netlink.RouteUpdate) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	handler, ok := m.handlers[int(update.LinkIndex)]
-	if !ok {
-		return
-	}
-	switch update.Type {
-	case syscall.RTM_NEWROUTE:
-		if handler.NewRoute != nil {
-			handler.NewRoute(update)
+	if p.Type == "" {
+		isMatchType = true
+	} else {
+		if isMatchType, err = regexp.MatchString(p.Type, l.Type()); err != nil {
+			return false, err
 		}
-	case syscall.RTM_DELROUTE:
-		if handler.DelRoute != nil {
-			handler.DelRoute(update)
-		}
-	default:
-
 	}
-}
 
-func (m *Monitor) AddLink(index int, handler Handler) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.handlers[index] = handler
-}
-
-func (m *Monitor) DelLink(index int) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	delete(m.handlers, index)
-}
-
-func (m *Monitor) EmptyLink() {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.handlers = make(map[int]Handler)
+	return isMatchName && isMatchType, nil
 }
