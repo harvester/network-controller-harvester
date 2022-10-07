@@ -91,3 +91,20 @@ func NewVlanStatus(namespace, name string, obj VlanStatus) *VlanStatus {
 	obj.Namespace = namespace
 	return &obj
 }
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// LinkMonitorList is a list of LinkMonitor resources
+type LinkMonitorList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []LinkMonitor `json:"items"`
+}
+
+func NewLinkMonitor(namespace, name string, obj LinkMonitor) *LinkMonitor {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("LinkMonitor").ToAPIVersionAndKind()
+	obj.Name = name
+	obj.Namespace = namespace
+	return &obj
+}

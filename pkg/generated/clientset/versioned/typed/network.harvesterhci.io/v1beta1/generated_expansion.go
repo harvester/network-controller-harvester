@@ -20,6 +20,8 @@ package v1beta1
 
 type ClusterNetworkExpansion interface{}
 
+type LinkMonitorExpansion interface{}
+
 type NodeNetworkExpansion interface{}
 
 type VlanConfigExpansion interface{}
