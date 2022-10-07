@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	"github.com/vishvananda/netlink"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -329,6 +330,7 @@ func (h Handler) updateStatus(vc *networkv1.VlanConfig, v *vlan.Vlan, localAreas
 	}
 	vStatus.Status.ClusterNetwork = vc.Spec.ClusterNetwork
 	vStatus.Status.VlanConfig = vc.Name
+	vStatus.Status.LinkMonitor = vc.Spec.ClusterNetwork
 	vStatus.Status.Node = h.nodeName
 	if setupErr == nil {
 		networkv1.Ready.SetStatusBool(vStatus, true)
@@ -339,26 +341,6 @@ func (h Handler) updateStatus(vc *networkv1.VlanConfig, v *vlan.Vlan, localAreas
 				VID:  la.Vid,
 				CIDR: la.Cidr,
 			})
-		}
-		vStatus.Status.LinkStatus = []networkv1.LinkStatus{
-			{
-				Name:        v.Bridge().Name,
-				Index:       v.Bridge().Index,
-				Type:        v.Bridge().Type(),
-				MAC:         v.Bridge().HardwareAddr.String(),
-				Promiscuous: v.Bridge().Promisc != 0,
-				State:       v.Bridge().Attrs().OperState.String(),
-				MasterIndex: v.Bridge().MasterIndex,
-			},
-			{
-				Name:        v.Uplink().Attrs().Name,
-				Index:       v.Uplink().Attrs().Index,
-				Type:        v.Uplink().Type(),
-				MAC:         v.Uplink().Attrs().HardwareAddr.String(),
-				Promiscuous: v.Uplink().Attrs().Promisc != 0,
-				State:       v.Uplink().Attrs().OperState.String(),
-				MasterIndex: v.Uplink().Attrs().MasterIndex,
-			},
 		}
 	} else {
 		networkv1.Ready.SetStatusBool(vStatus, false)

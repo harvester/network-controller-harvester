@@ -28,11 +28,11 @@ type VlStatus struct {
 
 	VlanConfig string `json:"vlanConfig"`
 
+	LinkMonitor string `json:"linkMonitor"`
+
 	Node string `json:"node"`
 	// +optional
 	LocalAreas []LocalArea `json:"localAreas,omitempty"`
-	// +optional
-	LinkStatus []LinkStatus `json:"linkStatus,omitempty"`
 	// +optional
 	Conditions []Condition `json:"conditions,omitempty"`
 }
@@ -40,22 +40,6 @@ type VlStatus struct {
 type LocalArea struct {
 	VID  uint16 `json:"vlanID"`
 	CIDR string `json:"cidr,omitempty"`
-}
-
-type LinkStatus struct {
-	Name string `json:"name"`
-	// +optional
-	Index int `json:"index,omitempty"`
-	// +optional
-	Type string `json:"type,omitempty"`
-	// +optional
-	MAC string `json:"mac,omitempty"`
-	// +optional
-	Promiscuous bool `json:"promiscuous,omitempty"`
-	// +optional
-	State string `json:"state,omitempty"`
-	// +optional
-	MasterIndex int `json:"masterIndex,omitempty"`
 }
 
 type Condition struct {
