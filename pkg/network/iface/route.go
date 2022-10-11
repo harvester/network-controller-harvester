@@ -49,6 +49,10 @@ func getGateway() (gateway net.IP, linkIndex int, err error) {
 
 // EnsureRouteViaGateway will add the route via gateway if not existing
 func EnsureRouteViaGateway(cidr string) error {
+	if cidr == "" {
+		return nil
+	}
+
 	ip, network, err := net.ParseCIDR(cidr)
 	if err != nil {
 		return err
@@ -86,6 +90,10 @@ func EnsureRouteViaGateway(cidr string) error {
 }
 
 func DeleteRouteViaGateway(cidr string) error {
+	if cidr == "" {
+		return nil
+	}
+
 	_, network, err := net.ParseCIDR(cidr)
 	if err != nil {
 		return err

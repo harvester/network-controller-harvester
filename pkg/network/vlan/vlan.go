@@ -11,10 +11,9 @@ import (
 )
 
 type Vlan struct {
-	name       string
-	bridge     *iface.Bridge
-	uplink     *iface.Link
-	localAreas []*LocalArea
+	name   string
+	bridge *iface.Bridge
+	uplink *iface.Link
 }
 
 type LocalArea struct {
@@ -28,13 +27,12 @@ func (v *Vlan) Type() string {
 
 // The bridge of a pure VLAN may have no latest information
 // The NIC of a pure VLAN can be empty
-func NewVlan(name string, localAreas []*LocalArea) *Vlan {
+func NewVlan(name string) *Vlan {
 	br := iface.NewBridge(iface.GenerateName(name, iface.BridgeSuffix))
 
 	return &Vlan{
-		name:       name,
-		bridge:     br,
-		localAreas: localAreas,
+		name:   name,
+		bridge: br,
 	}
 }
 
@@ -48,7 +46,7 @@ func (v *Vlan) getUplink() (*iface.Link, error) {
 }
 
 func GetVlan(name string) (*Vlan, error) {
-	v := NewVlan(name, nil)
+	v := NewVlan(name)
 	if err := v.bridge.Fetch(); err != nil {
 		return nil, err
 	}
@@ -73,12 +71,6 @@ func (v *Vlan) Setup(l *iface.Link) error {
 		return err
 	}
 	v.uplink = l
-
-	for _, la := range v.localAreas {
-		if err := v.AddLocalArea(la); err != nil {
-			return fmt.Errorf("add local area %v failed, error: %w", la, err)
-		}
-	}
 
 	return nil
 }
@@ -111,9 +103,6 @@ func (v *Vlan) AddLocalArea(la *LocalArea) error {
 	if v.uplink == nil {
 		return fmt.Errorf("bridge %s hasn't attached an uplink", v.bridge.Name)
 	}
-	if ok, _ := v.findVid(la.Vid); ok {
-		return nil
-	}
 
 	if v.name != utils.ManagementClusterNetworkName {
 		if err := v.uplink.AddBridgeVlan(la.Vid); err != nil {
@@ -121,16 +110,10 @@ func (v *Vlan) AddLocalArea(la *LocalArea) error {
 		}
 	}
 
-	if la.Cidr == "" {
-		v.localAreas = append(v.localAreas, la)
-		return nil
-	}
-
 	if err := iface.EnsureRouteViaGateway(la.Cidr); err != nil {
 		return fmt.Errorf("ensure %s to route via gateway failed, error: %w", la.Cidr, err)
 	}
 
-	v.localAreas = append(v.localAreas, la)
 	return nil
 }
 
@@ -139,32 +122,17 @@ func (v *Vlan) RemoveLocalArea(la *LocalArea) error {
 		return fmt.Errorf("bridge %s hasn't attached an uplink", v.bridge.Name)
 	}
 
-	ok, index := v.findVid(la.Vid)
-	if !ok {
-		return nil
-	}
-
 	if v.name != utils.ManagementClusterNetworkName {
 		if err := v.uplink.DelBridgeVlan(la.Vid); err != nil {
 			return fmt.Errorf("remove bridge vlanconfig %d failed, error: %w", la.Vid, err)
 		}
 	}
 
-	if la.Cidr == "" {
-		v.localAreas = append(v.localAreas[:index], v.localAreas[index+1:]...)
-		return nil
-	}
-
 	if err := iface.DeleteRouteViaGateway(la.Cidr); err != nil {
 		return fmt.Errorf("delete route with dst %s via gateway failed, error: %w", la.Cidr, err)
 	}
 
-	v.localAreas = append(v.localAreas[:index], v.localAreas[index+1:]...)
 	return nil
-}
-
-func (v *Vlan) ListLocalArea() []*LocalArea {
-	return v.localAreas
 }
 
 func (v *Vlan) Bridge() *iface.Bridge {
@@ -173,13 +141,4 @@ func (v *Vlan) Bridge() *iface.Bridge {
 
 func (v *Vlan) Uplink() *iface.Link {
 	return v.uplink
-}
-
-func (v *Vlan) findVid(vid uint16) (bool, int) {
-	for i, la := range v.localAreas {
-		if la.Vid == vid {
-			return true, i
-		}
-	}
-	return false, -1
 }
