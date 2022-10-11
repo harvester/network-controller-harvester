@@ -34,30 +34,30 @@ func NewLink(l netlink.Link) *Link {
 	}
 }
 
-// AddBridgeVlan adds a new vlanconfig filter entry
-// Equivalent to: `bridge vlanconfig add dev DEV vid VID master`
+// AddBridgeVlan adds a new vlan filter entry
+// Equivalent to: `bridge vlan add dev DEV vid VID master`
 func (l *Link) AddBridgeVlan(vid uint16) error {
-	// The command to configure PVID is not `bridge vlanconfig add dev DEV vid VID master`
+	// The command to configure PVID is not `bridge vlan add dev DEV vid VID master`
 	if vid == defaultPVID {
 		return nil
 	}
 
 	if err := netlink.BridgeVlanAdd(l, vid, false, false, false, true); err != nil {
-		return fmt.Errorf("add iface vlanconfig failed, error: %v, link: %s, vid: %d", err, l.Attrs().Name, vid)
+		return fmt.Errorf("add iface vlan failed, error: %v, link: %s, vid: %d", err, l.Attrs().Name, vid)
 	}
 
 	return nil
 }
 
-// DelBridgeVlan adds a new vlanconfig filter entry
-// Equivalent to: `bridge vlanconfig del dev DEV vid VID master`
+// DelBridgeVlan adds a new vlan filter entry
+// Equivalent to: `bridge vlan del dev DEV vid VID master`
 func (l *Link) DelBridgeVlan(vid uint16) error {
 	if vid == defaultPVID {
 		return nil
 	}
 
 	if err := netlink.BridgeVlanDel(l, vid, false, false, false, true); err != nil {
-		return fmt.Errorf("delete iface vlanconfig failed, error: %v, link: %s, vid: %d", err, l.Attrs().Name, vid)
+		return fmt.Errorf("delete iface vlan failed, error: %v, link: %s, vid: %d", err, l.Attrs().Name, vid)
 	}
 
 	return nil

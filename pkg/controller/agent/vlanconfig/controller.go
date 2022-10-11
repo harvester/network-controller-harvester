@@ -166,12 +166,15 @@ func (h Handler) setupVLAN(vc *networkv1.VlanConfig) error {
 		goto updateStatus
 	}
 	// set up VLAN
-	v = vlan.NewVlan(vc.Spec.ClusterNetwork, localAreas)
-	setupErr = v.Setup(uplink)
+	v = vlan.NewVlan(vc.Spec.ClusterNetwork)
+	if setupErr = v.Setup(uplink); setupErr != nil {
+		goto updateStatus
+	}
+	setupErr = h.AddLocalAreas(v, localAreas)
 
 updateStatus:
 	// Update status and still return setup error if not nil
-	if err := h.updateStatus(vc, v, setupErr); err != nil {
+	if err := h.updateStatus(vc, v, localAreas, setupErr); err != nil {
 		return fmt.Errorf("update status into vlanstatus %s failed, error: %w, setup error: %v",
 			h.statusName(vc.Spec.ClusterNetwork), err, setupErr)
 	}
@@ -280,7 +283,17 @@ func (h Handler) getLocalAreas(bridgeName string) ([]*vlan.LocalArea, error) {
 	return localAreas, nil
 }
 
-func (h Handler) updateStatus(vc *networkv1.VlanConfig, v *vlan.Vlan, setupErr error) error {
+func (h Handler) AddLocalAreas(v *vlan.Vlan, localAreas []*vlan.LocalArea) error {
+	for _, la := range localAreas {
+		if err := v.AddLocalArea(la); err != nil {
+			return fmt.Errorf("add local area %v failed, error: %w", la, err)
+		}
+	}
+
+	return nil
+}
+
+func (h Handler) updateStatus(vc *networkv1.VlanConfig, v *vlan.Vlan, localAreas []*vlan.LocalArea, setupErr error) error {
 	var vStatus *networkv1.VlanStatus
 	name := h.statusName(vc.Spec.ClusterNetwork)
 	vs, getErr := h.vsCache.Get(name)
@@ -321,7 +334,7 @@ func (h Handler) updateStatus(vc *networkv1.VlanConfig, v *vlan.Vlan, setupErr e
 		networkv1.Ready.SetStatusBool(vStatus, true)
 		networkv1.Ready.Message(vStatus, "")
 		vStatus.Status.LocalAreas = []networkv1.LocalArea{}
-		for _, la := range v.ListLocalArea() {
+		for _, la := range localAreas {
 			vStatus.Status.LocalAreas = append(vStatus.Status.LocalAreas, networkv1.LocalArea{
 				VID:  la.Vid,
 				CIDR: la.Cidr,
