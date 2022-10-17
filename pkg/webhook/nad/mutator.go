@@ -9,9 +9,17 @@ import (
 	"github.com/yaocw2020/webhook/pkg/types"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
+)
+
+type networkType string
+
+const (
+	l2VlanNetwork   networkType = "L2VlanNetwork"
+	untaggedNetwork networkType = "UntaggedNetwork"
 )
 
 type nadMutator struct {
@@ -36,7 +44,15 @@ func (n *nadMutator) Create(_ *types.Request, newObj runtime.Object) (types.Patc
 	if err := json.Unmarshal([]byte(netAttachDef.Spec.Config), netconf); err != nil {
 		return nil, fmt.Errorf(createErr, netAttachDef.Namespace, netAttachDef.Name, err)
 	}
-	labels[utils.KeyVlanLabel] = strconv.Itoa(netconf.Vlan)
+
+	klog.V(5).Infof("netconf: %+v", netconf)
+
+	if netconf.Vlan != 0 {
+		labels[utils.KeyNetworkType] = string(l2VlanNetwork)
+		labels[utils.KeyVlanLabel] = strconv.Itoa(netconf.Vlan)
+	} else {
+		labels[utils.KeyNetworkType] = string(untaggedNetwork)
+	}
 
 	lenOfBrName := len(netconf.BrName)
 	if lenOfBrName < len(iface.BridgeSuffix) {

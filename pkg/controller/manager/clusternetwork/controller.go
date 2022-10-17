@@ -7,6 +7,7 @@ import (
 	"github.com/cenk/backoff"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
@@ -111,9 +112,14 @@ func (h Handler) deleteLinkMonitor(name string) error {
 func (h Handler) initialize() error {
 	if err := backoff.Retry(func() error {
 		if err := h.initializeClusterNetwork(); err != nil {
+			klog.V(5).Info(err)
 			return err
 		}
-		return h.initializeLinkMonitor()
+		if err := h.initializeLinkMonitor(); err != nil {
+			klog.V(5).Info(err)
+			return err
+		}
+		return nil
 	}, backoff.NewExponentialBackOff()); err != nil {
 		return err
 	}

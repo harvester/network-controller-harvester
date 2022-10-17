@@ -48,7 +48,7 @@ func (n *nadValidator) Create(_ *types.Request, newObj runtime.Object) error {
 		return fmt.Errorf(createErr, netAttachDef.Namespace, netAttachDef.Name, err)
 	}
 
-	if bridgeConf.Vlan < 1 || bridgeConf.Vlan > 4094 {
+	if bridgeConf.Vlan < 0 || bridgeConf.Vlan > 4094 {
 		return fmt.Errorf(createErr, netAttachDef.Namespace, netAttachDef.Name, fmt.Errorf("VLAN ID must >=1 and <=4094"))
 	}
 

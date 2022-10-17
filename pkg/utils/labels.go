@@ -8,6 +8,7 @@ const (
 	KeyVlanConfigLabel     = network.GroupName + "/vlanconfig"
 	KeyClusterNetworkLabel = network.GroupName + "/clusternetwork"
 	KeyNodeLabel           = network.GroupName + "/node"
+	KeyNetworkType         = network.GroupName + "/type"
 
 	KeyMatchedNodes = network.GroupName + "/matched-nodes"
 

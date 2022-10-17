@@ -95,3 +95,12 @@ type NetConf struct {
 	PromiscMode  bool   `json:"promiscMode"`
 	Vlan         int    `json:"vlan"`
 }
+
+func IsEmptyNAD(nad *nadv1.NetworkAttachmentDefinition) bool {
+	if nad == nil || nad.Spec.Config == "" || nad.Labels == nil || nad.Labels[KeyVlanLabel] == "" ||
+		nad.Labels[KeyClusterNetworkLabel] == "" {
+		return true
+	}
+
+	return false
+}

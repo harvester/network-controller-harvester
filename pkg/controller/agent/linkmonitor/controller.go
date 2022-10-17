@@ -59,7 +59,7 @@ func (h Handler) OnChange(key string, lm *networkv1.LinkMonitor) (*networkv1.Lin
 		return nil, nil
 	}
 
-	klog.Infof("link monitor %s has been changed, spec: %+v", lm.Name, lm.Spec)
+	klog.V(5).Infof("link monitor %s has been changed, spec: %+v", lm.Name, lm.Spec)
 
 	isMatch, err := h.isMatchCurrentNode(lm)
 	if err != nil {
@@ -86,7 +86,7 @@ func (h Handler) OnRemove(key string, lm *networkv1.LinkMonitor) (*networkv1.Lin
 		return nil, nil
 	}
 
-	klog.Infof("link monitor %s has been removed", lm.Name)
+	klog.V(5).Infof("link monitor %s has been removed", lm.Name)
 
 	h.DeletePattern(lm)
 
