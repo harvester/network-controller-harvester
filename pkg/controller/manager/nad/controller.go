@@ -96,6 +96,10 @@ func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 		return nil, nil
 	}
 
+	if utils.IsEmptyNAD(nad) {
+		return nad, nil
+	}
+
 	klog.Infof("nad configuration %s has been changed: %s", nad.Name, nad.Spec.Config)
 
 	if err := h.EnsureJob2GetLayer3NetworkInfo(nad); err != nil {
@@ -108,6 +112,10 @@ func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 func (h Handler) OnRemove(key string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
 	if nad == nil {
 		return nil, nil
+	}
+
+	if utils.IsEmptyNAD(nad) {
+		return nad, nil
 	}
 
 	if err := h.ClearJob(nad); err != nil {

@@ -40,8 +40,7 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 	if nad == nil || nad.DeletionTimestamp != nil {
 		return nil, nil
 	}
-	if nad.Spec.Config == "" || nad.Labels == nil || nad.Labels[utils.KeyVlanLabel] == "" ||
-		nad.Labels[utils.KeyClusterNetworkLabel] == "" {
+	if utils.IsEmptyNAD(nad) {
 		return nad, nil
 	}
 
@@ -58,11 +57,12 @@ func (h Handler) OnRemove(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 	if nad == nil {
 		return nil, nil
 	}
-	if nad.Spec.Config == "" || nad.Labels == nil || nad.Labels[utils.KeyVlanLabel] == "" ||
-		nad.Labels[utils.KeyClusterNetworkLabel] == "" {
+	if utils.IsEmptyNAD(nad) {
 		return nad, nil
 	}
+
 	klog.Infof("nad configuration %s has been deleted.", nad.Name)
+
 	// Skip the case that there are nads with the same cluster network and VLAN id.
 	if ok, err := h.existDuplicateNad(nad.Labels[utils.KeyVlanLabel], nad.Labels[utils.KeyClusterNetworkLabel]); err != nil {
 		return nil, err
