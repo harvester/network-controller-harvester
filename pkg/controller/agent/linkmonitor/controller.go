@@ -3,8 +3,6 @@ package linkmonitor
 import (
 	"context"
 	"fmt"
-	"net"
-
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	"github.com/vishvananda/netlink"
 	"k8s.io/apimachinery/pkg/labels"
@@ -143,7 +141,8 @@ func linkToLinkStatus(l netlink.Link) networkv1.LinkStatus {
 		Promiscuous: l.Attrs().Promisc != 0,
 		MasterIndex: l.Attrs().MasterIndex,
 	}
-	if l.Attrs().Flags&net.FlagUp == 1 {
+
+	if l.Attrs().OperState == netlink.OperUp {
 		linkStatus.State = networkv1.LinkUp
 	} else {
 		linkStatus.State = networkv1.LinkDown
