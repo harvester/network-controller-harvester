@@ -61,6 +61,7 @@ require (
 	github.com/deckarep/golang-set/v2 v2.1.0
 	github.com/go-ping/ping v0.0.0-20211014180314-6e2b003bffdd
 	github.com/harvester/harvester v0.0.2-0.20220704073456-08af3d7c1166
+	github.com/harvester/webhook v0.1.2
 	github.com/insomniacslk/dhcp v0.0.0-20201112113307-4de412bc85d8
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v0.0.0-20200331171230-d50e42f2b669
 	github.com/rancher/lasso v0.0.0-20220519004610-700f167d8324
@@ -68,12 +69,11 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/urfave/cli v1.22.5
 	github.com/vishvananda/netlink v1.2.1-beta.2
-	github.com/yaocw2020/webhook v0.1.0
 	k8s.io/api v0.24.0
 	k8s.io/apimachinery v0.24.0
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog v1.0.0
-	k8s.io/klog/v2 v2.40.1
+	k8s.io/klog/v2 v2.80.1
 )
 
 require (
@@ -96,7 +96,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/google/go-cmp v0.5.6 // indirect
+	github.com/google/go-cmp v0.5.8 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/gnostic v0.5.5 // indirect
@@ -124,7 +124,7 @@ require (
 	github.com/prometheus/common v0.32.1 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
 	github.com/rancher/aks-operator v1.0.2 // indirect
-	github.com/rancher/dynamiclistener v0.3.3 // indirect
+	github.com/rancher/dynamiclistener v0.3.5 // indirect
 	github.com/rancher/eks-operator v1.1.1 // indirect
 	github.com/rancher/fleet/pkg/apis v0.0.0-20210918015053-5a141a6b18f0 // indirect
 	github.com/rancher/gke-operator v1.1.1 // indirect
@@ -138,16 +138,15 @@ require (
 	github.com/u-root/u-root v7.0.0+incompatible // indirect
 	github.com/vishvananda/netns v0.0.0-20211101163701-50045581ed74 // indirect
 	golang.org/x/crypto v0.0.0-20220321153916-2c7772ba3064 // indirect
-	golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3 // indirect
-	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
+	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
+	golang.org/x/net v0.0.0-20221004154528-8021a29435af // indirect
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8 // indirect
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
-	golang.org/x/sys v0.0.0-20220319134239-a9b59b0215f8 // indirect
+	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
+	golang.org/x/sys v0.0.0-20221010170243-090e33056c14 // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/text v0.3.8 // indirect
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
-	golang.org/x/tools v0.1.10 // indirect
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
+	golang.org/x/tools v0.1.12 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
@@ -159,8 +158,8 @@ require (
 	k8s.io/component-base v0.23.7 // indirect
 	k8s.io/gengo v0.0.0-20211129171323-c02415ce4185 // indirect
 	k8s.io/kube-aggregator v0.24.0 // indirect
-	k8s.io/kube-openapi v0.0.0-20220124234850-424119656bbf // indirect
-	k8s.io/utils v0.0.0-20211116205334-6203023598ed // indirect
+	k8s.io/kube-openapi v0.0.0-20220803162953-67bda5d908f1 // indirect
+	k8s.io/utils v0.0.0-20221011040102-427025108f67 // indirect
 	kubevirt.io/api v0.0.0-20220430221853-33880526e414 // indirect
 	kubevirt.io/containerized-data-importer-api v1.47.0 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 // indirect
@@ -168,6 +167,6 @@ require (
 	sigs.k8s.io/cluster-api v0.4.4 // indirect
 	sigs.k8s.io/controller-runtime v0.11.2 // indirect
 	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
