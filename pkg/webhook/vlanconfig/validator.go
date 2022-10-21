@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
-	"github.com/yaocw2020/webhook/pkg/types"
+	"github.com/harvester/webhook/pkg/types"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
