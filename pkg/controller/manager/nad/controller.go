@@ -2,8 +2,9 @@ package nad
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
+	"strconv"
 	"sync"
 	"time"
 
@@ -18,13 +19,18 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
+	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
 	"github.com/harvester/harvester-network-controller/pkg/config"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
+	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 const (
 	ControllerName = "harvester-network-manager-nad-controller"
+
+	l2VlanNetwork   = "L2VlanNetwork"
+	untaggedNetwork = "UntaggedNetwork"
 
 	jobContainerName      = "network-helper"
 	jobServiceAccountName = "harvester-network-helper"
@@ -96,7 +102,11 @@ func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 		return nil, nil
 	}
 
-	if utils.IsEmptyNAD(nad) {
+	if err := h.ensureLabels(nad); err != nil {
+		return nil, fmt.Errorf("ensure labels of nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
+	}
+
+	if !utils.IsVlanNAD(nad) {
 		return nad, nil
 	}
 
@@ -114,7 +124,7 @@ func (h Handler) OnRemove(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 		return nil, nil
 	}
 
-	if utils.IsEmptyNAD(nad) {
+	if !utils.IsVlanNAD(nad) {
 		return nad, nil
 	}
 
@@ -123,6 +133,38 @@ func (h Handler) OnRemove(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 	}
 
 	return nad, nil
+}
+
+func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
+	if nad.Labels != nil && nad.Labels[utils.KeyNetworkType] != "" && nad.Labels[utils.KeyClusterNetworkLabel] != "" {
+		return nil
+	}
+
+	labels := nad.Labels
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+
+	netconf := &utils.NetConf{}
+	if err := json.Unmarshal([]byte(nad.Spec.Config), netconf); err != nil {
+		return err
+	}
+
+	if netconf.Vlan != 0 {
+		labels[utils.KeyNetworkType] = string(l2VlanNetwork)
+		labels[utils.KeyVlanLabel] = strconv.Itoa(netconf.Vlan)
+	} else {
+		labels[utils.KeyNetworkType] = string(untaggedNetwork)
+	}
+	labels[utils.KeyClusterNetworkLabel] = netconf.BrName[:len(netconf.BrName)-len(iface.BridgeSuffix)]
+
+	nadCopy := nad.DeepCopy()
+	nadCopy.Labels = labels
+	if _, err := h.nadClient.Update(nadCopy); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (h Handler) EnsureJob2GetLayer3NetworkInfo(nad *cniv1.NetworkAttachmentDefinition) error {

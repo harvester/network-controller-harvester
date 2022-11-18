@@ -111,7 +111,6 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 		types.Validator2Admitter(nad.NewNadValidator(c.vmCache)),
 		types.Validator2Admitter(vlanconfig.NewVlanConfigValidator(c.nadCache, c.vsCache)),
 		types.Validator2Admitter(clusternetwork.NewCnValidator(c.vcCache)),
-		nad.NewNadMutator(),
 		vlanconfig.NewNadMutator(c.nodeCache),
 	}
 	webhookServer.Register(admitters)
