@@ -96,11 +96,11 @@ type NetConf struct {
 	Vlan         int    `json:"vlan"`
 }
 
-func IsEmptyNAD(nad *nadv1.NetworkAttachmentDefinition) bool {
-	if nad == nil || nad.Spec.Config == "" || nad.Labels == nil || nad.Labels[KeyVlanLabel] == "" ||
-		nad.Labels[KeyClusterNetworkLabel] == "" {
-		return true
+func IsVlanNAD(nad *nadv1.NetworkAttachmentDefinition) bool {
+	if nad == nil || nad.Spec.Config == "" || nad.Labels == nil || nad.Labels[KeyNetworkType] == "" ||
+		nad.Labels[KeyClusterNetworkLabel] == "" || nad.Labels[KeyVlanLabel] == "" {
+		return false
 	}
 
-	return false
+	return true
 }

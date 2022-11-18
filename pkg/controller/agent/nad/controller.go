@@ -40,7 +40,7 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 	if nad == nil || nad.DeletionTimestamp != nil {
 		return nil, nil
 	}
-	if utils.IsEmptyNAD(nad) {
+	if !utils.IsVlanNAD(nad) {
 		return nad, nil
 	}
 
@@ -57,7 +57,7 @@ func (h Handler) OnRemove(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 	if nad == nil {
 		return nil, nil
 	}
-	if utils.IsEmptyNAD(nad) {
+	if !utils.IsVlanNAD(nad) {
 		return nad, nil
 	}
 

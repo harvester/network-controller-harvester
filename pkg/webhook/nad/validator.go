@@ -18,6 +18,7 @@ import (
 
 const (
 	createErr = "could not create nad %s/%s because %w"
+	updateErr = "could not update nad %s/%s because %w"
 	deleteErr = "could not delete nad %s/%s because %w"
 )
 
@@ -48,16 +49,27 @@ func (n *nadValidator) Create(_ *types.Request, newObj runtime.Object) error {
 		return fmt.Errorf(createErr, netAttachDef.Namespace, netAttachDef.Name, err)
 	}
 
+	// The VLAN value of untagged network will be empty or number 0.
 	if bridgeConf.Vlan < 0 || bridgeConf.Vlan > 4094 {
-		return fmt.Errorf(createErr, netAttachDef.Namespace, netAttachDef.Name, fmt.Errorf("VLAN ID must >=1 and <=4094"))
+		return fmt.Errorf(createErr, netAttachDef.Namespace, netAttachDef.Name, fmt.Errorf("VLAN ID must >=0 and <=4094"))
 	}
 
-	lenOfBrName := len(bridgeConf.BrName)
+	lenOfBrName, lenOfBridgeSuffix := len(bridgeConf.BrName), len(iface.BridgeSuffix)
 	if lenOfBrName > iface.MaxDeviceNameLen {
 		return fmt.Errorf(createErr, netAttachDef.Namespace, netAttachDef.Name, fmt.Errorf("the length of the brName could not be more than 15"))
 	}
-	if lenOfBrName < 3 || bridgeConf.BrName[lenOfBrName-3:] != iface.BridgeSuffix {
+	if lenOfBrName <= lenOfBridgeSuffix || bridgeConf.BrName[lenOfBrName-lenOfBridgeSuffix:] != iface.BridgeSuffix {
 		return fmt.Errorf(createErr, netAttachDef.Namespace, netAttachDef.Name, fmt.Errorf("the suffix of the brName should be -br"))
+	}
+
+	return nil
+}
+
+func (n *nadValidator) Update(_ *types.Request, oldObj, newObj runtime.Object) error {
+	oldNad, newNad := oldObj.(*cniv1.NetworkAttachmentDefinition), newObj.(*cniv1.NetworkAttachmentDefinition)
+
+	if oldNad.Spec.Config != newNad.Spec.Config {
+		return fmt.Errorf(updateErr, oldNad.Namespace, oldNad.Name, fmt.Errorf("it's not allowed to modify config"))
 	}
 
 	return nil
@@ -99,6 +111,7 @@ func (n *nadValidator) Resource() types.Resource {
 		ObjectType: &cniv1.NetworkAttachmentDefinition{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
+			admissionregv1.Update,
 			admissionregv1.Delete,
 		},
 	}
