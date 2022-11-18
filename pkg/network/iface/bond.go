@@ -110,12 +110,23 @@ func (b *Bond) ensureBondSlaves() error {
 	return nil
 }
 
-func (b *Bond) DeleteBond() error {
-	if _, err := netlink.LinkByName(b.Name); err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) {
+func (b *Bond) remove() error {
+	slaves, err := getSlaves(b.Index)
+	if err != nil {
 		return err
 	}
 
-	return netlink.LinkDel(b)
+	if err := netlink.LinkDel(b); err != nil {
+		return err
+	}
+
+	for _, slave := range slaves {
+		if err := netlink.LinkSetUp(slave); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // delete the original bond and create new one

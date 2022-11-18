@@ -212,5 +212,9 @@ func ListLinks(typeSelector map[string]bool) ([]*Link, error) {
 }
 
 func (l *Link) Remove() error {
+	if l.Type() == TypeBond {
+		return NewBond(netlink.NewLinkBond(*l.Attrs()), nil).remove()
+	}
+
 	return netlink.LinkDel(l)
 }
