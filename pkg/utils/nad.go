@@ -25,6 +25,13 @@ const (
 	Manual Mode = "manual"
 )
 
+type NetworkType string
+
+const (
+	L2VlanNetwork   NetworkType = "L2VlanNetwork"
+	UntaggedNetwork NetworkType = "UntaggedNetwork"
+)
+
 type NadSelectedNetworks []nadv1.NetworkSelectionElement
 
 type Layer3NetworkConf struct {
@@ -33,6 +40,7 @@ type Layer3NetworkConf struct {
 	Gateway      string       `json:"gateway,omitempty"`
 	ServerIPAddr string       `json:"serverIPAddr,omitempty"`
 	Connectivity Connectivity `json:"connectivity,omitempty"`
+	Outdated     bool         `json:"outdated,omitempty"`
 }
 
 func NewLayer3NetworkConf(conf string) (*Layer3NetworkConf, error) {
@@ -96,7 +104,7 @@ type NetConf struct {
 	Vlan         int    `json:"vlan"`
 }
 
-func IsVlanNAD(nad *nadv1.NetworkAttachmentDefinition) bool {
+func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
 	if nad == nil || nad.Spec.Config == "" || nad.Labels == nil || nad.Labels[KeyNetworkType] == "" ||
 		nad.Labels[KeyClusterNetworkLabel] == "" || nad.Labels[KeyVlanLabel] == "" {
 		return false

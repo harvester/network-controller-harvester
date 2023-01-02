@@ -20,14 +20,16 @@ import (
 const ControllerName = "harvester-network-nad-controller"
 
 type Handler struct {
-	nadCache ctlcniv1.NetworkAttachmentDefinitionCache
+	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
+	nadClient ctlcniv1.NetworkAttachmentDefinitionClient
 }
 
 func Register(ctx context.Context, management *config.Management) error {
 	nad := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
 
 	handler := &Handler{
-		nadCache: nad.Cache(),
+		nadCache:  nad.Cache(),
+		nadClient: nad,
 	}
 
 	nad.OnChange(ctx, ControllerName, handler.OnChange)
@@ -40,14 +42,19 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 	if nad == nil || nad.DeletionTimestamp != nil {
 		return nil, nil
 	}
-	if !utils.IsVlanNAD(nad) {
+
+	klog.Infof("nad configuration %s/%s has been changed: %s", nad.Namespace, nad.Name, nad.Spec.Config)
+
+	if err := h.removeOutdatedLocalArea(nad); err != nil {
+		return nil, fmt.Errorf("remove outdated local area for nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
+	}
+
+	if !utils.IsVlanNad(nad) {
 		return nad, nil
 	}
 
-	klog.Infof("nad configuration %s has been changed: %s", nad.Name, nad.Spec.Config)
-
 	if err := h.addLocalArea(nad); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("add local area for nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
 	}
 
 	return nad, nil
@@ -57,21 +64,21 @@ func (h Handler) OnRemove(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 	if nad == nil {
 		return nil, nil
 	}
-	if !utils.IsVlanNAD(nad) {
+
+	klog.Infof("nad configuration %s/%s has been deleted", nad.Namespace, nad.Name)
+
+	if !utils.IsVlanNad(nad) {
 		return nad, nil
 	}
 
-	klog.Infof("nad configuration %s has been deleted.", nad.Name)
-
-	// Skip the case that there are nads with the same cluster network and VLAN id.
-	if ok, err := h.existDuplicateNad(nad.Labels[utils.KeyVlanLabel], nad.Labels[utils.KeyClusterNetworkLabel]); err != nil {
-		return nil, err
-	} else if ok {
-		return nad, nil
+	localArea, err := GetLocalArea(nad.Labels[utils.KeyVlanLabel], nad.Annotations[utils.KeyNetworkRoute])
+	if err != nil {
+		return nil, fmt.Errorf("failed to get local area from nad %s/%s, error: %w", nad.Namespace, nad.Name, err)
 	}
 
-	if err := h.removeLocalArea(nad); err != nil {
-		return nil, err
+	if err := h.removeLocalArea(nad.Labels[utils.KeyClusterNetworkLabel], localArea); err != nil {
+		return nil, fmt.Errorf("remove local area %+v failed, cluster network: %s, error: %w",
+			localArea, nad.Labels[utils.KeyClusterNetworkLabel], err)
 	}
 
 	return nad, nil
@@ -85,7 +92,7 @@ func (h Handler) addLocalArea(nad *nadv1.NetworkAttachmentDefinition) error {
 		return nil
 	}
 
-	localArea, err := GetLocalArea(nad)
+	localArea, err := GetLocalArea(nad.Labels[utils.KeyVlanLabel], nad.Annotations[utils.KeyNetworkRoute])
 	if err != nil {
 		return fmt.Errorf("failed to get local area from nad %s/%s, error: %w", nad.Namespace, nad.Name, err)
 	}
@@ -105,31 +112,67 @@ func (h Handler) existDuplicateNad(vlanIDStr, cn string) (bool, error) {
 	return len(nads) > 1, nil
 }
 
-func (h Handler) removeLocalArea(nad *nadv1.NetworkAttachmentDefinition) error {
-	v, err := vlan.GetVlan(nad.Labels[utils.KeyClusterNetworkLabel])
+func (h Handler) removeLocalArea(clusternetwork string, localArea *vlan.LocalArea) error {
+	// Skip the case that there are nads with the same cluster network and VLAN id.
+	if ok, err := h.existDuplicateNad(strconv.Itoa(int(localArea.Vid)), clusternetwork); err != nil {
+		return err
+	} else if ok {
+		return nil
+	}
+
+	v, err := vlan.GetVlan(clusternetwork)
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) {
 		return err
 	} else if errors.As(err, &netlink.LinkNotFoundError{}) {
 		return nil
 	}
 
-	localArea, err := GetLocalArea(nad)
+	return v.RemoveLocalArea(localArea)
+}
+
+func (h Handler) removeOutdatedLocalArea(nad *nadv1.NetworkAttachmentDefinition) error {
+	if nad.Labels[utils.KeyLastClusterNetworkLabel] == "" && nad.Labels[utils.KeyLastVlanLabel] == "" {
+		return nil
+	}
+
+	clusternetwork := nad.Labels[utils.KeyLastClusterNetworkLabel]
+	if clusternetwork == "" {
+		clusternetwork = nad.Labels[utils.KeyClusterNetworkLabel]
+	}
+	vlanIdStr := nad.Labels[utils.KeyLastVlanLabel]
+	if vlanIdStr == "" {
+		vlanIdStr = nad.Labels[utils.KeyVlanLabel]
+	}
+
+	localArea, err := GetLocalArea(vlanIdStr, nad.Annotations[utils.KeyNetworkRoute])
 	if err != nil {
 		return fmt.Errorf("failed to get local area from nad %s/%s, error: %w", nad.Namespace, nad.Name, err)
 	}
 
-	return v.RemoveLocalArea(localArea)
+	if err := h.removeLocalArea(clusternetwork, localArea); err != nil {
+		return err
+	}
+
+	nadCopy := nad.DeepCopy()
+	delete(nadCopy.Labels, utils.KeyLastClusterNetworkLabel)
+	delete(nadCopy.Labels, utils.KeyLastVlanLabel)
+	if _, err := h.nadClient.Update(nadCopy); err != nil {
+		return fmt.Errorf("delete labels %s and %s of %s/%s failed",
+			utils.KeyLastClusterNetworkLabel, utils.KeyLastVlanLabel, nad.Namespace, nad.Name)
+	}
+
+	return nil
 }
 
-func GetLocalArea(nad *nadv1.NetworkAttachmentDefinition) (*vlan.LocalArea, error) {
-	vlanID, err := strconv.Atoi(nad.Labels[utils.KeyVlanLabel])
+func GetLocalArea(vlanIdStr, routeConf string) (*vlan.LocalArea, error) {
+	vlanID, err := strconv.Atoi(vlanIdStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid vlanconfig %s", nad.Labels[utils.KeyVlanLabel])
+		return nil, fmt.Errorf("invalid vlan id %s", vlanIdStr)
 	}
 
 	layer3NetworkConf := &utils.Layer3NetworkConf{}
-	if nad.Annotations != nil && nad.Annotations[utils.KeyNetworkConf] != "" {
-		if layer3NetworkConf, err = utils.NewLayer3NetworkConf(nad.Annotations[utils.KeyNetworkConf]); err != nil {
+	if routeConf != "" {
+		if layer3NetworkConf, err = utils.NewLayer3NetworkConf(routeConf); err != nil {
 			return nil, err
 		}
 	}

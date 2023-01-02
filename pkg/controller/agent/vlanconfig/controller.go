@@ -78,23 +78,23 @@ func (h Handler) OnChange(key string, vc *networkv1.VlanConfig) (*networkv1.Vlan
 	if err != nil {
 		return nil, err
 	}
-	isApplied, err := h.isApplied(vc)
+
+	vs, err := h.getVlanStatus(vc)
 	if err != nil {
 		return nil, err
 	}
 
-	if !isMatched {
-		if isApplied {
-			if err := h.removeVLAN(vc); err != nil {
-				return nil, err
-			}
+	if !isMatched && vs != nil || isMatched && vs != nil && !matchClusterNetwork(vc, vs) {
+		if err := h.removeVLAN(vs); err != nil {
+			return nil, err
 		}
-		return vc, nil
 	}
 
 	// set up VLAN
-	if err := h.setupVLAN(vc); err != nil {
-		return nil, err
+	if isMatched {
+		if err := h.setupVLAN(vc); err != nil {
+			return nil, err
+		}
 	}
 
 	return vc, nil
@@ -105,17 +105,19 @@ func (h Handler) OnRemove(key string, vc *networkv1.VlanConfig) (*networkv1.Vlan
 		return nil, nil
 	}
 
-	if isInEffect, err := h.isApplied(vc); err != nil {
-		return nil, err
-	} else if !isInEffect {
-		return vc, nil
-	}
-
 	klog.Infof("vlan config %s has been removed", vc.Name)
 
-	if err := h.removeVLAN(vc); err != nil {
+	vs, err := h.getVlanStatus(vc)
+	if err != nil {
 		return nil, err
 	}
+
+	if vs != nil {
+		if err := h.removeVLAN(vs); err != nil {
+			return nil, err
+		}
+	}
+
 	return vc, nil
 }
 
@@ -141,14 +143,28 @@ func (h Handler) MatchNode(vc *networkv1.VlanConfig) (bool, error) {
 	return false, nil
 }
 
-func (h Handler) isApplied(vc *networkv1.VlanConfig) (bool, error) {
-	if vs, err := h.vsCache.Get(h.statusName(vc.Spec.ClusterNetwork)); err != nil && !apierrors.IsNotFound(err) {
-		return false, err
-	} else if err == nil && vs.Status.VlanConfig == vc.Name {
-		return true, nil
+func (h Handler) getVlanStatus(vc *networkv1.VlanConfig) (*networkv1.VlanStatus, error) {
+	vss, err := h.vsCache.List(labels.Set(map[string]string{
+		utils.KeyVlanConfigLabel: vc.Name,
+		utils.KeyNodeLabel:       h.nodeName,
+	}).AsSelector())
+	if err != nil {
+		return nil, err
 	}
 
-	return false, nil
+	switch len(vss) {
+	case 0:
+		// We take it granted that the empty vlanstatus matches the vlanconfig
+		return nil, nil
+	case 1:
+		return vss[0], nil
+	default:
+		return nil, fmt.Errorf("invalid vlanstatus list for vlanconfig %s on node %s", vc.Name, h.nodeName)
+	}
+}
+
+func matchClusterNetwork(vc *networkv1.VlanConfig, vs *networkv1.VlanStatus) bool {
+	return vc.Spec.ClusterNetwork == vs.Status.ClusterNetwork
 }
 
 func (h Handler) setupVLAN(vc *networkv1.VlanConfig) error {
@@ -190,11 +206,11 @@ updateStatus:
 	return nil
 }
 
-func (h Handler) removeVLAN(vc *networkv1.VlanConfig) error {
+func (h Handler) removeVLAN(vs *networkv1.VlanStatus) error {
 	var v *vlan.Vlan
 	var teardownErr error
 
-	v, teardownErr = vlan.GetVlan(vc.Spec.ClusterNetwork)
+	v, teardownErr = vlan.GetVlan(vs.Status.ClusterNetwork)
 	// We take it granted that `LinkNotFound` means the VLAN has been torn down.
 	if teardownErr != nil {
 		// ignore the LinkNotFound error
@@ -208,15 +224,15 @@ func (h Handler) removeVLAN(vc *networkv1.VlanConfig) error {
 	}
 
 updateStatus:
-	if err := h.removeNodeLabel(vc); err != nil {
+	if err := h.removeNodeLabel(vs); err != nil {
 		return err
 	}
-	if err := h.deleteStatus(vc, teardownErr); err != nil {
+	if err := h.deleteStatus(vs, teardownErr); err != nil {
 		return fmt.Errorf("update status into vlanstatus %s failed, error: %w, teardown error: %v",
-			h.statusName(vc.Spec.ClusterNetwork), err, teardownErr)
+			h.statusName(vs.Status.ClusterNetwork), err, teardownErr)
 	}
 	if teardownErr != nil {
-		return fmt.Errorf("tear down VLAN failed, vlanconfig: %s, node: %s, error: %w", vc.Name, h.nodeName, teardownErr)
+		return fmt.Errorf("tear down VLAN failed, vlanconfig: %s, node: %s, error: %w", vs.Status.VlanConfig, h.nodeName, teardownErr)
 	}
 
 	return nil
@@ -266,19 +282,14 @@ func (h Handler) getLocalAreas(bridgeName string) ([]*vlan.LocalArea, error) {
 
 	localAreas := make([]*vlan.LocalArea, 0)
 	for _, n := range nads {
-		netconf := &utils.NetConf{}
-		if err := json.Unmarshal([]byte(n.Spec.Config), netconf); err != nil {
-			return nil, fmt.Errorf("unmarshal failed, error: %w, value: %s", err, n.Spec.Config)
+		if !utils.IsVlanNad(n) {
+			continue
 		}
-
-		if netconf.Type == bridgeCNIName && netconf.BrName == bridgeName && netconf.Vlan > 0 {
-			klog.Infof("add nad:%s with vid:%d to the list", n.Name, netconf.Vlan)
-			localArea, err := nad.GetLocalArea(n)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get local area from nad %s/%s, error: %w", n.Namespace, n.Name, err)
-			}
-			localAreas = append(localAreas, localArea)
+		localArea, err := nad.GetLocalArea(n.Labels[utils.KeyVlanLabel], n.Annotations[utils.KeyNetworkRoute])
+		if err != nil {
+			return nil, fmt.Errorf("failed to get local area from nad %s/%s, error: %w", n.Namespace, n.Name, err)
 		}
+		localAreas = append(localAreas, localArea)
 	}
 
 	return localAreas, nil
@@ -360,25 +371,17 @@ func (h Handler) updateStatus(vc *networkv1.VlanConfig, v *vlan.Vlan, localAreas
 	return nil
 }
 
-func (h Handler) deleteStatus(vc *networkv1.VlanConfig, teardownErr error) error {
-	name := h.statusName(vc.Spec.ClusterNetwork)
-	vs, err := h.vsCache.Get(name)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("could not get vlanstatus %s, error: %w", name, err)
-	} else if apierrors.IsNotFound(err) {
-		return nil
-	}
-
+func (h Handler) deleteStatus(vs *networkv1.VlanStatus, teardownErr error) error {
 	if teardownErr != nil {
 		vsCopy := vs.DeepCopy()
 		networkv1.Ready.SetStatusBool(vsCopy, false)
 		networkv1.Ready.Message(vsCopy, teardownErr.Error())
 		if _, err := h.vsClient.Update(vsCopy); err != nil {
-			return fmt.Errorf("failed to update vlanstatus %s, error: %w", name, err)
+			return fmt.Errorf("failed to update vlanstatus %s, error: %w", vs.Name, err)
 		}
 	} else {
-		if err := h.vsClient.Delete(name, &metav1.DeleteOptions{}); err != nil {
-			return fmt.Errorf("failed to delete vlanstatus %s, error: %w", name, err)
+		if err := h.vsClient.Delete(vs.Name, &metav1.DeleteOptions{}); err != nil {
+			return fmt.Errorf("failed to delete vlanstatus %s, error: %w", vs.Name, err)
 		}
 	}
 
@@ -411,20 +414,20 @@ func (h Handler) addNodeLabel(vc *networkv1.VlanConfig) error {
 	return nil
 }
 
-func (h Handler) removeNodeLabel(vc *networkv1.VlanConfig) error {
+func (h Handler) removeNodeLabel(vs *networkv1.VlanStatus) error {
 	node, err := h.nodeCache.Get(h.nodeName)
 	if err != nil {
 		return err
 	}
 
-	key := labelKeyOfClusterNetwork(vc.Spec.ClusterNetwork)
+	key := labelKeyOfClusterNetwork(vs.Status.ClusterNetwork)
 	if node.Labels != nil && (node.Labels[key] == utils.ValueTrue ||
-		node.Labels[utils.KeyVlanConfigLabel] == vc.Name) {
+		node.Labels[utils.KeyVlanConfigLabel] == vs.Status.VlanConfig) {
 		nodeCopy := node.DeepCopy()
 		delete(nodeCopy.Labels, key)
 		delete(nodeCopy.Labels, utils.KeyVlanConfigLabel)
 		if _, err := h.nodeClient.Update(nodeCopy); err != nil {
-			return fmt.Errorf("remove labels for vlanconfig %s from node %s failed, error: %w", vc.Name, h.nodeName, err)
+			return fmt.Errorf("remove labels for vlanconfig %s from node %s failed, error: %w", vs.Status.VlanConfig, h.nodeName, err)
 		}
 	}
 
