@@ -14,21 +14,21 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
-type Mutator struct {
+type VlanConfigMutator struct {
 	types.DefaultMutator
 
 	nodeCache ctlcorev1.NodeCache
 }
 
-var _ types.Mutator = &Mutator{}
+var _ types.Mutator = &VlanConfigMutator{}
 
-func NewNadMutator(nodeCache ctlcorev1.NodeCache) *Mutator {
-	return &Mutator{
+func NewVlanConfigMutator(nodeCache ctlcorev1.NodeCache) *VlanConfigMutator {
+	return &VlanConfigMutator{
 		nodeCache: nodeCache,
 	}
 }
 
-func (v *Mutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, error) {
+func (v *VlanConfigMutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, error) {
 	vlanConfig := newObj.(*networkv1.VlanConfig)
 
 	annotationPatch, err := v.matchNodes(vlanConfig)
@@ -39,9 +39,9 @@ func (v *Mutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, 
 	return append(getCnLabelPatch(vlanConfig), annotationPatch...), nil
 }
 
-func (v *Mutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types.Patch, error) {
+func (v *VlanConfigMutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types.Patch, error) {
 	newVc := newObj.(*networkv1.VlanConfig)
-	oldVc := newObj.(*networkv1.VlanConfig)
+	oldVc := oldObj.(*networkv1.VlanConfig)
 
 	var cnLabelPatch, annotationPatch types.Patch
 	if newVc.Spec.ClusterNetwork != oldVc.Spec.ClusterNetwork {
@@ -75,7 +75,7 @@ func getCnLabelPatch(v *networkv1.VlanConfig) types.Patch {
 		}}
 }
 
-func (v *Mutator) matchNodes(vc *networkv1.VlanConfig) (types.Patch, error) {
+func (v *VlanConfigMutator) matchNodes(vc *networkv1.VlanConfig) (types.Patch, error) {
 	nodes, err := v.nodeCache.List(labels.Set(vc.Spec.NodeSelector).AsSelector())
 	if err != nil {
 		return nil, err
@@ -113,7 +113,7 @@ func matchedNodesToPatch(vc *networkv1.VlanConfig, matchedNodes []string) (types
 	}, nil
 }
 
-func (v *Mutator) Resource() types.Resource {
+func (v *VlanConfigMutator) Resource() types.Resource {
 	return types.Resource{
 		Names:      []string{"vlanconfigs"},
 		Scope:      admissionregv1.ClusterScope,

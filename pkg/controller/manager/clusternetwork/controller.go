@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/cenk/backoff"
+	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
@@ -22,19 +24,24 @@ const (
 )
 
 type Handler struct {
-	lmClient ctlnetworkv1.LinkMonitorClient
-	lmCache  ctlnetworkv1.LinkMonitorCache
-	cnClient ctlnetworkv1.ClusterNetworkClient
+	lmClient  ctlnetworkv1.LinkMonitorClient
+	lmCache   ctlnetworkv1.LinkMonitorCache
+	cnClient  ctlnetworkv1.ClusterNetworkClient
+	nadClient ctlcniv1.NetworkAttachmentDefinitionClient
+	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
 }
 
 func Register(ctx context.Context, management *config.Management) error {
 	cns := management.HarvesterNetworkFactory.Network().V1beta1().ClusterNetwork()
 	lms := management.HarvesterNetworkFactory.Network().V1beta1().LinkMonitor()
+	nads := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
 
 	h := Handler{
-		lmClient: lms,
-		lmCache:  lms.Cache(),
-		cnClient: cns,
+		lmClient:  lms,
+		lmCache:   lms.Cache(),
+		cnClient:  cns,
+		nadClient: nads,
+		nadCache:  nads.Cache(),
 	}
 
 	if err := h.initialize(); err != nil {
@@ -42,6 +49,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	}
 
 	cns.OnChange(ctx, controllerName, h.EnsureLinkMonitor)
+	cns.OnChange(ctx, controllerName, h.SetNadReadyLabel)
 	cns.OnRemove(ctx, controllerName, h.DeleteLinkMonitor)
 
 	return nil
@@ -70,6 +78,18 @@ func (h Handler) DeleteLinkMonitor(key string, cn *networkv1.ClusterNetwork) (*n
 
 	if err := h.deleteLinkMonitor(cn.Name); err != nil {
 		return nil, fmt.Errorf("delete link monitor for cluster network %s failed, error: %w", cn.Name, err)
+	}
+
+	return cn, nil
+}
+
+func (h Handler) SetNadReadyLabel(key string, cn *networkv1.ClusterNetwork) (*networkv1.ClusterNetwork, error) {
+	if cn == nil {
+		return nil, nil
+	}
+
+	if err := h.setNadReadyLabel(cn); err != nil {
+		return nil, err
 	}
 
 	return cn, nil
@@ -107,6 +127,33 @@ func (h Handler) deleteLinkMonitor(name string) error {
 	}
 
 	return h.lmClient.Delete(name, &metav1.DeleteOptions{})
+}
+
+func (h Handler) setNadReadyLabel(cn *networkv1.ClusterNetwork) error {
+	isReady := utils.ValueFalse
+	if cn.DeletionTimestamp != nil && networkv1.Ready.IsTrue(cn.Status) {
+		isReady = utils.ValueTrue
+	}
+
+	nads, err := h.nadCache.List("", labels.Set(map[string]string{
+		utils.KeyClusterNetworkLabel: cn.Name,
+	}).AsSelector())
+	if err != nil {
+		return err
+	}
+
+	for _, nad := range nads {
+		if nad.Labels[utils.KeyNetworkReady] == isReady {
+			continue
+		}
+		nadCopy := nad.DeepCopy()
+		nadCopy.Labels[utils.KeyNetworkReady] = isReady
+		if _, err := h.nadClient.Update(nadCopy); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (h Handler) initialize() error {

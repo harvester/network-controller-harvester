@@ -17,9 +17,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
+	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
@@ -28,9 +29,6 @@ import (
 
 const (
 	ControllerName = "harvester-network-manager-nad-controller"
-
-	l2VlanNetwork   = "L2VlanNetwork"
-	untaggedNetwork = "UntaggedNetwork"
 
 	jobContainerName      = "network-helper"
 	jobServiceAccountName = "harvester-network-helper"
@@ -102,11 +100,16 @@ func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 		return nil, nil
 	}
 
+	klog.Infof("nad configuration %s/%s has been changed: %s", nad.Namespace, nad.Name, nad.Spec.Config)
+
 	if err := h.ensureLabels(nad); err != nil {
 		return nil, fmt.Errorf("ensure labels of nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
 	}
 
-	if !utils.IsVlanNAD(nad) {
+	if !utils.IsVlanNad(nad) {
+		if err := h.clearJob(nad); err != nil {
+			return nil, err
+		}
 		return nad, nil
 	}
 
@@ -124,11 +127,13 @@ func (h Handler) OnRemove(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 		return nil, nil
 	}
 
-	if !utils.IsVlanNAD(nad) {
+	klog.Infof("nad configuration %s/%s has been removed", nad.Namespace, nad.Name)
+
+	if !utils.IsVlanNad(nad) {
 		return nad, nil
 	}
 
-	if err := h.ClearJob(nad); err != nil {
+	if err := h.clearJob(nad); err != nil {
 		return nil, err
 	}
 
@@ -151,12 +156,22 @@ func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
 	}
 
 	if netconf.Vlan != 0 {
-		labels[utils.KeyNetworkType] = string(l2VlanNetwork)
+		labels[utils.KeyNetworkType] = string(utils.L2VlanNetwork)
 		labels[utils.KeyVlanLabel] = strconv.Itoa(netconf.Vlan)
 	} else {
-		labels[utils.KeyNetworkType] = string(untaggedNetwork)
+		labels[utils.KeyNetworkType] = string(utils.UntaggedNetwork)
 	}
-	labels[utils.KeyClusterNetworkLabel] = netconf.BrName[:len(netconf.BrName)-len(iface.BridgeSuffix)]
+
+	cnName := netconf.BrName[:len(netconf.BrName)-len(iface.BridgeSuffix)]
+	labels[utils.KeyClusterNetworkLabel] = cnName
+
+	if cn, err := h.cnCache.Get(cnName); err != nil {
+		return err
+	} else if networkv1.Ready.IsTrue(cn.Status) {
+		labels[utils.KeyNetworkReady] = utils.ValueTrue
+	} else {
+		labels[utils.KeyNetworkReady] = utils.ValueFalse
+	}
 
 	nadCopy := nad.DeepCopy()
 	nadCopy.Labels = labels
@@ -169,16 +184,22 @@ func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
 
 func (h Handler) EnsureJob2GetLayer3NetworkInfo(nad *cniv1.NetworkAttachmentDefinition) error {
 	networkConf := &utils.Layer3NetworkConf{}
-	if nad.Annotations != nil && nad.Annotations[utils.KeyNetworkConf] != "" {
+	if nad.Annotations != nil && nad.Annotations[utils.KeyNetworkRoute] != "" {
 		var err error
-		networkConf, err = utils.NewLayer3NetworkConf(nad.Annotations[utils.KeyNetworkConf])
+		networkConf, err = utils.NewLayer3NetworkConf(nad.Annotations[utils.KeyNetworkRoute])
 		if err != nil {
 			return fmt.Errorf("invalid layer 3 network configure: %w", err)
 		}
 	}
 	klog.Infof("netconf: %+v", networkConf)
 
-	if networkConf.CIDR != "" && networkConf.Gateway != "" {
+	if networkConf.Outdated {
+		if err := h.clearJob(nad); err != nil {
+			return err
+		}
+	}
+
+	if networkConf.CIDR != "" && networkConf.Gateway != "" && !networkConf.Outdated {
 		// initialize connectivity
 		if networkConf.Connectivity == "" {
 			if err := h.initializeConnectivity(nad, networkConf); err != nil {
@@ -187,7 +208,6 @@ func (h Handler) EnsureJob2GetLayer3NetworkInfo(nad *cniv1.NetworkAttachmentDefi
 				klog.Infof("initialize connectivity of nad %s/%s successfully", nad.Namespace, nad.Name)
 			}
 		}
-		// add item to map
 		h.addItem(nad.Namespace, nad.Name, networkConf.Gateway)
 		return nil
 	}
@@ -203,21 +223,27 @@ func (h Handler) EnsureJob2GetLayer3NetworkInfo(nad *cniv1.NetworkAttachmentDefi
 	return nil
 }
 
-func (h Handler) ClearJob(nad *cniv1.NetworkAttachmentDefinition) error {
-	name := nad.Namespace + "-" + nad.Name
+func (h Handler) clearJob(nad *cniv1.NetworkAttachmentDefinition) error {
+	name := utils.Name(nad.Namespace, nad.Name)
 	if _, err := h.jobCache.Get(h.namespace, name); err != nil && !apierrors.IsNotFound(err) {
 		return err
 	} else if err == nil {
-		if err := h.jobClient.Delete(h.namespace, name, &metav1.DeleteOptions{}); err != nil {
+		propagationPolicy := metav1.DeletePropagationBackground
+		if err := h.jobClient.Delete(h.namespace, name, &metav1.DeleteOptions{
+			PropagationPolicy: &propagationPolicy,
+		}); err != nil {
 			return err
 		}
 	}
+
 	h.removeItem(nad.Namespace, nad.Name)
+
 	return nil
 }
 
 func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition, dhcpServerAddr string) error {
-	job, err := h.jobCache.Get(h.namespace, nad.Namespace+"-"+nad.Name)
+	name := utils.Name(nad.Namespace, nad.Name)
+	job, err := h.jobCache.Get(h.namespace, name)
 	if err != nil && !errors.IsNotFound(err) {
 		return err
 	} else if err == nil {
@@ -248,7 +274,7 @@ func constructJob(cur *batchv1.Job, namespace, image, dhcpServerAddr string, nad
 	if cur != nil {
 		job = cur.DeepCopy()
 	} else {
-		job.Name = nad.Namespace + "-" + nad.Name
+		job.Name = utils.Name(nad.Namespace, nad.Name)
 		job.Namespace = namespace
 	}
 
@@ -348,8 +374,8 @@ func (h Handler) checkConnectivity(namespace, name, gw string) error {
 	}
 
 	networkConf := &utils.Layer3NetworkConf{}
-	if nad.Annotations != nil && nad.Annotations[utils.KeyNetworkConf] != "" {
-		networkConf, err = utils.NewLayer3NetworkConf(nad.Annotations[utils.KeyNetworkConf])
+	if nad.Annotations != nil && nad.Annotations[utils.KeyNetworkRoute] != "" {
+		networkConf, err = utils.NewLayer3NetworkConf(nad.Annotations[utils.KeyNetworkRoute])
 		if err != nil {
 			return fmt.Errorf("invalid layer 3 network configure: %w", err)
 		}
@@ -410,7 +436,7 @@ func (h Handler) updateNetworkConf(nad *cniv1.NetworkAttachmentDefinition, netwo
 	if nadCopy.Annotations == nil {
 		nadCopy.Annotations = make(map[string]string)
 	}
-	nadCopy.Annotations[utils.KeyNetworkConf] = confStr
+	nadCopy.Annotations[utils.KeyNetworkRoute] = confStr
 	if _, err := h.nadClient.Update(nadCopy); err != nil {
 		return fmt.Errorf("update nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
 	}

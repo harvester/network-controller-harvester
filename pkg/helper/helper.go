@@ -55,7 +55,7 @@ func (n *NetHelper) RecordToNad(selectedNetwork *nadv1.NetworkSelectionElement, 
 		return err
 	}
 
-	nadCopy.Annotations[utils.KeyNetworkConf] = confStr
+	nadCopy.Annotations[utils.KeyNetworkRoute] = confStr
 
 	_, err = n.nadClient.Update(nadCopy)
 	return err

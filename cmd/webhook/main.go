@@ -20,6 +20,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 	"k8s.io/client-go/rest"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	ctlnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
@@ -108,10 +109,11 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 
 	webhookServer := server.New(ctx, cfg, name, options)
 	admitters := []types.Admitter{
-		types.Validator2Admitter(nad.NewNadValidator(c.vmCache)),
-		types.Validator2Admitter(vlanconfig.NewVlanConfigValidator(c.nadCache, c.vsCache)),
 		types.Validator2Admitter(clusternetwork.NewCnValidator(c.vcCache)),
-		vlanconfig.NewNadMutator(c.nodeCache),
+		types.Validator2Admitter(nad.NewNadValidator(c.vmiCache)),
+		types.Validator2Admitter(vlanconfig.NewVlanConfigValidator(c.nadCache, c.vsCache, c.vmiCache)),
+		nad.NewNadMutator(c.cnCache),
+		vlanconfig.NewVlanConfigMutator(c.nodeCache),
 	}
 	webhookServer.Register(admitters)
 	if err := webhookServer.Start(); err != nil {
@@ -125,9 +127,10 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 
 type caches struct {
 	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
-	vmCache   ctlkubevirtv1.VirtualMachineCache
+	vmiCache  ctlkubevirtv1.VirtualMachineInstanceCache
 	vcCache   ctlnetworkv1.VlanConfigCache
 	vsCache   ctlnetworkv1.VlanStatusCache
+	cnCache   ctlnetworkv1.ClusterNetworkCache
 	nodeCache ctlcorev1.NodeCache
 }
 
@@ -144,14 +147,15 @@ func newCaches(ctx context.Context, cfg *rest.Config, threadiness int) (*caches,
 	starters = append(starters, coreFactory)
 	// must declare cache before starting informers
 	c := &caches{
-		vmCache:   kubevirtFactory.Kubevirt().V1().VirtualMachine().Cache(),
+		vmiCache:  kubevirtFactory.Kubevirt().V1().VirtualMachineInstance().Cache(),
 		nadCache:  cniFactory.K8s().V1().NetworkAttachmentDefinition().Cache(),
 		vcCache:   harvesterNetworkFactory.Network().V1beta1().VlanConfig().Cache(),
 		vsCache:   harvesterNetworkFactory.Network().V1beta1().VlanStatus().Cache(),
+		cnCache:   harvesterNetworkFactory.Network().V1beta1().ClusterNetwork().Cache(),
 		nodeCache: coreFactory.Core().V1().Node().Cache(),
 	}
 	// Indexer must be added before starting the informer, otherwise panic `cannot add indexers to running index` happens
-	c.vmCache.AddIndexer(indexeres.VMByNetworkIndex, indexeres.VMByNetwork)
+	c.vmiCache.AddIndexer(indexeres.VMByNetworkIndex, vmiByNetwork)
 
 	if err := start.All(ctx, threadiness, starters...); err != nil {
 		return nil, err
@@ -167,4 +171,16 @@ func setLogLevel(level string) {
 	}
 	// set global log level
 	logrus.SetLevel(ll)
+}
+
+func vmiByNetwork(obj *kubevirtv1.VirtualMachineInstance) ([]string, error) {
+	networks := obj.Spec.Networks
+	networkNameList := make([]string, 0, len(networks))
+	for _, network := range networks {
+		if network.NetworkSource.Multus == nil {
+			continue
+		}
+		networkNameList = append(networkNameList, network.NetworkSource.Multus.NetworkName)
+	}
+	return networkNameList, nil
 }
