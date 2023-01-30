@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	"github.com/vishvananda/netlink"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -21,7 +22,6 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/network/vlan"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
-	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 )
 
 const (
@@ -271,7 +271,7 @@ func (h Handler) getLocalAreas(bridgeName string) ([]*vlan.LocalArea, error) {
 			return nil, fmt.Errorf("unmarshal failed, error: %w, value: %s", err, n.Spec.Config)
 		}
 
-		if netconf.Type == bridgeCNIName && netconf.BrName == bridgeName {
+		if netconf.Type == bridgeCNIName && netconf.BrName == bridgeName && netconf.Vlan > 0 {
 			klog.Infof("add nad:%s with vid:%d to the list", n.Name, netconf.Vlan)
 			localArea, err := nad.GetLocalArea(n)
 			if err != nil {
