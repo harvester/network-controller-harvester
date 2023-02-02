@@ -2,18 +2,11 @@
 	"linters": {
 		"disable-all": true,
 		"enable": [
-			"govet",
-			"golint",
 			"goimports",
-			"misspell",
-			"ineffassign",
 			"gofmt",
-			"staticcheck",
-			"bodyclose",
-			"gosimple",
-			"prealloc",
-			"deadcode",
-			"errcheck"
+			"misspell",
+			"revive",
+			"prealloc"
 		]
 	},
 	"run": {
@@ -28,5 +21,10 @@
 		"build-tags": [
 			"test"
 		]
+	},
+	"linters-settings": {
+		"goimports": {
+			"local-prefixes": "github.com/harvester/harvester-network-controller"
+		}
 	}
 }

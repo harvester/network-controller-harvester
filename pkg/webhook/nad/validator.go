@@ -22,20 +22,20 @@ const (
 	deleteErr = "could not delete nad %s/%s because %w"
 )
 
-type nadValidator struct {
+type Validator struct {
 	types.DefaultValidator
 	vmCache ctlkubevirtv1.VirtualMachineCache
 }
 
-var _ types.Validator = &nadValidator{}
+var _ types.Validator = &Validator{}
 
-func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache) *nadValidator {
-	return &nadValidator{
+func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache) *Validator {
+	return &Validator{
 		vmCache: vmCache,
 	}
 }
 
-func (n *nadValidator) Create(_ *types.Request, newObj runtime.Object) error {
+func (n *Validator) Create(_ *types.Request, newObj runtime.Object) error {
 	netAttachDef := newObj.(*cniv1.NetworkAttachmentDefinition)
 
 	config := netAttachDef.Spec.Config
@@ -65,7 +65,7 @@ func (n *nadValidator) Create(_ *types.Request, newObj runtime.Object) error {
 	return nil
 }
 
-func (n *nadValidator) Update(_ *types.Request, oldObj, newObj runtime.Object) error {
+func (n *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) error {
 	oldNad, newNad := oldObj.(*cniv1.NetworkAttachmentDefinition), newObj.(*cniv1.NetworkAttachmentDefinition)
 
 	if oldNad.Spec.Config != newNad.Spec.Config {
@@ -75,7 +75,7 @@ func (n *nadValidator) Update(_ *types.Request, oldObj, newObj runtime.Object) e
 	return nil
 }
 
-func (n *nadValidator) Delete(_ *types.Request, oldObj runtime.Object) error {
+func (n *Validator) Delete(_ *types.Request, oldObj runtime.Object) error {
 	netAttachDef := oldObj.(*cniv1.NetworkAttachmentDefinition)
 
 	// multus network name can be <networkName> or <namespace>/<networkName>
@@ -85,11 +85,12 @@ func (n *nadValidator) Delete(_ *types.Request, oldObj runtime.Object) error {
 	if err != nil {
 		return fmt.Errorf(deleteErr, netAttachDef.Namespace, networkName, err)
 	}
-	if vmsTmp, err := n.vmCache.GetByIndex(indexeres.VMByNetworkIndex, netAttachDef.Name); err != nil {
+	vmsTmp, err := n.vmCache.GetByIndex(indexeres.VMByNetworkIndex, netAttachDef.Name)
+	if err != nil {
 		return fmt.Errorf(deleteErr, netAttachDef.Namespace, networkName, err)
-	} else {
-		vms = append(vms, vmsTmp...)
 	}
+
+	vms = append(vms, vmsTmp...)
 
 	if len(vms) > 0 {
 		vmNameList := make([]string, 0, len(vms))
@@ -102,7 +103,7 @@ func (n *nadValidator) Delete(_ *types.Request, oldObj runtime.Object) error {
 	return nil
 }
 
-func (n *nadValidator) Resource() types.Resource {
+func (n *Validator) Resource() types.Resource {
 	return types.Resource{
 		Names:      []string{"network-attachment-definitions"},
 		Scope:      admissionregv1.NamespacedScope,

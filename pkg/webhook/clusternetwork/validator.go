@@ -17,20 +17,21 @@ const (
 	deleteErr = "could not delete cluster network %s because %w"
 )
 
-type cnValidator struct {
+type CnValidator struct {
 	types.DefaultValidator
 	vcCache ctlnetworkv1.VlanConfigCache
 }
 
-var _ types.Validator = &cnValidator{}
+var _ types.Validator = &CnValidator{}
 
-func NewCnValidator(vcCache ctlnetworkv1.VlanConfigCache) *cnValidator {
-	return &cnValidator{
+func NewCnValidator(vcCache ctlnetworkv1.VlanConfigCache) *CnValidator {
+	validator := &CnValidator{
 		vcCache: vcCache,
 	}
+	return validator
 }
 
-func (c *cnValidator) Delete(_ *types.Request, oldObj runtime.Object) error {
+func (c *CnValidator) Delete(_ *types.Request, oldObj runtime.Object) error {
 	cn := oldObj.(*networkv1.ClusterNetwork)
 
 	if cn.Name == utils.ManagementClusterNetworkName {
@@ -56,7 +57,7 @@ func (c *cnValidator) Delete(_ *types.Request, oldObj runtime.Object) error {
 	return nil
 }
 
-func (c *cnValidator) Resource() types.Resource {
+func (c *CnValidator) Resource() types.Resource {
 	return types.Resource{
 		Names:      []string{"clusternetworks"},
 		Scope:      admissionregv1.ClusterScope,

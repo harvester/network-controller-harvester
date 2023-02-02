@@ -24,23 +24,23 @@ const (
 	deleteErr = "could not delete vlanConfig %s because %w"
 )
 
-type vlanConfigValidator struct {
+type Validator struct {
 	types.DefaultValidator
 	nadCache ctlcniv1.NetworkAttachmentDefinitionCache
 	vsCache  ctlnetworkv1.VlanStatusCache
 }
 
 func NewVlanConfigValidator(nadCache ctlcniv1.NetworkAttachmentDefinitionCache,
-	vsCache ctlnetworkv1.VlanStatusCache) *vlanConfigValidator {
-	return &vlanConfigValidator{
+	vsCache ctlnetworkv1.VlanStatusCache) *Validator {
+	return &Validator{
 		nadCache: nadCache,
 		vsCache:  vsCache,
 	}
 }
 
-var _ types.Validator = &vlanConfigValidator{}
+var _ types.Validator = &Validator{}
 
-func (v *vlanConfigValidator) Create(_ *types.Request, newObj runtime.Object) error {
+func (v *Validator) Create(_ *types.Request, newObj runtime.Object) error {
 	vc := newObj.(*networkv1.VlanConfig)
 
 	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
@@ -62,7 +62,7 @@ func (v *vlanConfigValidator) Create(_ *types.Request, newObj runtime.Object) er
 	return nil
 }
 
-func (v *vlanConfigValidator) Update(_ *types.Request, oldObj, newObj runtime.Object) error {
+func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) error {
 	vc := newObj.(*networkv1.VlanConfig)
 
 	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
@@ -77,7 +77,7 @@ func (v *vlanConfigValidator) Update(_ *types.Request, oldObj, newObj runtime.Ob
 	return nil
 }
 
-func (v *vlanConfigValidator) Delete(_ *types.Request, oldObj runtime.Object) error {
+func (v *Validator) Delete(_ *types.Request, oldObj runtime.Object) error {
 	vc := oldObj.(*networkv1.VlanConfig)
 	// The vlanconfig is not allowed to be deleted if it has applied to some nodes and its clusternetwork is attached by
 	// some nads.
@@ -107,7 +107,7 @@ func (v *vlanConfigValidator) Delete(_ *types.Request, oldObj runtime.Object) er
 	return nil
 }
 
-func (v *vlanConfigValidator) Resource() types.Resource {
+func (v *Validator) Resource() types.Resource {
 	return types.Resource{
 		Names:      []string{"vlanconfigs"},
 		Scope:      admissionregv1.ClusterScope,
@@ -122,7 +122,7 @@ func (v *vlanConfigValidator) Resource() types.Resource {
 	}
 }
 
-func (v *vlanConfigValidator) checkOverlaps(vc *networkv1.VlanConfig) error {
+func (v *Validator) checkOverlaps(vc *networkv1.VlanConfig) error {
 	var matchedNodes []string
 	if vc.Annotations == nil || vc.Annotations[utils.KeyMatchedNodes] == "" {
 		return nil

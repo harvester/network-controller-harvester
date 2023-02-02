@@ -93,9 +93,9 @@ func (h Handler) addLocalArea(nad *nadv1.NetworkAttachmentDefinition) error {
 	return v.AddLocalArea(localArea)
 }
 
-func (h Handler) existDuplicateNad(vlanIdStr, cn string) (bool, error) {
+func (h Handler) existDuplicateNad(vlanIDStr, cn string) (bool, error) {
 	nads, err := h.nadCache.List("", labels.Set(map[string]string{
-		utils.KeyVlanLabel:           vlanIdStr,
+		utils.KeyVlanLabel:           vlanIDStr,
 		utils.KeyClusterNetworkLabel: cn,
 	}).AsSelector())
 	if err != nil {
