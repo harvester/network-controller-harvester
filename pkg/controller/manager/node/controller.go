@@ -3,13 +3,13 @@ package node
 import (
 	"context"
 	"fmt"
-	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
-	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 
-	"github.com/deckarep/golang-set/v2"
+	mapset "github.com/deckarep/golang-set/v2"
+	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
+	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"

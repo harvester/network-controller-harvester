@@ -3,6 +3,7 @@ package linkmonitor
 import (
 	"context"
 	"fmt"
+
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	"github.com/vishvananda/netlink"
 	"k8s.io/apimachinery/pkg/labels"

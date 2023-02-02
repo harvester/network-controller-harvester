@@ -14,21 +14,21 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
-type vlanConfigMutator struct {
+type Mutator struct {
 	types.DefaultMutator
 
 	nodeCache ctlcorev1.NodeCache
 }
 
-var _ types.Mutator = &vlanConfigMutator{}
+var _ types.Mutator = &Mutator{}
 
-func NewNadMutator(nodeCache ctlcorev1.NodeCache) *vlanConfigMutator {
-	return &vlanConfigMutator{
+func NewNadMutator(nodeCache ctlcorev1.NodeCache) *Mutator {
+	return &Mutator{
 		nodeCache: nodeCache,
 	}
 }
 
-func (v *vlanConfigMutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, error) {
+func (v *Mutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, error) {
 	vlanConfig := newObj.(*networkv1.VlanConfig)
 
 	annotationPatch, err := v.matchNodes(vlanConfig)
@@ -39,7 +39,7 @@ func (v *vlanConfigMutator) Create(_ *types.Request, newObj runtime.Object) (typ
 	return append(getCnLabelPatch(vlanConfig), annotationPatch...), nil
 }
 
-func (v *vlanConfigMutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types.Patch, error) {
+func (v *Mutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types.Patch, error) {
 	newVc := newObj.(*networkv1.VlanConfig)
 	oldVc := newObj.(*networkv1.VlanConfig)
 
@@ -75,7 +75,7 @@ func getCnLabelPatch(v *networkv1.VlanConfig) types.Patch {
 		}}
 }
 
-func (v *vlanConfigMutator) matchNodes(vc *networkv1.VlanConfig) (types.Patch, error) {
+func (v *Mutator) matchNodes(vc *networkv1.VlanConfig) (types.Patch, error) {
 	nodes, err := v.nodeCache.List(labels.Set(vc.Spec.NodeSelector).AsSelector())
 	if err != nil {
 		return nil, err
@@ -113,7 +113,7 @@ func matchedNodesToPatch(vc *networkv1.VlanConfig, matchedNodes []string) (types
 	}, nil
 }
 
-func (v *vlanConfigMutator) Resource() types.Resource {
+func (v *Mutator) Resource() types.Resource {
 	return types.Resource{
 		Names:      []string{"vlanconfigs"},
 		Scope:      admissionregv1.ClusterScope,
