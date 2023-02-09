@@ -34,45 +34,45 @@ func NewNadValidator(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Valida
 	}
 }
 
-func (n *Validator) Create(_ *types.Request, newObj runtime.Object) error {
+func (v *Validator) Create(_ *types.Request, newObj runtime.Object) error {
 	nad := newObj.(*cniv1.NetworkAttachmentDefinition)
 
-	if err := n.checkNadConfig(nad.Spec.Config); err != nil {
+	if err := v.checkNadConfig(nad.Spec.Config); err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
 	return nil
 }
 
-func (n *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) error {
+func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) error {
 	newNad := newObj.(*cniv1.NetworkAttachmentDefinition)
 
 	if newNad.DeletionTimestamp != nil {
 		return nil
 	}
 
-	if err := n.checkNadConfig(newNad.Spec.Config); err != nil {
+	if err := v.checkNadConfig(newNad.Spec.Config); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
-	if err := n.checkVmi(newNad); err != nil {
+	if err := v.checkVmi(newNad); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
 	return nil
 }
 
-func (n *Validator) Delete(_ *types.Request, oldObj runtime.Object) error {
+func (v *Validator) Delete(_ *types.Request, oldObj runtime.Object) error {
 	nad := oldObj.(*cniv1.NetworkAttachmentDefinition)
 
-	if err := n.checkVmi(nad); err != nil {
+	if err := v.checkVmi(nad); err != nil {
 		return fmt.Errorf(deleteErr, nad.Namespace, nad.Name, err)
 	}
 
 	return nil
 }
 
-func (n *Validator) checkNadConfig(config string) error {
+func (v *Validator) checkNadConfig(config string) error {
 	if config == "" {
 		return fmt.Errorf("config is empty")
 	}
@@ -99,8 +99,8 @@ func (n *Validator) checkNadConfig(config string) error {
 	return nil
 }
 
-func (n *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
-	vmiGetter := utils.VmiGetter{VmiCache: n.vmiCache}
+func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
+	vmiGetter := utils.VmiGetter{VmiCache: v.vmiCache}
 	vmis, err := vmiGetter.WhoUseNad(nad, nil)
 	if err != nil {
 		return err
@@ -117,7 +117,7 @@ func (n *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
 	return nil
 }
 
-func (n *Validator) Resource() types.Resource {
+func (v *Validator) Resource() types.Resource {
 	return types.Resource{
 		Names:      []string{"network-attachment-definitions"},
 		Scope:      admissionregv1.NamespacedScope,

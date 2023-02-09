@@ -17,20 +17,20 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
-var _ types.Mutator = &NadMutator{}
+var _ types.Mutator = &Mutator{}
 
-type NadMutator struct {
+type Mutator struct {
 	types.DefaultMutator
 	cnCache ctlnetworkv1.ClusterNetworkCache
 }
 
-func NewNadMutator(cnCache ctlnetworkv1.ClusterNetworkCache) *NadMutator {
-	return &NadMutator{
+func NewNadMutator(cnCache ctlnetworkv1.ClusterNetworkCache) *Mutator {
+	return &Mutator{
 		cnCache: cnCache,
 	}
 }
 
-func (n *NadMutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types.Patch, error) {
+func (m *Mutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types.Patch, error) {
 	oldNad := oldObj.(*cniv1.NetworkAttachmentDefinition)
 	newNad := newObj.(*cniv1.NetworkAttachmentDefinition)
 
@@ -50,7 +50,7 @@ func (n *NadMutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (ty
 		return nil, fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
-	patch, err := n.ensureLabels(newNad, oldNetconf, newNetconf)
+	patch, err := m.ensureLabels(newNad, oldNetconf, newNetconf)
 	if err != nil {
 		return nil, fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
@@ -63,7 +63,7 @@ func (n *NadMutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (ty
 	return append(patch, annotationPatch...), nil
 }
 
-func (n *NadMutator) Resource() types.Resource {
+func (m *Mutator) Resource() types.Resource {
 	return types.Resource{
 		Names:      []string{"network-attachment-definitions"},
 		Scope:      admissionregv1.NamespacedScope,
@@ -76,7 +76,7 @@ func (n *NadMutator) Resource() types.Resource {
 	}
 }
 
-func (n *NadMutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *utils.NetConf) (types.Patch, error) {
+func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *utils.NetConf) (types.Patch, error) {
 	labels := nad.Labels
 	if labels == nil {
 		labels = make(map[string]string)
@@ -104,7 +104,7 @@ func (n *NadMutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldCon
 	if oldConf.BrName != newConf.BrName {
 		labels[utils.KeyLastClusterNetworkLabel] = oldConf.BrName[:len(oldConf.BrName)-len(iface.BridgeSuffix)]
 	}
-	if cn, err := n.cnCache.Get(cnName); err != nil {
+	if cn, err := m.cnCache.Get(cnName); err != nil {
 		return nil, err
 	} else if networkv1.Ready.IsTrue(cn.Status) {
 		labels[utils.KeyNetworkReady] = utils.ValueTrue
