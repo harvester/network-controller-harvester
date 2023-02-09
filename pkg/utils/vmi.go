@@ -39,12 +39,13 @@ func (v *VmiGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilte
 		return vmis, nil
 	}
 
+	afterFilter := make([]*kubevirtv1.VirtualMachineInstance, 0, len(vmis))
 	// filter vmis whose status.nodeName is not in the nodes map
-	for i, vmi := range vmis {
-		if !nodesFilter[vmi.Status.NodeName] {
-			vmis = append(vmis[:i], vmis[i+1:]...)
+	for _, vmi := range vmis {
+		if nodesFilter[vmi.Status.NodeName] {
+			afterFilter = append(afterFilter, vmi)
 		}
 	}
 
-	return vmis, nil
+	return afterFilter, nil
 }

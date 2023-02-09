@@ -12,6 +12,7 @@ const (
 	KeyLastClusterNetworkLabel = network.GroupName + "/last-clusternetwork"
 	KeyNodeLabel               = network.GroupName + "/node"
 	KeyNetworkType             = network.GroupName + "/type"
+	KeyLastNetworkType         = network.GroupName + "/last-type"
 	KeyNetworkReady            = network.GroupName + "/ready"
 	KeyNetworkRoute            = network.GroupName + "/route"
 
