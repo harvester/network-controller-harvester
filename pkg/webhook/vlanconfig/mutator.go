@@ -14,24 +14,24 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
-type VlanConfigMutator struct {
+type Mutator struct {
 	types.DefaultMutator
 
 	nodeCache ctlcorev1.NodeCache
 }
 
-var _ types.Mutator = &VlanConfigMutator{}
+var _ types.Mutator = &Mutator{}
 
-func NewVlanConfigMutator(nodeCache ctlcorev1.NodeCache) *VlanConfigMutator {
-	return &VlanConfigMutator{
+func NewVlanConfigMutator(nodeCache ctlcorev1.NodeCache) *Mutator {
+	return &Mutator{
 		nodeCache: nodeCache,
 	}
 }
 
-func (v *VlanConfigMutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, error) {
+func (m *Mutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, error) {
 	vlanConfig := newObj.(*networkv1.VlanConfig)
 
-	annotationPatch, err := v.matchNodes(vlanConfig)
+	annotationPatch, err := m.matchNodes(vlanConfig)
 	if err != nil {
 		return nil, fmt.Errorf(createErr, vlanConfig.Name, err)
 	}
@@ -39,7 +39,7 @@ func (v *VlanConfigMutator) Create(_ *types.Request, newObj runtime.Object) (typ
 	return append(getCnLabelPatch(vlanConfig), annotationPatch...), nil
 }
 
-func (v *VlanConfigMutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types.Patch, error) {
+func (m *Mutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types.Patch, error) {
 	newVc := newObj.(*networkv1.VlanConfig)
 	oldVc := oldObj.(*networkv1.VlanConfig)
 
@@ -48,7 +48,7 @@ func (v *VlanConfigMutator) Update(_ *types.Request, oldObj, newObj runtime.Obje
 		cnLabelPatch = getCnLabelPatch(newVc)
 	}
 
-	annotationPatch, err := v.matchNodes(newVc)
+	annotationPatch, err := m.matchNodes(newVc)
 	if err != nil {
 		return nil, fmt.Errorf(updateErr, newVc.Name, err)
 	}
@@ -75,8 +75,8 @@ func getCnLabelPatch(v *networkv1.VlanConfig) types.Patch {
 		}}
 }
 
-func (v *VlanConfigMutator) matchNodes(vc *networkv1.VlanConfig) (types.Patch, error) {
-	nodes, err := v.nodeCache.List(labels.Set(vc.Spec.NodeSelector).AsSelector())
+func (m *Mutator) matchNodes(vc *networkv1.VlanConfig) (types.Patch, error) {
+	nodes, err := m.nodeCache.List(labels.Set(vc.Spec.NodeSelector).AsSelector())
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func matchedNodesToPatch(vc *networkv1.VlanConfig, matchedNodes []string) (types
 	}, nil
 }
 
-func (v *VlanConfigMutator) Resource() types.Resource {
+func (m *Mutator) Resource() types.Resource {
 	return types.Resource{
 		Names:      []string{"vlanconfigs"},
 		Scope:      admissionregv1.ClusterScope,

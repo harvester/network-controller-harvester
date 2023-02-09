@@ -147,12 +147,12 @@ func (h Handler) removeOutdatedLocalArea(nad *nadv1.NetworkAttachmentDefinition)
 	if clusternetwork == "" {
 		clusternetwork = nad.Labels[utils.KeyClusterNetworkLabel]
 	}
-	vlanIdStr := nad.Labels[utils.KeyLastVlanLabel]
-	if vlanIdStr == "" {
-		vlanIdStr = nad.Labels[utils.KeyVlanLabel]
+	vlanIDStr := nad.Labels[utils.KeyLastVlanLabel]
+	if vlanIDStr == "" {
+		vlanIDStr = nad.Labels[utils.KeyVlanLabel]
 	}
 
-	localArea, err := GetLocalArea(vlanIdStr, nad.Annotations[utils.KeyNetworkRoute])
+	localArea, err := GetLocalArea(vlanIDStr, nad.Annotations[utils.KeyNetworkRoute])
 	if err != nil {
 		return nil, fmt.Errorf("failed to get local area from nad %s/%s, error: %w", nad.Namespace, nad.Name, err)
 	}
@@ -168,10 +168,10 @@ func (h Handler) removeOutdatedLocalArea(nad *nadv1.NetworkAttachmentDefinition)
 	return nadCopy, nil
 }
 
-func GetLocalArea(vlanIdStr, routeConf string) (*vlan.LocalArea, error) {
-	vlanID, err := strconv.Atoi(vlanIdStr)
+func GetLocalArea(vlanIDStr, routeConf string) (*vlan.LocalArea, error) {
+	vlanID, err := strconv.Atoi(vlanIDStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid vlan id %s", vlanIdStr)
+		return nil, fmt.Errorf("invalid vlan id %s", vlanIDStr)
 	}
 
 	layer3NetworkConf := &utils.Layer3NetworkConf{}
