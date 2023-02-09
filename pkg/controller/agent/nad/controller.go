@@ -45,7 +45,8 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 
 	klog.Infof("nad configuration %s/%s has been changed: %s", nad.Namespace, nad.Name, nad.Spec.Config)
 
-	if err := h.removeOutdatedLocalArea(nad); err != nil {
+	nadCopy, err := h.removeOutdatedLocalArea(nad)
+	if err != nil {
 		return nil, fmt.Errorf("remove outdated local area for nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
 	}
 
@@ -55,6 +56,12 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 
 	if err := h.addLocalArea(nad); err != nil {
 		return nil, fmt.Errorf("add local area for nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
+	}
+	// update nad if needed
+	if nadCopy != nil {
+		if _, err := h.nadClient.Update(nadCopy); err != nil {
+			return nil, err
+		}
 	}
 
 	return nad, nil
@@ -130,9 +137,10 @@ func (h Handler) removeLocalArea(clusternetwork string, localArea *vlan.LocalAre
 	return v.RemoveLocalArea(localArea)
 }
 
-func (h Handler) removeOutdatedLocalArea(nad *nadv1.NetworkAttachmentDefinition) error {
-	if nad.Labels[utils.KeyLastClusterNetworkLabel] == "" && nad.Labels[utils.KeyLastVlanLabel] == "" {
-		return nil
+func (h Handler) removeOutdatedLocalArea(nad *nadv1.NetworkAttachmentDefinition) (*nadv1.NetworkAttachmentDefinition, error) {
+	if nad.Labels[utils.KeyLastNetworkType] != string(utils.L2VlanNetwork) ||
+		nad.Labels[utils.KeyLastClusterNetworkLabel] == "" && nad.Labels[utils.KeyLastVlanLabel] == "" {
+		return nil, nil
 	}
 
 	clusternetwork := nad.Labels[utils.KeyLastClusterNetworkLabel]
@@ -146,22 +154,18 @@ func (h Handler) removeOutdatedLocalArea(nad *nadv1.NetworkAttachmentDefinition)
 
 	localArea, err := GetLocalArea(vlanIdStr, nad.Annotations[utils.KeyNetworkRoute])
 	if err != nil {
-		return fmt.Errorf("failed to get local area from nad %s/%s, error: %w", nad.Namespace, nad.Name, err)
+		return nil, fmt.Errorf("failed to get local area from nad %s/%s, error: %w", nad.Namespace, nad.Name, err)
 	}
 
 	if err := h.removeLocalArea(clusternetwork, localArea); err != nil {
-		return err
+		return nil, err
 	}
 
 	nadCopy := nad.DeepCopy()
+	delete(nadCopy.Labels, utils.KeyLastNetworkType)
 	delete(nadCopy.Labels, utils.KeyLastClusterNetworkLabel)
 	delete(nadCopy.Labels, utils.KeyLastVlanLabel)
-	if _, err := h.nadClient.Update(nadCopy); err != nil {
-		return fmt.Errorf("delete labels %s and %s of %s/%s failed",
-			utils.KeyLastClusterNetworkLabel, utils.KeyLastVlanLabel, nad.Namespace, nad.Name)
-	}
-
-	return nil
+	return nadCopy, nil
 }
 
 func GetLocalArea(vlanIdStr, routeConf string) (*vlan.LocalArea, error) {

@@ -82,6 +82,11 @@ func (n *NadMutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldCon
 		labels = make(map[string]string)
 	}
 
+	// Ignore untagged network because we don't need to do more operation if the last network type is untagged network
+	if oldConf.Vlan != 0 && newConf.Vlan == 0 {
+		labels[utils.KeyLastNetworkType] = string(utils.L2VlanNetwork)
+	}
+
 	if newConf.Vlan != 0 {
 		labels[utils.KeyNetworkType] = string(utils.L2VlanNetwork)
 		labels[utils.KeyVlanLabel] = strconv.Itoa(newConf.Vlan)
@@ -89,6 +94,7 @@ func (n *NadMutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldCon
 		labels[utils.KeyNetworkType] = string(utils.UntaggedNetwork)
 		delete(labels, utils.KeyVlanLabel)
 	}
+
 	if oldConf.Vlan != 0 && oldConf.Vlan != newConf.Vlan {
 		labels[utils.KeyLastVlanLabel] = strconv.Itoa(oldConf.Vlan)
 	}
@@ -130,7 +136,7 @@ func tagRouteOutdated(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *
 		delete(annotations, utils.KeyNetworkRoute)
 	} else {
 		layer3NetworkConf := utils.Layer3NetworkConf{}
-		routeAnnotation := nad.Annotations[utils.KeyNetworkRoute]
+		routeAnnotation := annotations[utils.KeyNetworkRoute]
 		if err := json.Unmarshal([]byte(routeAnnotation), &layer3NetworkConf); err != nil {
 			return nil, err
 		}
