@@ -84,7 +84,7 @@ func (h Handler) OnChange(key string, vc *networkv1.VlanConfig) (*networkv1.Vlan
 		return nil, err
 	}
 
-	if !isMatched && vs != nil || isMatched && vs != nil && !matchClusterNetwork(vc, vs) {
+	if (!isMatched && vs != nil) || (isMatched && vs != nil && !matchClusterNetwork(vc, vs)) {
 		if err := h.removeVLAN(vs); err != nil {
 			return nil, err
 		}
