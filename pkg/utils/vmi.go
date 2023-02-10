@@ -19,7 +19,6 @@ func (v *VmiGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilte
 	// ref: https://github.com/kubevirt/client-go/blob/148fa0d1c7e83b7a56606a7ca92394ba6768c9ac/api/v1/schema.go#L1436-L1439
 	networkName := fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)
 	vmis, err := v.VmiCache.GetByIndex(indexeres.VMByNetworkIndex, networkName)
-
 	if err != nil {
 		return nil, err
 	}

@@ -131,6 +131,7 @@ func (h Handler) deleteLinkMonitor(name string) error {
 
 func (h Handler) setNadReadyLabel(cn *networkv1.ClusterNetwork) error {
 	isReady := utils.ValueFalse
+	// Set all net-attach-defs under the cluster network to be deleted as unready
 	if cn.DeletionTimestamp != nil && networkv1.Ready.IsTrue(cn.Status) {
 		isReady = utils.ValueTrue
 	}

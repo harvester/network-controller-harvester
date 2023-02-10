@@ -45,18 +45,17 @@ func (h Handler) OnChange(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 
 	klog.Infof("nad configuration %s/%s has been changed: %s", nad.Namespace, nad.Name, nad.Spec.Config)
 
+	// nadCopy could be nil
 	nadCopy, err := h.removeOutdatedLocalArea(nad)
 	if err != nil {
 		return nil, fmt.Errorf("remove outdated local area for nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
 	}
 
-	if !utils.IsVlanNad(nad) {
-		return nad, nil
-	}
-
+	// NadCaopy could be nil and nad is readonly here
 	if err := h.addLocalArea(nad); err != nil {
 		return nil, fmt.Errorf("add local area for nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
 	}
+
 	// update nad if needed
 	if nadCopy != nil {
 		if _, err := h.nadClient.Update(nadCopy); err != nil {
@@ -92,6 +91,10 @@ func (h Handler) OnRemove(key string, nad *nadv1.NetworkAttachmentDefinition) (*
 }
 
 func (h Handler) addLocalArea(nad *nadv1.NetworkAttachmentDefinition) error {
+	if !utils.IsVlanNad(nad) {
+		return nil
+	}
+
 	v, err := vlan.GetVlan(nad.Labels[utils.KeyClusterNetworkLabel])
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) {
 		return err
