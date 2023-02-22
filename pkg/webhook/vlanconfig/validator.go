@@ -92,27 +92,33 @@ func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) erro
 		return fmt.Errorf(updateErr, newVc.Name, err)
 	}
 
-	// get affected nodes after updating
 	oldNodes, err := getMatchNodesMap(oldVc)
 	if err != nil {
 		return fmt.Errorf(updateErr, oldVc.Name, err)
 	}
-	var deltaNodes map[string]bool
-	if oldVc.Spec.ClusterNetwork != newVc.Spec.ClusterNetwork {
-		deltaNodes = oldNodes
-	} else {
-		for n := range oldNodes {
-			if !newNodes[n] {
-				deltaNodes[n] = true
-			}
-		}
-	}
 
-	if err := v.checkVmi(oldVc, deltaNodes); err != nil {
+	// get affected nodes after updating
+	affectedNodes := getAffectedNodesMap(oldVc.Spec.ClusterNetwork, newVc.Spec.ClusterNetwork, oldNodes, newNodes)
+	if err := v.checkVmi(oldVc, affectedNodes); err != nil {
 		return fmt.Errorf(updateErr, oldVc.Name, err)
 	}
 
 	return nil
+}
+
+func getAffectedNodesMap(oldCn, newCn string, oldNodesMap, newNodesMap map[string]bool) map[string]bool {
+	affectedNodesMap := make(map[string]bool, len(oldNodesMap))
+	if newCn != oldCn {
+		affectedNodesMap = oldNodesMap
+	} else {
+		for n := range oldNodesMap {
+			if !newNodesMap[n] {
+				affectedNodesMap[n] = true
+			}
+		}
+	}
+
+	return affectedNodesMap
 }
 
 func (v *Validator) Delete(_ *types.Request, oldObj runtime.Object) error {
@@ -164,6 +170,7 @@ func (v *Validator) checkOverlaps(vc *networkv1.VlanConfig, nodesMap map[string]
 	return nil
 }
 
+// checkVmi is to confirm if any VMIs will be affected on affected nodes. Those VMIs must be stopped in advance.
 func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodesMap map[string]bool) error {
 	// The vlanconfig is not allowed to be deleted if it has applied to some nodes and its clusternetwork is attached by some nads.
 	vss, err := v.vsCache.List(labels.Set(map[string]string{utils.KeyVlanConfigLabel: vc.Name}).AsSelector())
