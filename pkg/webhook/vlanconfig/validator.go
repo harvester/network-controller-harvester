@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
 	"github.com/harvester/webhook/pkg/types"
@@ -55,7 +56,7 @@ func (v *Validator) Create(_ *types.Request, newObj runtime.Object) error {
 			utils.ManagementClusterNetworkName))
 	}
 
-	nodes, err := getMatchNodesMap(vc)
+	nodes, err := getMatchNodes(vc)
 	if err != nil {
 		return fmt.Errorf(createErr, vc.Name, err)
 	}
@@ -83,7 +84,7 @@ func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) erro
 			utils.ManagementClusterNetworkName))
 	}
 
-	newNodes, err := getMatchNodesMap(newVc)
+	newNodes, err := getMatchNodes(newVc)
 	if err != nil {
 		return fmt.Errorf(updateErr, newVc.Name, err)
 	}
@@ -92,13 +93,13 @@ func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) erro
 		return fmt.Errorf(updateErr, newVc.Name, err)
 	}
 
-	oldNodes, err := getMatchNodesMap(oldVc)
+	oldNodes, err := getMatchNodes(oldVc)
 	if err != nil {
 		return fmt.Errorf(updateErr, oldVc.Name, err)
 	}
 
 	// get affected nodes after updating
-	affectedNodes := getAffectedNodesMap(oldVc.Spec.ClusterNetwork, newVc.Spec.ClusterNetwork, oldNodes, newNodes)
+	affectedNodes := getAffectedNodes(oldVc.Spec.ClusterNetwork, newVc.Spec.ClusterNetwork, oldNodes, newNodes)
 	if err := v.checkVmi(oldVc, affectedNodes); err != nil {
 		return fmt.Errorf(updateErr, oldVc.Name, err)
 	}
@@ -106,25 +107,18 @@ func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) erro
 	return nil
 }
 
-func getAffectedNodesMap(oldCn, newCn string, oldNodesMap, newNodesMap map[string]bool) map[string]bool {
-	affectedNodesMap := make(map[string]bool, len(oldNodesMap))
+func getAffectedNodes(oldCn, newCn string, oldNodes, newNodes mapset.Set[string]) mapset.Set[string] {
 	if newCn != oldCn {
-		affectedNodesMap = oldNodesMap
-	} else {
-		for n := range oldNodesMap {
-			if !newNodesMap[n] {
-				affectedNodesMap[n] = true
-			}
-		}
+		return oldNodes
 	}
 
-	return affectedNodesMap
+	return oldNodes.Difference(newNodes)
 }
 
 func (v *Validator) Delete(_ *types.Request, oldObj runtime.Object) error {
 	vc := oldObj.(*networkv1.VlanConfig)
 
-	nodes, err := getMatchNodesMap(vc)
+	nodes, err := getMatchNodes(vc)
 	if err != nil {
 		return fmt.Errorf(deleteErr, vc.Name, err)
 	}
@@ -151,27 +145,27 @@ func (v *Validator) Resource() types.Resource {
 	}
 }
 
-func (v *Validator) checkOverlaps(vc *networkv1.VlanConfig, nodesMap map[string]bool) error {
-	overlapNods := make([]string, 0, len(nodesMap))
-	for node := range nodesMap {
+func (v *Validator) checkOverlaps(vc *networkv1.VlanConfig, nodes mapset.Set[string]) error {
+	overlapNods := mapset.NewSet[string]()
+	for node := range nodes.Iter() {
 		vsName := utils.Name("", vc.Spec.ClusterNetwork, node)
 		if vs, err := v.vsCache.Get(vsName); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		} else if err == nil && vs.Status.VlanConfig != vc.Name {
 			// The vlanconfig is found means a vlanconfig with the same cluster network has been taken effect on this node.
-			overlapNods = append(overlapNods, node)
+			overlapNods.Add(node)
 		}
 	}
 
-	if len(overlapNods) > 0 {
-		return fmt.Errorf("it overlaps with other vlanconfigs matching node(s) %v", overlapNods)
+	if overlapNods.Cardinality() > 0 {
+		return fmt.Errorf("it overlaps with other vlanconfigs matching node(s) %v", overlapNods.ToSlice())
 	}
 
 	return nil
 }
 
 // checkVmi is to confirm if any VMIs will be affected on affected nodes. Those VMIs must be stopped in advance.
-func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodesMap map[string]bool) error {
+func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodes mapset.Set[string]) error {
 	// The vlanconfig is not allowed to be deleted if it has applied to some nodes and its clusternetwork is attached by some nads.
 	vss, err := v.vsCache.List(labels.Set(map[string]string{utils.KeyVlanConfigLabel: vc.Name}).AsSelector())
 	if err != nil {
@@ -192,7 +186,7 @@ func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodesMap map[string]bool)
 	vmiGetter := utils.VmiGetter{VmiCache: v.vmiCache}
 	vmis := make([]*kubevirtv1.VirtualMachineInstance, 0)
 	for _, nad := range nads {
-		vmisTemp, err := vmiGetter.WhoUseNad(nad, nodesMap)
+		vmisTemp, err := vmiGetter.WhoUseNad(nad, nodes)
 		if err != nil {
 			return err
 		}
@@ -211,7 +205,7 @@ func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodesMap map[string]bool)
 	return nil
 }
 
-func getMatchNodesMap(vc *networkv1.VlanConfig) (map[string]bool, error) {
+func getMatchNodes(vc *networkv1.VlanConfig) (mapset.Set[string], error) {
 	if vc.Annotations == nil || vc.Annotations[utils.KeyMatchedNodes] == "" {
 		return nil, nil
 	}
@@ -221,10 +215,5 @@ func getMatchNodesMap(vc *networkv1.VlanConfig) (map[string]bool, error) {
 		return nil, err
 	}
 
-	nodesMap := make(map[string]bool)
-	for _, node := range matchedNodes {
-		nodesMap[node] = true
-	}
-
-	return nodesMap, nil
+	return mapset.NewSet[string](matchedNodes...), nil
 }
