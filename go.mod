@@ -112,7 +112,7 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/k3s-io/helm-controller v0.11.7 // indirect
-	github.com/kubernetes-csi/external-snapshotter/v2 v2.1.1 // indirect
+	github.com/kubernetes-csi/external-snapshotter/v2 v2.1.3 // indirect
 	github.com/kubernetes/dashboard v1.10.1 // indirect
 	github.com/longhorn/longhorn-manager v1.3.0-rc2 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
