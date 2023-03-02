@@ -35,7 +35,7 @@ func (v *VmiGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilte
 		vmis = append(vmis, vmi)
 	}
 
-	if nodesFilter.Cardinality() == 0 {
+	if nodesFilter == nil || nodesFilter.Cardinality() == 0 {
 		return vmis, nil
 	}
 
