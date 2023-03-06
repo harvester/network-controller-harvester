@@ -54,10 +54,10 @@ func NewLayer3NetworkConf(conf string) (*Layer3NetworkConf, error) {
 	if networkConf.Mode != "" && networkConf.Mode != Auto && networkConf.Mode != Manual {
 		return nil, fmt.Errorf("unknown mode %s", networkConf.Mode)
 	}
-	if _, _, err := net.ParseCIDR(networkConf.CIDR); networkConf.CIDR != "" && err != nil {
+	if _, _, err := net.ParseCIDR(networkConf.CIDR); networkConf.Mode == Manual && networkConf.CIDR != "" && err != nil {
 		return nil, fmt.Errorf("invalid CIDR %s", networkConf.CIDR)
 	}
-	if networkConf.Gateway != "" && net.ParseIP(networkConf.Gateway) == nil {
+	if networkConf.Mode == Manual && networkConf.Gateway != "" && net.ParseIP(networkConf.Gateway) == nil {
 		return nil, fmt.Errorf("invalid gateway %s", networkConf.Gateway)
 	}
 

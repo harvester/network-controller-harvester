@@ -39,6 +39,8 @@ func (v *Validator) Create(_ *types.Request, newObj runtime.Object) error {
 
 	if err := v.checkNadConfig(nad.Spec.Config); err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
+	} else if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute]); err != nil {
+		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
 	return nil
@@ -52,6 +54,8 @@ func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) erro
 	}
 
 	if err := v.checkNadConfig(newNad.Spec.Config); err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+	} else if err := v.checkRoute(newNad.Annotations[utils.KeyNetworkRoute]); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
@@ -97,6 +101,11 @@ func (v *Validator) checkNadConfig(config string) error {
 	}
 
 	return nil
+}
+
+func (v *Validator) checkRoute(config string) error {
+	_, err := utils.NewLayer3NetworkConf(config)
+	return err
 }
 
 func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
