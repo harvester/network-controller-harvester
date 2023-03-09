@@ -54,7 +54,7 @@ func NewLayer3NetworkConf(conf string) (*Layer3NetworkConf, error) {
 	if networkConf.Mode != "" && networkConf.Mode != Auto && networkConf.Mode != Manual {
 		return nil, fmt.Errorf("unknown mode %s", networkConf.Mode)
 	}
-	if _, _, err := net.ParseCIDR(networkConf.CIDR); networkConf.Mode == Manual && networkConf.CIDR != "" && err != nil {
+	if _, ipnet, err := net.ParseCIDR(networkConf.CIDR); networkConf.CIDR != "" && (err != nil || (ipnet != nil && isMaskZero(ipnet))) {
 		return nil, fmt.Errorf("invalid CIDR %s", networkConf.CIDR)
 	}
 	if networkConf.Mode == Manual && networkConf.Gateway != "" && net.ParseIP(networkConf.Gateway) == nil {
@@ -108,6 +108,16 @@ func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
 	if nad == nil || nad.Spec.Config == "" || nad.Labels == nil || nad.Labels[KeyNetworkType] == "" ||
 		nad.Labels[KeyClusterNetworkLabel] == "" || nad.Labels[KeyVlanLabel] == "" {
 		return false
+	}
+
+	return true
+}
+
+func isMaskZero(ipnet *net.IPNet) bool {
+	for _, b := range ipnet.Mask {
+		if b != 0 {
+			return false
+		}
 	}
 
 	return true
