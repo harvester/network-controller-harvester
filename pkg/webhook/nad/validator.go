@@ -84,7 +84,7 @@ func (v *Validator) checkNadConfig(config string) error {
 	var bridgeConf = &utils.NetConf{}
 	err := json.Unmarshal([]byte(config), &bridgeConf)
 	if err != nil {
-		return err
+		return fmt.Errorf("unmarshal %s failed, error: %w", config, err)
 	}
 
 	// The VLAN value of untagged network will be empty or number 0.
