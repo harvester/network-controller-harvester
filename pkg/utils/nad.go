@@ -44,10 +44,14 @@ type Layer3NetworkConf struct {
 }
 
 func NewLayer3NetworkConf(conf string) (*Layer3NetworkConf, error) {
+	if conf == "" {
+		return &Layer3NetworkConf{}, nil
+	}
+
 	networkConf := &Layer3NetworkConf{}
 
 	if err := json.Unmarshal([]byte(conf), networkConf); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal %s faield, error: %w", conf, err)
 	}
 
 	// validate
@@ -55,10 +59,10 @@ func NewLayer3NetworkConf(conf string) (*Layer3NetworkConf, error) {
 		return nil, fmt.Errorf("unknown mode %s", networkConf.Mode)
 	}
 	if _, ipnet, err := net.ParseCIDR(networkConf.CIDR); networkConf.CIDR != "" && (err != nil || (ipnet != nil && isMaskZero(ipnet))) {
-		return nil, fmt.Errorf("invalid CIDR %s", networkConf.CIDR)
+		return nil, fmt.Errorf("the CIDR %s is invalid", networkConf.CIDR)
 	}
 	if networkConf.Mode == Manual && networkConf.Gateway != "" && net.ParseIP(networkConf.Gateway) == nil {
-		return nil, fmt.Errorf("invalid gateway %s", networkConf.Gateway)
+		return nil, fmt.Errorf("the gateway %s is invalid", networkConf.Gateway)
 	}
 
 	return networkConf, nil

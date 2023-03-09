@@ -137,8 +137,8 @@ func tagRouteOutdated(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *
 	} else {
 		layer3NetworkConf := utils.Layer3NetworkConf{}
 		routeAnnotation := annotations[utils.KeyNetworkRoute]
-		if err := json.Unmarshal([]byte(routeAnnotation), &layer3NetworkConf); err != nil {
-			return nil, err
+		if err := json.Unmarshal([]byte(routeAnnotation), &layer3NetworkConf); routeAnnotation != "" && err != nil {
+			return nil, fmt.Errorf("unmarshal %s failed, error: %w", routeAnnotation, err)
 		}
 
 		if layer3NetworkConf.Mode != utils.Auto {
@@ -149,7 +149,7 @@ func tagRouteOutdated(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *
 
 		outdatedRoute, err := json.Marshal(layer3NetworkConf)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("marshal %v failed, error: %w", layer3NetworkConf, err)
 		}
 		annotations[utils.KeyNetworkRoute] = string(outdatedRoute)
 	}
