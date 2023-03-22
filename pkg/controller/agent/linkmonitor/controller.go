@@ -99,7 +99,9 @@ func (h Handler) isMatchCurrentNode(lm *networkv1.LinkMonitor) (bool, error) {
 	}
 
 	for _, node := range nodes {
-		if node.Name == h.nodeName {
+		// ignore the node to be deleted
+		if node.Name == h.nodeName && node.DeletionTimestamp == nil {
+			klog.Infof("lm %s matches node %s", lm.Name, node.Name)
 			return true, nil
 		}
 	}

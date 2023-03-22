@@ -8,6 +8,7 @@ import (
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
@@ -22,19 +23,25 @@ type Handler struct {
 	nodeClient ctlcorev1.NodeClient
 	vcCache    ctlnetworkv1.VlanConfigCache
 	vcClient   ctlnetworkv1.VlanConfigClient
+	lmCache    ctlnetworkv1.LinkMonitorCache
+	lmClient   ctlnetworkv1.LinkMonitorClient
 }
 
 func Register(ctx context.Context, management *config.Management) error {
 	nodes := management.CoreFactory.Core().V1().Node()
 	vcs := management.HarvesterNetworkFactory.Network().V1beta1().VlanConfig()
+	lms := management.HarvesterNetworkFactory.Network().V1beta1().LinkMonitor()
 
 	h := Handler{
 		nodeClient: nodes,
 		vcCache:    vcs.Cache(),
 		vcClient:   vcs,
+		lmCache:    lms.Cache(),
+		lmClient:   lms,
 	}
 
 	nodes.OnChange(ctx, controllerName, h.OnChange)
+	nodes.OnRemove(ctx, controllerName, h.OnRemove)
 
 	return nil
 }
@@ -60,6 +67,16 @@ func (h Handler) OnChange(key string, node *corev1.Node) (*corev1.Node, error) {
 	}
 
 	return node, nil
+}
+
+func (h Handler) OnRemove(key string, node *corev1.Node) (*corev1.Node, error) {
+	if node == nil {
+		return nil, nil
+	}
+
+	klog.Infof("node %s is removed", node.Name)
+
+	return node, h.clearLinkStatus(node.Name)
 }
 
 func (h Handler) updateMatchedNodeAnnotation(vc *networkv1.VlanConfig, node *corev1.Node) error {
@@ -113,6 +130,26 @@ func (h Handler) ensureMgmtLabels(node *corev1.Node) error {
 	nodeCopy.Labels[key] = utils.ValueTrue
 	if _, err := h.nodeClient.Update(nodeCopy); err != nil {
 		return fmt.Errorf("update node %s failed, error: %w", node.Name, err)
+	}
+
+	return nil
+}
+
+// Clear link statuses related to the removed node
+func (h Handler) clearLinkStatus(nodeName string) error {
+	lms, err := h.lmCache.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	for _, lm := range lms {
+		if _, ok := lm.Status.LinkStatus[nodeName]; ok {
+			lmCopy := lm.DeepCopy()
+			delete(lmCopy.Status.LinkStatus, nodeName)
+			if _, err := h.lmClient.Update(lmCopy); err != nil {
+				return fmt.Errorf("update link monitor status failed, lm: %s, node: %s, error: %w", lm.Name, nodeName, err)
+			}
+		}
 	}
 
 	return nil
