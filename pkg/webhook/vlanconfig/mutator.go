@@ -3,6 +3,7 @@ package vlanconfig
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/harvester/webhook/pkg/types"
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
@@ -42,6 +43,11 @@ func (m *Mutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, 
 func (m *Mutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types.Patch, error) {
 	newVc := newObj.(*networkv1.VlanConfig)
 	oldVc := oldObj.(*networkv1.VlanConfig)
+
+	// skip mutation if spec is not changed
+	if reflect.DeepEqual(oldVc.Spec, newVc.Spec) {
+		return nil, nil
+	}
 
 	var cnLabelPatch, annotationPatch types.Patch
 	if newVc.Spec.ClusterNetwork != oldVc.Spec.ClusterNetwork {

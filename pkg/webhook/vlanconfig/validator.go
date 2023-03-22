@@ -3,6 +3,7 @@ package vlanconfig
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -82,6 +83,10 @@ func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) erro
 	if newVc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
 		return fmt.Errorf(updateErr, newVc.Name, fmt.Errorf("cluster network could not be %s",
 			utils.ManagementClusterNetworkName))
+	}
+	// skip validation if spec is not changed
+	if reflect.DeepEqual(oldVc.Spec, newVc.Spec) {
+		return nil
 	}
 
 	newNodes, err := getMatchNodes(newVc)
