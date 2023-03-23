@@ -3,6 +3,7 @@ package nad
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 
 	"github.com/harvester/webhook/pkg/types"
@@ -38,16 +39,16 @@ func (m *Mutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types
 		return nil, nil
 	}
 
-	if oldNad.Spec.Config == newNad.Spec.Config {
-		return nil, nil
-	}
-
 	oldNetconf, newNetconf := &utils.NetConf{}, &utils.NetConf{}
 	if err := json.Unmarshal([]byte(oldNad.Spec.Config), oldNetconf); err != nil {
 		return nil, fmt.Errorf(updateErr, oldNad.Namespace, oldNad.Name, err)
 	}
 	if err := json.Unmarshal([]byte(newNad.Spec.Config), newNetconf); err != nil {
 		return nil, fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+	}
+	// ignore the update if the config is not being updated
+	if reflect.DeepEqual(oldNetconf, newNetconf) {
+		return nil, nil
 	}
 
 	patch, err := m.ensureLabels(newNad, oldNetconf, newNetconf)
@@ -120,6 +121,7 @@ func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, 
 		}}, nil
 }
 
+// If the vlan or bridge name is changed, we need to tag the route annotation outdated
 func tagRouteOutdated(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *utils.NetConf) (types.Patch, error) {
 	if oldConf.BrName == newConf.BrName && oldConf.Vlan == newConf.Vlan {
 		return nil, nil
