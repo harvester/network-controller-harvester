@@ -3,6 +3,7 @@ package nad
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 
 	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
@@ -37,9 +38,15 @@ func NewNadValidator(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Valida
 func (v *Validator) Create(_ *types.Request, newObj runtime.Object) error {
 	nad := newObj.(*cniv1.NetworkAttachmentDefinition)
 
-	if err := v.checkNadConfig(nad.Spec.Config); err != nil {
+	if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute]); err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
-	} else if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute]); err != nil {
+	}
+
+	conf, err := encodeConfig(nad.Spec.Config)
+	if err != nil {
+		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
+	}
+	if err := v.checkNadConfig(conf); err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
@@ -48,14 +55,30 @@ func (v *Validator) Create(_ *types.Request, newObj runtime.Object) error {
 
 func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) error {
 	newNad := newObj.(*cniv1.NetworkAttachmentDefinition)
+	oldNad := oldObj.(*cniv1.NetworkAttachmentDefinition)
 
+	// ignore the update if the resource is being deleted
 	if newNad.DeletionTimestamp != nil {
 		return nil
 	}
 
-	if err := v.checkNadConfig(newNad.Spec.Config); err != nil {
+	if err := v.checkRoute(newNad.Annotations[utils.KeyNetworkRoute]); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
-	} else if err := v.checkRoute(newNad.Annotations[utils.KeyNetworkRoute]); err != nil {
+	}
+
+	newConf, err := encodeConfig(newNad.Spec.Config)
+	if err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+	}
+	oldConf, err := encodeConfig(oldNad.Spec.Config)
+	if err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+	}
+	// skip the update if the config is not changed
+	if reflect.DeepEqual(newConf, oldConf) {
+		return nil
+	}
+	if err := v.checkNadConfig(newConf); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
@@ -76,15 +99,9 @@ func (v *Validator) Delete(_ *types.Request, oldObj runtime.Object) error {
 	return nil
 }
 
-func (v *Validator) checkNadConfig(config string) error {
-	if config == "" {
+func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf) error {
+	if bridgeConf == nil {
 		return fmt.Errorf("config is empty")
-	}
-
-	var bridgeConf = &utils.NetConf{}
-	err := json.Unmarshal([]byte(config), &bridgeConf)
-	if err != nil {
-		return fmt.Errorf("unmarshal %s failed, error: %w", config, err)
 	}
 
 	// The VLAN value of untagged network will be empty or number 0.
@@ -139,4 +156,17 @@ func (v *Validator) Resource() types.Resource {
 			admissionregv1.Delete,
 		},
 	}
+}
+
+func encodeConfig(config string) (*utils.NetConf, error) {
+	conf := &utils.NetConf{}
+	if config == "" {
+		return conf, nil
+	}
+
+	if err := json.Unmarshal([]byte(config), &conf); err != nil {
+		return nil, fmt.Errorf("unmarshal config %s failed: %w", config, err)
+	}
+
+	return conf, nil
 }
