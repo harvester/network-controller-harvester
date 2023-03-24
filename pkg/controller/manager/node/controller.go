@@ -7,6 +7,7 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 
@@ -23,6 +24,8 @@ type Handler struct {
 	nodeClient ctlcorev1.NodeClient
 	vcCache    ctlnetworkv1.VlanConfigCache
 	vcClient   ctlnetworkv1.VlanConfigClient
+	vsCache    ctlnetworkv1.VlanStatusCache
+	vsClient   ctlnetworkv1.VlanStatusClient
 	lmCache    ctlnetworkv1.LinkMonitorCache
 	lmClient   ctlnetworkv1.LinkMonitorClient
 }
@@ -30,12 +33,15 @@ type Handler struct {
 func Register(ctx context.Context, management *config.Management) error {
 	nodes := management.CoreFactory.Core().V1().Node()
 	vcs := management.HarvesterNetworkFactory.Network().V1beta1().VlanConfig()
+	vss := management.HarvesterNetworkFactory.Network().V1beta1().VlanStatus()
 	lms := management.HarvesterNetworkFactory.Network().V1beta1().LinkMonitor()
 
 	h := Handler{
 		nodeClient: nodes,
 		vcCache:    vcs.Cache(),
 		vcClient:   vcs,
+		vsCache:    vss.Cache(),
+		vsClient:   vss,
 		lmCache:    lms.Cache(),
 		lmClient:   lms,
 	}
@@ -76,7 +82,14 @@ func (h Handler) OnRemove(key string, node *corev1.Node) (*corev1.Node, error) {
 
 	klog.Infof("node %s is removed", node.Name)
 
-	return node, h.clearLinkStatus(node.Name)
+	if err := h.removeNodeFromVlanConfig(node.Name); err != nil {
+		return nil, err
+	}
+	if err := h.clearLinkStatus(node.Name); err != nil {
+		return nil, err
+	}
+
+	return node, nil
 }
 
 func (h Handler) updateMatchedNodeAnnotation(vc *networkv1.VlanConfig, node *corev1.Node) error {
@@ -86,8 +99,10 @@ func (h Handler) updateMatchedNodeAnnotation(vc *networkv1.VlanConfig, node *cor
 	}
 
 	s := mapset.NewSet[string]()
-	if err := s.UnmarshalJSON([]byte(vc.Annotations[utils.KeyMatchedNodes])); err != nil {
-		return err
+	if vc.Annotations != nil && vc.Annotations[utils.KeyMatchedNodes] != "" {
+		if err := s.UnmarshalJSON([]byte(vc.Annotations[utils.KeyMatchedNodes])); err != nil {
+			return err
+		}
 	}
 
 	newSet := s.Clone()
@@ -149,6 +164,62 @@ func (h Handler) clearLinkStatus(nodeName string) error {
 			if _, err := h.lmClient.Update(lmCopy); err != nil {
 				return fmt.Errorf("update link monitor status failed, lm: %s, node: %s, error: %w", lm.Name, nodeName, err)
 			}
+		}
+	}
+
+	return nil
+}
+
+// remove the node from the matched node list of the vlan config and the related vlan status
+func (h Handler) removeNodeFromVlanConfig(nodeName string) error {
+	vcs, err := h.vcCache.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	for _, vc := range vcs {
+		if err := h.removeNodeFromOneVlanConfig(vc, nodeName); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h Handler) removeNodeFromOneVlanConfig(vc *networkv1.VlanConfig, nodeName string) error {
+	if vc.Annotations == nil || vc.Annotations[utils.KeyMatchedNodes] == "" {
+		return nil
+	}
+
+	s := mapset.NewSet[string]()
+	if err := s.UnmarshalJSON([]byte(vc.Annotations[utils.KeyMatchedNodes])); err != nil {
+		return err
+	}
+
+	if s.Contains(nodeName) {
+		s.Remove(nodeName)
+		bytes, err := s.MarshalJSON()
+		if err != nil {
+			return err
+		}
+		vcCopy := vc.DeepCopy()
+		vcCopy.Annotations[utils.KeyMatchedNodes] = string(bytes)
+		if _, err := h.vcClient.Update(vcCopy); err != nil {
+			return err
+		}
+
+		vss, err := h.vsCache.List(labels.Set{
+			utils.KeyVlanConfigLabel: vc.Name,
+			utils.KeyNodeLabel:       nodeName,
+		}.AsSelector())
+		if err != nil {
+			return err
+		}
+		if len(vss) == 0 {
+			return nil
+		}
+		if err := h.vsClient.Delete(vss[0].Name, &metav1.DeleteOptions{}); err != nil {
+			return err
 		}
 	}
 
