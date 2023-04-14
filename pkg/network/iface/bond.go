@@ -166,10 +166,28 @@ func getSlaves(index int) ([]netlink.Link, error) {
 }
 
 func compareBond(b1, b2 *netlink.Bond) bool {
-	if b1.Name == b2.Name && b1.MTU == b2.MTU && b1.Mode == b2.Mode &&
-		b1.HardwareAddr.String() == b2.HardwareAddr.String() && b1.TxQLen == b2.TxQLen {
-		return true
+	if b1.Name != b2.Name {
+		return false
 	}
 
-	return false
+	if b1.Mode != b2.Mode {
+		return false
+	}
+
+	// skip if mtu is omitted
+	if b2.MTU != 0 && b1.MTU != b2.MTU {
+		return false
+	}
+
+	// skip if hardware addr is omitted
+	if b2.HardwareAddr.String() != "" && b1.HardwareAddr.String() != b2.HardwareAddr.String() {
+		return false
+	}
+
+	// skip if TxQLen is omitted, default value -1
+	if b2.TxQLen != -1 && b1.TxQLen != b2.TxQLen {
+		return false
+	}
+
+	return true
 }
