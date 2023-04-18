@@ -165,27 +165,34 @@ func getSlaves(index int) ([]netlink.Link, error) {
 	return links, nil
 }
 
-func compareBond(b1, b2 *netlink.Bond) bool {
-	if b1.Name != b2.Name {
+func compareBond(old, new *netlink.Bond) bool {
+	if old.Name != new.Name {
 		return false
 	}
 
-	if b1.Mode != b2.Mode {
+	if old.Mode != new.Mode {
 		return false
 	}
 
 	// skip if mtu is omitted
-	if b2.MTU != 0 && b1.MTU != b2.MTU {
+	if new.MTU != 0 && old.MTU != new.MTU {
 		return false
 	}
 
 	// skip if hardware addr is omitted
-	if b2.HardwareAddr.String() != "" && b1.HardwareAddr.String() != b2.HardwareAddr.String() {
+	if new.HardwareAddr.String() != "" && old.HardwareAddr.String() != new.HardwareAddr.String() {
 		return false
 	}
 
 	// skip if TxQLen is omitted, default value -1
-	if b2.TxQLen != -1 && b1.TxQLen != b2.TxQLen {
+	// -1 means to keep the original TxQLen value, so we have to skip it to avoid unnecessary bond recreating.
+	if new.TxQLen != -1 && old.TxQLen != new.TxQLen {
+		return false
+	}
+
+	// skip if Miimon is omitted, default value -1
+	// Same logic with TxQLen
+	if new.Miimon != -1 && old.Miimon != new.Miimon {
 		return false
 	}
 

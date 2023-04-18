@@ -57,11 +57,14 @@ spec:
               uplink:
                 properties:
                   bondOptions:
-                    description: 'TODO: reference: https://www.kernel.org/doc/Documentation/networking/bonding.txt'
+                    description: 'reference: https://www.kernel.org/doc/Documentation/networking/bonding.txt'
                     properties:
                       miimon:
+                        default: -1
+                        minimum: -1
                         type: integer
                       mode:
+                        default: active-backup
                         enum:
                         - balance-rr
                         - active-backup
@@ -80,8 +83,11 @@ spec:
                         format: byte
                         type: string
                       mtu:
+                        minimum: 0
                         type: integer
                       txQLen:
+                        default: -1
+                        minimum: -1
                         type: integer
                     type: object
                   nics:
