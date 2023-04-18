@@ -243,12 +243,8 @@ func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 	linkAttrs := netlink.NewLinkAttrs()
 	linkAttrs.Name = vc.Spec.ClusterNetwork + iface.BondSuffix
 	if vc.Spec.Uplink.LinkAttrs != nil {
-		if vc.Spec.Uplink.LinkAttrs.MTU != 0 {
-			linkAttrs.MTU = vc.Spec.Uplink.LinkAttrs.MTU
-		}
-		if vc.Spec.Uplink.LinkAttrs.TxQLen != 0 {
-			linkAttrs.TxQLen = vc.Spec.Uplink.LinkAttrs.TxQLen
-		}
+		linkAttrs.MTU = vc.Spec.Uplink.LinkAttrs.MTU
+		linkAttrs.TxQLen = vc.Spec.Uplink.LinkAttrs.TxQLen
 		if vc.Spec.Uplink.LinkAttrs.HardwareAddr != nil {
 			linkAttrs.HardwareAddr = vc.Spec.Uplink.LinkAttrs.HardwareAddr
 		}
@@ -262,7 +258,7 @@ func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 	}
 	bond.Mode = mode
 	// set bonding miimon
-	if vc.Spec.Uplink.BondOptions != nil && vc.Spec.Uplink.BondOptions.Miimon != 0 {
+	if vc.Spec.Uplink.BondOptions != nil {
 		bond.Miimon = vc.Spec.Uplink.BondOptions.Miimon
 	}
 
