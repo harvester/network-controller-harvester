@@ -1,5 +1,5 @@
 /*
-Copyright 2022 Rancher Labs, Inc.
+Copyright 2023 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -87,6 +87,23 @@ type UpgradeList struct {
 
 func NewUpgrade(namespace, name string, obj Upgrade) *Upgrade {
 	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("Upgrade").ToAPIVersionAndKind()
+	obj.Name = name
+	obj.Namespace = namespace
+	return &obj
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// UpgradeLogList is a list of UpgradeLog resources
+type UpgradeLogList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []UpgradeLog `json:"items"`
+}
+
+func NewUpgradeLog(namespace, name string, obj UpgradeLog) *UpgradeLog {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("UpgradeLog").ToAPIVersionAndKind()
 	obj.Name = name
 	obj.Namespace = namespace
 	return &obj
@@ -206,6 +223,23 @@ type SupportBundleList struct {
 
 func NewSupportBundle(namespace, name string, obj SupportBundle) *SupportBundle {
 	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("SupportBundle").ToAPIVersionAndKind()
+	obj.Name = name
+	obj.Namespace = namespace
+	return &obj
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// AddonList is a list of Addon resources
+type AddonList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []Addon `json:"items"`
+}
+
+func NewAddon(namespace, name string, obj Addon) *Addon {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("Addon").ToAPIVersionAndKind()
 	obj.Name = name
 	obj.Namespace = namespace
 	return &obj

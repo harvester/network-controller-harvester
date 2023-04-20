@@ -1,45 +1,60 @@
 package indexeres
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
+	longhornv1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	"github.com/rancher/steve/pkg/server"
 	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
+	harvesterv1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester/pkg/config"
 	"github.com/harvester/harvester/pkg/ref"
+	"github.com/harvester/harvester/pkg/util"
 )
 
 const (
-	UserNameIndex           = "auth.harvesterhci.io/user-username-index"
-	RbByRoleAndSubjectIndex = "auth.harvesterhci.io/crb-by-role-and-subject"
-	PVCByVMIndex            = "harvesterhci.io/pvc-by-vm-index"
-	VMByNetworkIndex        = "vm.harvesterhci.io/vm-by-network"
+	PVCByVMIndex                       = "harvesterhci.io/pvc-by-vm-index"
+	PVCByDataSourceVolumeSnapshotIndex = "harvesterhci.io/pvc-by-data-source-volume-snapshot"
+	VMByNetworkIndex                   = "vm.harvesterhci.io/vm-by-network"
+	PodByNodeNameIndex                 = "harvesterhci.io/pod-by-nodename"
+	PodByPVCIndex                      = "harvesterhci.io/pod-by-pvc"
+	VolumeByNodeIndex                  = "harvesterhci.io/volume-by-node"
+	VMBackupBySourceVMUIDIndex         = "harvesterhci.io/vmbackup-by-source-vm-uid"
+	VMBackupBySourceVMNameIndex        = "harvesterhci.io/vmbackup-by-source-vm-name"
+	VMTemplateVersionByImageIDIndex    = "harvesterhci.io/vmtemplateversion-by-image-id"
+	VolumeSnapshotBySourcePVCIndex     = "harvesterhci.io/volumesnapshot-by-source-pvc"
 )
 
-func RegisterScaledIndexers(scaled *config.Scaled) {
-	vmInformer := scaled.Management.VirtFactory.Kubevirt().V1().VirtualMachine().Cache()
-	vmInformer.AddIndexer(VMByNetworkIndex, VMByNetwork)
-}
+func Setup(ctx context.Context, server *server.Server, controllers *server.Controllers, options config.Options) error {
+	scaled := config.ScaledWithContext(ctx)
+	management := scaled.Management
 
-func RegisterManagementIndexers(management *config.Management) {
-	crbInformer := management.RbacFactory.Rbac().V1().ClusterRoleBinding().Cache()
-	crbInformer.AddIndexer(RbByRoleAndSubjectIndex, rbByRoleAndSubject)
 	pvcInformer := management.CoreFactory.Core().V1().PersistentVolumeClaim().Cache()
 	pvcInformer.AddIndexer(PVCByVMIndex, pvcByVM)
-}
+	pvcInformer.AddIndexer(PVCByDataSourceVolumeSnapshotIndex, pvcByDataSourceVolumeSnapshot)
 
-func rbByRoleAndSubject(obj *rbacv1.ClusterRoleBinding) ([]string, error) {
-	keys := make([]string, 0, len(obj.Subjects))
-	for _, s := range obj.Subjects {
-		keys = append(keys, RbRoleSubjectKey(obj.RoleRef.Name, s))
-	}
-	return keys, nil
-}
+	podInformer := management.CoreFactory.Core().V1().Pod().Cache()
+	podInformer.AddIndexer(PodByNodeNameIndex, PodByNodeName)
+	podInformer.AddIndexer(PodByPVCIndex, PodByPVC)
 
-func RbRoleSubjectKey(roleName string, subject rbacv1.Subject) string {
-	return roleName + "." + subject.Kind + "." + subject.Name
+	volumeInformer := management.LonghornFactory.Longhorn().V1beta1().Volume().Cache()
+	volumeInformer.AddIndexer(VolumeByNodeIndex, VolumeByNodeName)
+
+	volumeSnapshotInformer := management.SnapshotFactory.Snapshot().V1beta1().VolumeSnapshot().Cache()
+	volumeSnapshotInformer.AddIndexer(VolumeSnapshotBySourcePVCIndex, volumeSnapshotBySourcePVC)
+
+	vmBackupInformer := management.HarvesterFactory.Harvesterhci().V1beta1().VirtualMachineBackup().Cache()
+	vmBackupInformer.AddIndexer(VMBackupBySourceVMNameIndex, VMBackupBySourceVMName)
+	vmBackupInformer.AddIndexer(VMBackupBySourceVMUIDIndex, VMBackupBySourceVMUID)
+
+	vmTemplateVersionInformer := management.HarvesterFactory.Harvesterhci().V1beta1().VirtualMachineTemplateVersion().Cache()
+	vmTemplateVersionInformer.AddIndexer(VMTemplateVersionByImageIDIndex, VMTemplateVersionByImageID)
+	return nil
 }
 
 func pvcByVM(obj *corev1.PersistentVolumeClaim) ([]string, error) {
@@ -60,4 +75,69 @@ func VMByNetwork(obj *kubevirtv1.VirtualMachine) ([]string, error) {
 		networkNameList = append(networkNameList, network.NetworkSource.Multus.NetworkName)
 	}
 	return networkNameList, nil
+}
+
+func PodByNodeName(obj *corev1.Pod) ([]string, error) {
+	return []string{obj.Spec.NodeName}, nil
+}
+
+func PodByPVC(obj *corev1.Pod) ([]string, error) {
+	pvcNames := []string{}
+	for _, volume := range obj.Spec.Volumes {
+		if volume.PersistentVolumeClaim != nil {
+			pvcNames = append(pvcNames, fmt.Sprintf("%s/%s", obj.Namespace, volume.PersistentVolumeClaim.ClaimName))
+		}
+	}
+	return pvcNames, nil
+}
+
+func pvcByDataSourceVolumeSnapshot(obj *corev1.PersistentVolumeClaim) ([]string, error) {
+	if obj.Spec.DataSource == nil || obj.Spec.DataSource.Kind != "VolumeSnapshot" {
+		return []string{}, nil
+	}
+	return []string{fmt.Sprintf("%s/%s", obj.Namespace, obj.Spec.DataSource.Name)}, nil
+}
+
+func VMBackupBySourceVMUID(obj *harvesterv1.VirtualMachineBackup) ([]string, error) {
+	if obj.Status == nil || obj.Status.SourceUID == nil {
+		return []string{}, nil
+	}
+	return []string{string(*obj.Status.SourceUID)}, nil
+}
+
+func VMBackupBySourceVMName(obj *harvesterv1.VirtualMachineBackup) ([]string, error) {
+	return []string{obj.Spec.Source.Name}, nil
+}
+
+func VMTemplateVersionByImageID(obj *harvesterv1.VirtualMachineTemplateVersion) ([]string, error) {
+	volumeClaimTemplateStr, ok := obj.Spec.VM.ObjectMeta.Annotations[util.AnnotationVolumeClaimTemplates]
+	if !ok || volumeClaimTemplateStr == "" {
+		return []string{}, nil
+	}
+
+	var volumeClaimTemplates []corev1.PersistentVolumeClaim
+	if err := json.Unmarshal([]byte(volumeClaimTemplateStr), &volumeClaimTemplates); err != nil {
+		return []string{}, fmt.Errorf("can't unmarshal %s, err: %w", util.AnnotationVolumeClaimTemplates, err)
+	}
+
+	imageIds := []string{}
+	for _, volumeClaimTemplate := range volumeClaimTemplates {
+		imageID, ok := volumeClaimTemplate.Annotations[util.AnnotationImageID]
+		if !ok || imageID == "" {
+			continue
+		}
+		imageIds = append(imageIds, imageID)
+	}
+	return imageIds, nil
+}
+
+func volumeSnapshotBySourcePVC(obj *snapshotv1.VolumeSnapshot) ([]string, error) {
+	if obj.Spec.Source.PersistentVolumeClaimName == nil {
+		return []string{}, nil
+	}
+	return []string{fmt.Sprintf("%s/%s", obj.Namespace, *obj.Spec.Source.PersistentVolumeClaimName)}, nil
+}
+
+func VolumeByNodeName(obj *longhornv1.Volume) ([]string, error) {
+	return []string{obj.Spec.NodeID}, nil
 }

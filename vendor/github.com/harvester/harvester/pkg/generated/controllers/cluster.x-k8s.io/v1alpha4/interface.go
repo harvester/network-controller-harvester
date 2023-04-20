@@ -1,5 +1,5 @@
 /*
-Copyright 2022 Rancher Labs, Inc.
+Copyright 2023 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ func init() {
 }
 
 type Interface interface {
+	Cluster() ClusterController
 	Machine() MachineController
 }
 
@@ -43,6 +44,9 @@ type version struct {
 	controllerFactory controller.SharedControllerFactory
 }
 
+func (c *version) Cluster() ClusterController {
+	return NewClusterController(schema.GroupVersionKind{Group: "cluster.x-k8s.io", Version: "v1alpha4", Kind: "Cluster"}, "clusters", true, c.controllerFactory)
+}
 func (c *version) Machine() MachineController {
 	return NewMachineController(schema.GroupVersionKind{Group: "cluster.x-k8s.io", Version: "v1alpha4", Kind: "Machine"}, "machines", true, c.controllerFactory)
 }
