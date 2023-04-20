@@ -7,6 +7,8 @@ import (
 
 var (
 	UpgradeCompleted condition.Cond = "Completed"
+	// LogReady is true when logging infrastructure for is running
+	LogReady condition.Cond = "LogReady"
 	// ImageReady is true when upgrade image is downloaded
 	ImageReady condition.Cond = "ImageReady"
 	// RepoProvisioned is true when upgrade repo is provisioned
@@ -37,6 +39,10 @@ type UpgradeSpec struct {
 
 	// +optional
 	Image string `json:"image"`
+
+	// +optional
+	// +kubebuilder:default:=true
+	LogEnabled bool `json:"logEnabled" default:"true"`
 }
 
 type UpgradeStatus struct {
@@ -52,6 +58,8 @@ type UpgradeStatus struct {
 	NodeStatuses map[string]NodeUpgradeStatus `json:"nodeStatuses,omitempty"`
 	// +optional
 	Conditions []Condition `json:"conditions,omitempty"`
+	// +optional
+	UpgradeLog string `json:"upgradeLog,omitempty"`
 }
 
 type NodeUpgradeStatus struct {

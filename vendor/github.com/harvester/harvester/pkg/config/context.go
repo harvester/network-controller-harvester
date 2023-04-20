@@ -30,7 +30,9 @@ import (
 	ctlharvesterv1 "github.com/harvester/harvester/pkg/generated/controllers/harvesterhci.io"
 	cniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
 	"github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io"
+	loggingv1 "github.com/harvester/harvester/pkg/generated/controllers/logging.banzaicloud.io"
 	longhornv1 "github.com/harvester/harvester/pkg/generated/controllers/longhorn.io"
+	monitoringv1 "github.com/harvester/harvester/pkg/generated/controllers/monitoring.coreos.com"
 	"github.com/harvester/harvester/pkg/generated/controllers/networking.k8s.io"
 	snapshotv1 "github.com/harvester/harvester/pkg/generated/controllers/snapshot.storage.k8s.io"
 	"github.com/harvester/harvester/pkg/generated/controllers/upgrade.cattle.io"
@@ -63,7 +65,9 @@ type Scaled struct {
 	BatchFactory             *batchv1.Factory
 	RbacFactory              *rbacv1.Factory
 	CniFactory               *cniv1.Factory
+	LoggingFactory           *loggingv1.Factory
 	SnapshotFactory          *snapshotv1.Factory
+	StorageFactory           *storagev1.Factory
 	LonghornFactory          *longhornv1.Factory
 	RancherManagementFactory *rancherv3.Factory
 	starters                 []start.Starter
@@ -79,7 +83,9 @@ type Management struct {
 
 	VirtFactory              *kubevirt.Factory
 	HarvesterFactory         *ctlharvesterv1.Factory
+	LoggingFactory           *loggingv1.Factory
 	CoreFactory              *corev1.Factory
+	CniFactory               *cniv1.Factory
 	AppsFactory              *appsv1.Factory
 	BatchFactory             *batchv1.Factory
 	RbacFactory              *rbacv1.Factory
@@ -89,6 +95,7 @@ type Management struct {
 	ProvisioningFactory      *provisioningv1.Factory
 	CatalogFactory           *catalogv1.Factory
 	RancherManagementFactory *rancherv3.Factory
+	MonitoringFactory        *monitoringv1.Factory
 	HelmFactory              *helmv1.Factory
 
 	NetworkingFactory *networking.Factory
@@ -162,12 +169,26 @@ func SetupScaled(ctx context.Context, restConfig *rest.Config, opts *generic.Fac
 	scaled.CniFactory = cni
 	scaled.starters = append(scaled.starters, cni)
 
+	logging, err := loggingv1.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	scaled.LoggingFactory = logging
+	scaled.starters = append(scaled.starters, cni)
+
 	snapshot, err := snapshotv1.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {
 		return nil, nil, err
 	}
 	scaled.SnapshotFactory = snapshot
 	scaled.starters = append(scaled.starters, snapshot)
+
+	storage, err := storagev1.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	scaled.StorageFactory = storage
+	scaled.starters = append(scaled.starters, storage)
 
 	longhorn, err := longhornv1.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {
@@ -222,6 +243,13 @@ func setupManagement(ctx context.Context, restConfig *rest.Config, opts *generic
 	}
 	management.CoreFactory = core
 	management.starters = append(management.starters, core)
+
+	cni, err := cniv1.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+	management.CniFactory = cni
+	management.starters = append(management.starters, cni)
 
 	apps, err := appsv1.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {
@@ -313,6 +341,20 @@ func setupManagement(ctx context.Context, restConfig *rest.Config, opts *generic
 	}
 	management.ClusterFactory = cluster
 	management.starters = append(management.starters, cluster)
+
+	logging, err := loggingv1.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+	management.LoggingFactory = logging
+	management.starters = append(management.starters, logging)
+
+	monitoring, err := monitoringv1.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+	management.MonitoringFactory = monitoring
+	management.starters = append(management.starters, monitoring)
 
 	management.RestConfig = restConfig
 	management.ClientSet, err = kubernetes.NewForConfig(restConfig)

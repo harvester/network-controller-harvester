@@ -1,5 +1,5 @@
 /*
-Copyright 2022 Rancher Labs, Inc.
+Copyright 2023 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,11 +28,13 @@ import (
 )
 
 var (
+	AddonResourceName                         = "addons"
 	KeyPairResourceName                       = "keypairs"
 	PreferenceResourceName                    = "preferences"
 	SettingResourceName                       = "settings"
 	SupportBundleResourceName                 = "supportbundles"
 	UpgradeResourceName                       = "upgrades"
+	UpgradeLogResourceName                    = "upgradelogs"
 	VersionResourceName                       = "versions"
 	VirtualMachineBackupResourceName          = "virtualmachinebackups"
 	VirtualMachineImageResourceName           = "virtualmachineimages"
@@ -62,6 +64,8 @@ var (
 // Adds the list of known types to Scheme.
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
+		&Addon{},
+		&AddonList{},
 		&KeyPair{},
 		&KeyPairList{},
 		&Preference{},
@@ -72,6 +76,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&SupportBundleList{},
 		&Upgrade{},
 		&UpgradeList{},
+		&UpgradeLog{},
+		&UpgradeLogList{},
 		&Version{},
 		&VersionList{},
 		&VirtualMachineBackup{},
