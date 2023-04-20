@@ -1,5 +1,5 @@
 /*
-Copyright 2022 Rancher Labs, Inc.
+Copyright 2023 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,11 +30,13 @@ func init() {
 }
 
 type Interface interface {
+	Addon() AddonController
 	KeyPair() KeyPairController
 	Preference() PreferenceController
 	Setting() SettingController
 	SupportBundle() SupportBundleController
 	Upgrade() UpgradeController
+	UpgradeLog() UpgradeLogController
 	Version() VersionController
 	VirtualMachineBackup() VirtualMachineBackupController
 	VirtualMachineImage() VirtualMachineImageController
@@ -53,6 +55,9 @@ type version struct {
 	controllerFactory controller.SharedControllerFactory
 }
 
+func (c *version) Addon() AddonController {
+	return NewAddonController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "Addon"}, "addons", true, c.controllerFactory)
+}
 func (c *version) KeyPair() KeyPairController {
 	return NewKeyPairController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "KeyPair"}, "keypairs", true, c.controllerFactory)
 }
@@ -67,6 +72,9 @@ func (c *version) SupportBundle() SupportBundleController {
 }
 func (c *version) Upgrade() UpgradeController {
 	return NewUpgradeController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "Upgrade"}, "upgrades", true, c.controllerFactory)
+}
+func (c *version) UpgradeLog() UpgradeLogController {
+	return NewUpgradeLogController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "UpgradeLog"}, "upgradelogs", true, c.controllerFactory)
 }
 func (c *version) Version() VersionController {
 	return NewVersionController(schema.GroupVersionKind{Group: "harvesterhci.io", Version: "v1beta1", Kind: "Version"}, "versions", true, c.controllerFactory)

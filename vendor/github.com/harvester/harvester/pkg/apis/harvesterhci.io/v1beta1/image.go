@@ -7,8 +7,9 @@ import (
 )
 
 var (
-	ImageInitialized condition.Cond = "Initialized"
-	ImageImported    condition.Cond = "Imported"
+	ImageInitialized        condition.Cond = "Initialized"
+	ImageImported           condition.Cond = "Imported"
+	ImageRetryLimitExceeded condition.Cond = "RetryLimitExceeded"
 )
 
 const (
@@ -54,6 +55,16 @@ type VirtualMachineImageSpec struct {
 
 	// +optional
 	Checksum string `json:"checksum"`
+
+	// +optional
+	StorageClassParameters map[string]string `json:"storageClassParameters"`
+
+	// +optional
+	// +kubebuilder:default:=3
+	// +kubebuilder:validation:Minimum:=0
+	// +kubebuilder:validation:Maximum:=10
+	// +kubebuilder:validation:Optional
+	Retry int `json:"retry" default:"3"`
 }
 
 type VirtualMachineImageStatus struct {
@@ -68,6 +79,15 @@ type VirtualMachineImageStatus struct {
 
 	// +optional
 	StorageClassName string `json:"storageClassName,omitempty"`
+
+	// +optional
+	// +kubebuilder:default:=0
+	// +kubebuilder:validation:Minimum:=0
+	Failed int `json:"failed"`
+
+	// +optional
+	// +kubebuilder:validation:Optional
+	LastFailedTime string `json:"lastFailedTime,omitempty"`
 
 	// +optional
 	Conditions []Condition `json:"conditions,omitempty"`

@@ -1,5 +1,5 @@
 /*
-Copyright 2022 Rancher Labs, Inc.
+Copyright 2023 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ type Interface interface {
 	BackingImage() BackingImageController
 	BackingImageDataSource() BackingImageDataSourceController
 	Backup() BackupController
+	Replica() ReplicaController
 	Setting() SettingController
 	Volume() VolumeController
 }
@@ -55,6 +56,9 @@ func (c *version) BackingImageDataSource() BackingImageDataSourceController {
 }
 func (c *version) Backup() BackupController {
 	return NewBackupController(schema.GroupVersionKind{Group: "longhorn.io", Version: "v1beta1", Kind: "Backup"}, "backups", true, c.controllerFactory)
+}
+func (c *version) Replica() ReplicaController {
+	return NewReplicaController(schema.GroupVersionKind{Group: "longhorn.io", Version: "v1beta1", Kind: "Replica"}, "replicas", true, c.controllerFactory)
 }
 func (c *version) Setting() SettingController {
 	return NewSettingController(schema.GroupVersionKind{Group: "longhorn.io", Version: "v1beta1", Kind: "Setting"}, "settings", true, c.controllerFactory)
