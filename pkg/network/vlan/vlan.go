@@ -142,3 +142,9 @@ func (v *Vlan) Bridge() *iface.Bridge {
 func (v *Vlan) Uplink() *iface.Link {
 	return v.uplink
 }
+
+func init() {
+	if err := iface.DisableBridgeNF(); err != nil {
+		klog.Fatalf("disable net.bridge.bridge-nf-call-iptables failed, error: %v", err)
+	}
+}
