@@ -158,7 +158,7 @@ func (h Handler) setNadReadyLabel(cn *networkv1.ClusterNetwork) error {
 }
 
 func (h Handler) initialize() error {
-	if err := backoff.Retry(func() error {
+	return backoff.Retry(func() error {
 		if err := h.initializeClusterNetwork(); err != nil {
 			klog.V(5).Info(err)
 			return err
@@ -168,11 +168,7 @@ func (h Handler) initialize() error {
 			return err
 		}
 		return nil
-	}, backoff.NewExponentialBackOff()); err != nil {
-		return err
-	}
-
-	return nil
+	}, backoff.NewExponentialBackOff())
 }
 
 func (h Handler) initializeClusterNetwork() error {

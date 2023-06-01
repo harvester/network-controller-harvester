@@ -6,7 +6,8 @@
 			"gofmt",
 			"misspell",
 			"revive",
-			"prealloc"
+			"prealloc",
+			"gosec"
 		]
 	},
 	"run": {

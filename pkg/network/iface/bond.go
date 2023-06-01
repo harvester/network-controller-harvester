@@ -138,11 +138,7 @@ func (b *Bond) modifyBond(oldBond *netlink.Bond) error {
 	if err := netlink.LinkDel(oldBond); err != nil {
 		return err
 	}
-	if err := netlink.LinkAdd(b.Bond); err != nil {
-		return err
-	}
-
-	return nil
+	return netlink.LinkAdd(b.Bond)
 }
 
 func getSlaves(index int) ([]netlink.Link, error) {
