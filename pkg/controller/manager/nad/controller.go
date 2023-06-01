@@ -216,11 +216,7 @@ func (h Handler) EnsureJob2GetLayer3NetworkInfo(nad *cniv1.NetworkAttachmentDefi
 		return nil
 	}
 	// create or update job to get layer 3 network information automatically
-	if err := h.createOrUpdateJob(nad, networkConf.ServerIPAddr); err != nil {
-		return err
-	}
-
-	return nil
+	return h.createOrUpdateJob(nad, networkConf.ServerIPAddr)
 }
 
 func (h Handler) clearJob(nad *cniv1.NetworkAttachmentDefinition) error {

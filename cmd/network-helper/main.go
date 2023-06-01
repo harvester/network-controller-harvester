@@ -77,10 +77,10 @@ func run(c *cli.Context) error {
 	}
 	netHelper := helper.New(cni)
 
-	for _, selectedNetwork := range selectedNetworks {
-		networkConf := netHelper.GetVLANLayer3Network(&selectedNetwork, dhcpServerIPAddr)
+	for i := range selectedNetworks {
+		networkConf := netHelper.GetVLANLayer3Network(&selectedNetworks[i], dhcpServerIPAddr)
 
-		if err := netHelper.RecordToNad(&selectedNetwork, networkConf); err != nil {
+		if err := netHelper.RecordToNad(&selectedNetworks[i], networkConf); err != nil {
 			return fmt.Errorf("failed to record to nad cr, error: %w", err)
 		}
 	}

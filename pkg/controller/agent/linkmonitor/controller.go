@@ -109,7 +109,7 @@ func (h Handler) isMatchCurrentNode(lm *networkv1.LinkMonitor) (bool, error) {
 	return false, nil
 }
 
-func (h Handler) UpdateLink(key string, update *netlink.LinkUpdate) error {
+func (h Handler) UpdateLink(key string, _ *netlink.LinkUpdate) error {
 	h.lmController.Enqueue(key)
 	return nil
 }

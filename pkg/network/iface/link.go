@@ -121,11 +121,8 @@ func (l *Link) SetNoMaster() error {
 	}
 
 	klog.Infof("%s set no master", l.Attrs().Name)
-	if err := netlink.LinkSetNoMaster(l); err != nil {
-		return err
-	}
 
-	return nil
+	return netlink.LinkSetNoMaster(l)
 }
 
 func (l *Link) EnsureIptForward() error {
@@ -155,11 +152,7 @@ func (l *Link) EnsureIptForward() error {
 	if err := ipt.AppendUnique(tableFilter, chainForward, "-i", l.Attrs().Name, "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err := ipt.AppendUnique(tableFilter, chainForward, "-o", l.Attrs().Name, "-j", "ACCEPT"); err != nil {
-		return err
-	}
-
-	return nil
+	return ipt.AppendUnique(tableFilter, chainForward, "-o", l.Attrs().Name, "-j", "ACCEPT")
 }
 
 func (l *Link) DeleteIptForward() error {
@@ -172,11 +165,7 @@ func (l *Link) DeleteIptForward() error {
 		return err
 	}
 
-	if err := ipt.DeleteIfExists(tableFilter, chainForward, "-o", l.Attrs().Name, "-j", "ACCEPT"); err != nil {
-		return err
-	}
-
-	return nil
+	return ipt.DeleteIfExists(tableFilter, chainForward, "-o", l.Attrs().Name, "-j", "ACCEPT")
 }
 
 func (l *Link) Fetch() error {

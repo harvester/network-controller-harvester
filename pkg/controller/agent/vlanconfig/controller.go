@@ -173,7 +173,7 @@ func (h Handler) setupVLAN(vc *networkv1.VlanConfig) error {
 	var localAreas []*vlan.LocalArea
 	var uplink *iface.Link
 	// get VIDs
-	localAreas, setupErr = h.getLocalAreas(iface.GenerateName(vc.Spec.ClusterNetwork, iface.BridgeSuffix))
+	localAreas, setupErr = h.getLocalAreas()
 	if setupErr != nil {
 		goto updateStatus
 	}
@@ -191,7 +191,7 @@ func (h Handler) setupVLAN(vc *networkv1.VlanConfig) error {
 
 updateStatus:
 	// Update status and still return setup error if not nil
-	if err := h.updateStatus(vc, v, localAreas, setupErr); err != nil {
+	if err := h.updateStatus(vc, localAreas, setupErr); err != nil {
 		return fmt.Errorf("update status into vlanstatus %s failed, error: %w, setup error: %v",
 			h.statusName(vc.Spec.ClusterNetwork), err, setupErr)
 	}
@@ -270,7 +270,7 @@ func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 	return &iface.Link{Link: b}, nil
 }
 
-func (h Handler) getLocalAreas(bridgeName string) ([]*vlan.LocalArea, error) {
+func (h Handler) getLocalAreas() ([]*vlan.LocalArea, error) {
 	nads, err := h.nadCache.List("", labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("list nad failed, error: %v", err)
@@ -301,7 +301,7 @@ func (h Handler) AddLocalAreas(v *vlan.Vlan, localAreas []*vlan.LocalArea) error
 	return nil
 }
 
-func (h Handler) updateStatus(vc *networkv1.VlanConfig, v *vlan.Vlan, localAreas []*vlan.LocalArea, setupErr error) error {
+func (h Handler) updateStatus(vc *networkv1.VlanConfig, localAreas []*vlan.LocalArea, setupErr error) error {
 	var vStatus *networkv1.VlanStatus
 	name := h.statusName(vc.Spec.ClusterNetwork)
 	vs, getErr := h.vsCache.Get(name)
