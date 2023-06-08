@@ -18,7 +18,6 @@ func main() {
 			"network.harvesterhci.io": {
 				Types: []interface{}{
 					networkv1.ClusterNetwork{},
-					networkv1.NodeNetwork{},
 					networkv1.VlanConfig{},
 					networkv1.VlanStatus{},
 					networkv1.LinkMonitor{},
