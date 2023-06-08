@@ -32,7 +32,6 @@ func init() {
 type Interface interface {
 	ClusterNetwork() ClusterNetworkController
 	LinkMonitor() LinkMonitorController
-	NodeNetwork() NodeNetworkController
 	VlanConfig() VlanConfigController
 	VlanStatus() VlanStatusController
 }
@@ -52,9 +51,6 @@ func (c *version) ClusterNetwork() ClusterNetworkController {
 }
 func (c *version) LinkMonitor() LinkMonitorController {
 	return NewLinkMonitorController(schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "LinkMonitor"}, "linkmonitors", false, c.controllerFactory)
-}
-func (c *version) NodeNetwork() NodeNetworkController {
-	return NewNodeNetworkController(schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "NodeNetwork"}, "nodenetworks", false, c.controllerFactory)
 }
 func (c *version) VlanConfig() VlanConfigController {
 	return NewVlanConfigController(schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "VlanConfig"}, "vlanconfigs", false, c.controllerFactory)
