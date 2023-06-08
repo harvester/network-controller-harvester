@@ -6,9 +6,13 @@ Harvester Network Controller
 
 A network controller helps to manage the host network configuration of the [Harvester](https://github.com/harvester/harvester) cluster.
 
-## Manifests and Deploying
-The `./manifests` folder contains useful YAML manifests to use for deploying and developing the Harvester network controller. 
-This simply YAML deployment creates a Daemonset using the `rancher/harvester-network-controller` container.
+## How to deploy
+```
+$ helm repo add harvester https://charts.harvesterhci.io
+$ helm repo update
+$ kubectl apply -f https://raw.githubusercontent.com/harvester/network-controller-harvester/master/manifests/dependency_crds
+$ helm install harvester-network-controller harvester/harvester-network-controller
+```
 
 ## License
 Copyright (c) 2020 [Rancher Labs, Inc.](http://rancher.com)
