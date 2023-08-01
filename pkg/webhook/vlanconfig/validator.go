@@ -32,16 +32,19 @@ type Validator struct {
 	types.DefaultValidator
 
 	nadCache ctlcniv1.NetworkAttachmentDefinitionCache
+	vcCache  ctlnetworkv1.VlanConfigCache
 	vsCache  ctlnetworkv1.VlanStatusCache
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
 }
 
 func NewVlanConfigValidator(
 	nadCache ctlcniv1.NetworkAttachmentDefinitionCache,
+	vcCache ctlnetworkv1.VlanConfigCache,
 	vsCache ctlnetworkv1.VlanStatusCache,
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Validator {
 	return &Validator{
 		nadCache: nadCache,
+		vcCache:  vcCache,
 		vsCache:  vsCache,
 		vmiCache: vmiCache,
 	}
@@ -55,6 +58,10 @@ func (v *Validator) Create(_ *types.Request, newObj runtime.Object) error {
 	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
 		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("cluster network could not be %s",
 			utils.ManagementClusterNetworkName))
+	}
+
+	if err := v.validateMTU(vc); err != nil {
+		return fmt.Errorf(createErr, vc.Name, err)
 	}
 
 	nodes, err := getMatchNodes(vc)
@@ -87,6 +94,10 @@ func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) erro
 	// skip validation if spec is not changed
 	if reflect.DeepEqual(oldVc.Spec, newVc.Spec) {
 		return nil
+	}
+
+	if err := v.validateMTU(newVc); err != nil {
+		return fmt.Errorf(updateErr, newVc.Name, err)
 	}
 
 	newNodes, err := getMatchNodes(newVc)
@@ -221,4 +232,24 @@ func getMatchNodes(vc *networkv1.VlanConfig) (mapset.Set[string], error) {
 	}
 
 	return mapset.NewSet[string](matchedNodes...), nil
+}
+
+func (v *Validator) validateMTU(current *networkv1.VlanConfig) error {
+	vcs, err := v.vcCache.List(labels.Set(map[string]string{
+		utils.KeyClusterNetworkLabel: current.Spec.ClusterNetwork,
+	}).AsSelector())
+	if err != nil {
+		return err
+	}
+
+	for _, vc := range vcs {
+		if vc.Name == current.Name {
+			continue
+		}
+		if current.Spec.Uplink.LinkAttrs.MTU != vc.Spec.Uplink.LinkAttrs.MTU {
+			return fmt.Errorf("the MTU is different from network config %s", vc.Name)
+		}
+	}
+
+	return nil
 }

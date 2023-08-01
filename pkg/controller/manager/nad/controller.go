@@ -61,7 +61,6 @@ type Handler struct {
 	jobCache  ctlbatchv1.JobCache
 	nadClient ctlcniv1.NetworkAttachmentDefinitionClient
 	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
-	cnClient  ctlnetworkv1.ClusterNetworkClient
 	cnCache   ctlnetworkv1.ClusterNetworkCache
 
 	*checkMap
@@ -79,7 +78,6 @@ func Register(ctx context.Context, management *config.Management) error {
 		jobCache:    jobs.Cache(),
 		nadClient:   nads,
 		nadCache:    nads.Cache(),
-		cnClient:    cns,
 		cnCache:     cns.Cache(),
 		checkMap: &checkMap{
 			items: make(map[nameWithNamespace]string),
