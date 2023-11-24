@@ -1,4 +1,4 @@
-FROM registry.suse.com/bci/bci-base:15.4
+FROM registry.suse.com/bci/bci-base:15.5
 RUN zypper -n rm container-suseconnect && \
     zypper install -y iptables=1.8.7 && \
     zypper -n clean -a && rm -rf /tmp/* /var/tmp/* /usr/share/doc/packages/*
