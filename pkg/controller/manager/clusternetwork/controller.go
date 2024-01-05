@@ -55,7 +55,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func (h Handler) EnsureLinkMonitor(key string, cn *networkv1.ClusterNetwork) (*networkv1.ClusterNetwork, error) {
+func (h Handler) EnsureLinkMonitor(_ string, cn *networkv1.ClusterNetwork) (*networkv1.ClusterNetwork, error) {
 	if cn == nil || cn.DeletionTimestamp != nil {
 		return nil, nil
 	}
@@ -71,7 +71,7 @@ func (h Handler) EnsureLinkMonitor(key string, cn *networkv1.ClusterNetwork) (*n
 	return cn, nil
 }
 
-func (h Handler) DeleteLinkMonitor(key string, cn *networkv1.ClusterNetwork) (*networkv1.ClusterNetwork, error) {
+func (h Handler) DeleteLinkMonitor(_ string, cn *networkv1.ClusterNetwork) (*networkv1.ClusterNetwork, error) {
 	if cn == nil {
 		return nil, nil
 	}
@@ -83,7 +83,7 @@ func (h Handler) DeleteLinkMonitor(key string, cn *networkv1.ClusterNetwork) (*n
 	return cn, nil
 }
 
-func (h Handler) SetNadReadyLabel(key string, cn *networkv1.ClusterNetwork) (*networkv1.ClusterNetwork, error) {
+func (h Handler) SetNadReadyLabel(_ string, cn *networkv1.ClusterNetwork) (*networkv1.ClusterNetwork, error) {
 	if cn == nil {
 		return nil, nil
 	}

@@ -52,7 +52,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func (h Handler) OnChange(key string, node *corev1.Node) (*corev1.Node, error) {
+func (h Handler) OnChange(_ string, node *corev1.Node) (*corev1.Node, error) {
 	if node == nil || node.DeletionTimestamp != nil {
 		return nil, nil
 	}
@@ -75,7 +75,7 @@ func (h Handler) OnChange(key string, node *corev1.Node) (*corev1.Node, error) {
 	return node, nil
 }
 
-func (h Handler) OnRemove(key string, node *corev1.Node) (*corev1.Node, error) {
+func (h Handler) OnRemove(_ string, node *corev1.Node) (*corev1.Node, error) {
 	if node == nil {
 		return nil, nil
 	}
