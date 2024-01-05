@@ -6,7 +6,7 @@ ENV HOST_ARCH=${DAPPER_HOST_ARCH} ARCH=${DAPPER_HOST_ARCH}
 RUN zypper -n rm container-suseconnect && \
     zypper -n install git curl docker gzip tar wget awk
 
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.49.0
+RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.55.2
 
 
 ENV DAPPER_ENV REPO TAG DRONE_TAG
