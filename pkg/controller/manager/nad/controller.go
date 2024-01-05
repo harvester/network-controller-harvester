@@ -93,7 +93,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
+func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
 	if nad == nil || nad.DeletionTimestamp != nil {
 		return nil, nil
 	}
@@ -120,7 +120,7 @@ func (h Handler) OnChange(key string, nad *cniv1.NetworkAttachmentDefinition) (*
 	return nad, nil
 }
 
-func (h Handler) OnRemove(key string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
+func (h Handler) OnRemove(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {
 	if nad == nil {
 		return nil, nil
 	}

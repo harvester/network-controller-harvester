@@ -53,7 +53,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func (h Handler) OnChange(key string, lm *networkv1.LinkMonitor) (*networkv1.LinkMonitor, error) {
+func (h Handler) OnChange(_ string, lm *networkv1.LinkMonitor) (*networkv1.LinkMonitor, error) {
 	if lm == nil || lm.DeletionTimestamp != nil {
 		return nil, nil
 	}
@@ -80,7 +80,7 @@ func (h Handler) OnChange(key string, lm *networkv1.LinkMonitor) (*networkv1.Lin
 	return lm, nil
 }
 
-func (h Handler) OnRemove(key string, lm *networkv1.LinkMonitor) (*networkv1.LinkMonitor, error) {
+func (h Handler) OnRemove(_ string, lm *networkv1.LinkMonitor) (*networkv1.LinkMonitor, error) {
 	if lm == nil {
 		return nil, nil
 	}

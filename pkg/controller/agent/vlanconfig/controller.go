@@ -68,7 +68,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func (h Handler) OnChange(key string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
+func (h Handler) OnChange(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
 	if vc == nil || vc.DeletionTimestamp != nil {
 		return nil, nil
 	}
@@ -100,7 +100,7 @@ func (h Handler) OnChange(key string, vc *networkv1.VlanConfig) (*networkv1.Vlan
 	return vc, nil
 }
 
-func (h Handler) OnRemove(key string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
+func (h Handler) OnRemove(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
 	if vc == nil {
 		return nil, nil
 	}

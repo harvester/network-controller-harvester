@@ -43,7 +43,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func (h Handler) EnsureClusterNetwork(key string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
+func (h Handler) EnsureClusterNetwork(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
 	if vc == nil || vc.DeletionTimestamp != nil {
 		return nil, nil
 	}
@@ -56,7 +56,7 @@ func (h Handler) EnsureClusterNetwork(key string, vc *networkv1.VlanConfig) (*ne
 	return vc, nil
 }
 
-func (h Handler) SetClusterNetworkReady(key string, vs *networkv1.VlanStatus) (*networkv1.VlanStatus, error) {
+func (h Handler) SetClusterNetworkReady(_ string, vs *networkv1.VlanStatus) (*networkv1.VlanStatus, error) {
 	if vs == nil || vs.DeletionTimestamp != nil {
 		return nil, nil
 	}
@@ -71,7 +71,7 @@ func (h Handler) SetClusterNetworkReady(key string, vs *networkv1.VlanStatus) (*
 	return vs, nil
 }
 
-func (h Handler) SetClusterNetworkUnready(key string, vs *networkv1.VlanStatus) (*networkv1.VlanStatus, error) {
+func (h Handler) SetClusterNetworkUnready(_ string, vs *networkv1.VlanStatus) (*networkv1.VlanStatus, error) {
 	if vs == nil {
 		return nil, nil
 	}
