@@ -3,7 +3,8 @@ package clients
 import (
 	"github.com/rancher/wrangler/pkg/clients"
 	"github.com/rancher/wrangler/pkg/schemes"
-	v1 "k8s.io/api/admissionregistration/v1"
+	admissionv1 "k8s.io/api/admissionregistration/v1"
+	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/client-go/rest"
 )
 
@@ -17,7 +18,10 @@ func New(rest *rest.Config) (*Clients, error) {
 		return nil, err
 	}
 
-	if err := schemes.Register(v1.AddToScheme); err != nil {
+	if err := schemes.Register(admissionv1.AddToScheme); err != nil {
+		return nil, err
+	}
+	if err := schemes.Register(apiextv1.AddToScheme); err != nil {
 		return nil, err
 	}
 

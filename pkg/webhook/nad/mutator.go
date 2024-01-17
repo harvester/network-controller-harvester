@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/harvester/webhook/pkg/types"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/tidwall/sjson"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
@@ -14,16 +13,18 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
 
+	"github.com/harvester/webhook/pkg/server/admission"
+
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
-var _ types.Mutator = &Mutator{}
+var _ admission.Mutator = &Mutator{}
 
 type Mutator struct {
-	types.DefaultMutator
+	admission.DefaultMutator
 	cnCache ctlnetworkv1.ClusterNetworkCache
 	vcCache ctlnetworkv1.VlanConfigCache
 }
@@ -36,7 +37,7 @@ func NewNadMutator(cnCache ctlnetworkv1.ClusterNetworkCache,
 	}
 }
 
-func (m *Mutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, error) {
+func (m *Mutator) Create(_ *admission.Request, newObj runtime.Object) (admission.Patch, error) {
 	nad := newObj.(*cniv1.NetworkAttachmentDefinition)
 
 	patch, err := m.patchMTU(nad.Spec.Config)
@@ -47,7 +48,7 @@ func (m *Mutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, 
 	return patch, nil
 }
 
-func (m *Mutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types.Patch, error) {
+func (m *Mutator) Update(_ *admission.Request, oldObj, newObj runtime.Object) (admission.Patch, error) {
 	oldNad := oldObj.(*cniv1.NetworkAttachmentDefinition)
 	newNad := newObj.(*cniv1.NetworkAttachmentDefinition)
 
@@ -80,8 +81,8 @@ func (m *Mutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types
 	return append(patch, annotationPatch...), nil
 }
 
-func (m *Mutator) Resource() types.Resource {
-	return types.Resource{
+func (m *Mutator) Resource() admission.Resource {
+	return admission.Resource{
 		Names:      []string{"network-attachment-definitions"},
 		Scope:      admissionregv1.NamespacedScope,
 		APIGroup:   cniv1.SchemeGroupVersion.Group,
@@ -94,7 +95,7 @@ func (m *Mutator) Resource() types.Resource {
 	}
 }
 
-func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *utils.NetConf) (types.Patch, error) {
+func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *utils.NetConf) (admission.Patch, error) {
 	labels := nad.Labels
 	if labels == nil {
 		labels = make(map[string]string)
@@ -130,16 +131,16 @@ func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, 
 		labels[utils.KeyNetworkReady] = utils.ValueFalse
 	}
 
-	return types.Patch{
-		types.PatchOp{
-			Op:    types.PatchOpReplace,
+	return admission.Patch{
+		admission.PatchOp{
+			Op:    admission.PatchOpReplace,
 			Path:  "/metadata/labels",
 			Value: labels,
 		}}, nil
 }
 
 // If the vlan or bridge name is changed, we need to tag the route annotation outdated
-func tagRouteOutdated(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *utils.NetConf) (types.Patch, error) {
+func tagRouteOutdated(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *utils.NetConf) (admission.Patch, error) {
 	if oldConf.BrName == newConf.BrName && oldConf.Vlan == newConf.Vlan {
 		return nil, nil
 	}
@@ -173,16 +174,16 @@ func tagRouteOutdated(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *
 		annotations[utils.KeyNetworkRoute] = string(outdatedRoute)
 	}
 
-	return types.Patch{
-		types.PatchOp{
-			Op:    types.PatchOpReplace,
+	return admission.Patch{
+		admission.PatchOp{
+			Op:    admission.PatchOpReplace,
 			Path:  "/metadata/annotations",
 			Value: annotations,
 		},
 	}, nil
 }
 
-func (m *Mutator) patchMTU(config string) (types.Patch, error) {
+func (m *Mutator) patchMTU(config string) (admission.Patch, error) {
 	netConf := &utils.NetConf{}
 	if err := json.Unmarshal([]byte(config), netConf); err != nil {
 		return nil, err
@@ -204,9 +205,9 @@ func (m *Mutator) patchMTU(config string) (types.Patch, error) {
 		return nil, fmt.Errorf("set mtu failed, error: %w", err)
 	}
 
-	return types.Patch{
-		types.PatchOp{
-			Op:    types.PatchOpReplace,
+	return admission.Patch{
+		admission.PatchOp{
+			Op:    admission.PatchOpReplace,
 			Path:  "/spec/config",
 			Value: newConfig,
 		},

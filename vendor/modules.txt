@@ -186,13 +186,14 @@ github.com/harvester/harvester/pkg/indexeres
 github.com/harvester/harvester/pkg/ref
 github.com/harvester/harvester/pkg/util
 github.com/harvester/harvester/pkg/util/crd
-# github.com/harvester/webhook v0.1.2
-## explicit; go 1.18
+# github.com/harvester/webhook v0.1.3
+## explicit; go 1.19
 github.com/harvester/webhook/pkg/clients
 github.com/harvester/webhook/pkg/config
 github.com/harvester/webhook/pkg/error
 github.com/harvester/webhook/pkg/server
-github.com/harvester/webhook/pkg/types
+github.com/harvester/webhook/pkg/server/admission
+github.com/harvester/webhook/pkg/server/conversion
 # github.com/iancoleman/orderedmap v0.2.0
 ## explicit
 github.com/iancoleman/orderedmap
@@ -439,7 +440,7 @@ github.com/rancher/steve/pkg/summarycache
 github.com/rancher/system-upgrade-controller/pkg/apis/condition
 github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io
 github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1
-# github.com/rancher/wrangler v1.1.0
+# github.com/rancher/wrangler v1.1.1
 ## explicit; go 1.19
 github.com/rancher/wrangler/pkg/apply
 github.com/rancher/wrangler/pkg/apply/injectors
