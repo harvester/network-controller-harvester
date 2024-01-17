@@ -3,10 +3,11 @@ package clusternetwork
 import (
 	"fmt"
 
-	"github.com/harvester/webhook/pkg/types"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	"github.com/harvester/webhook/pkg/server/admission"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
@@ -18,11 +19,11 @@ const (
 )
 
 type CnValidator struct {
-	types.DefaultValidator
+	admission.DefaultValidator
 	vcCache ctlnetworkv1.VlanConfigCache
 }
 
-var _ types.Validator = &CnValidator{}
+var _ admission.Validator = &CnValidator{}
 
 func NewCnValidator(vcCache ctlnetworkv1.VlanConfigCache) *CnValidator {
 	validator := &CnValidator{
@@ -31,7 +32,7 @@ func NewCnValidator(vcCache ctlnetworkv1.VlanConfigCache) *CnValidator {
 	return validator
 }
 
-func (c *CnValidator) Delete(_ *types.Request, oldObj runtime.Object) error {
+func (c *CnValidator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	cn := oldObj.(*networkv1.ClusterNetwork)
 
 	if cn.Name == utils.ManagementClusterNetworkName {
@@ -57,8 +58,8 @@ func (c *CnValidator) Delete(_ *types.Request, oldObj runtime.Object) error {
 	return nil
 }
 
-func (c *CnValidator) Resource() types.Resource {
-	return types.Resource{
+func (c *CnValidator) Resource() admission.Resource {
+	return admission.Resource{
 		Names:      []string{"clusternetworks"},
 		Scope:      admissionregv1.ClusterScope,
 		APIGroup:   networkv1.SchemeGroupVersion.Group,

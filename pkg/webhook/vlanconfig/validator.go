@@ -7,14 +7,15 @@ import (
 	"strings"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
-	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
-	"github.com/harvester/webhook/pkg/types"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+
+	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
+	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
+	"github.com/harvester/webhook/pkg/server/admission"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
@@ -29,7 +30,7 @@ const (
 )
 
 type Validator struct {
-	types.DefaultValidator
+	admission.DefaultValidator
 
 	nadCache ctlcniv1.NetworkAttachmentDefinitionCache
 	vcCache  ctlnetworkv1.VlanConfigCache
@@ -50,9 +51,9 @@ func NewVlanConfigValidator(
 	}
 }
 
-var _ types.Validator = &Validator{}
+var _ admission.Validator = &Validator{}
 
-func (v *Validator) Create(_ *types.Request, newObj runtime.Object) error {
+func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	vc := newObj.(*networkv1.VlanConfig)
 
 	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
@@ -83,7 +84,7 @@ func (v *Validator) Create(_ *types.Request, newObj runtime.Object) error {
 	return nil
 }
 
-func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) error {
+func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) error {
 	oldVc := oldObj.(*networkv1.VlanConfig)
 	newVc := newObj.(*networkv1.VlanConfig)
 
@@ -131,7 +132,7 @@ func getAffectedNodes(oldCn, newCn string, oldNodes, newNodes mapset.Set[string]
 	return oldNodes.Difference(newNodes)
 }
 
-func (v *Validator) Delete(_ *types.Request, oldObj runtime.Object) error {
+func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	vc := oldObj.(*networkv1.VlanConfig)
 
 	nodes, err := getMatchNodes(vc)
@@ -146,8 +147,8 @@ func (v *Validator) Delete(_ *types.Request, oldObj runtime.Object) error {
 	return nil
 }
 
-func (v *Validator) Resource() types.Resource {
-	return types.Resource{
+func (v *Validator) Resource() admission.Resource {
+	return admission.Resource{
 		Names:      []string{"vlanconfigs"},
 		Scope:      admissionregv1.ClusterScope,
 		APIGroup:   networkv1.SchemeGroupVersion.Group,

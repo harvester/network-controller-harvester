@@ -5,23 +5,24 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/harvester/webhook/pkg/types"
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	"github.com/harvester/webhook/pkg/server/admission"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 type Mutator struct {
-	types.DefaultMutator
+	admission.DefaultMutator
 
 	nodeCache ctlcorev1.NodeCache
 }
 
-var _ types.Mutator = &Mutator{}
+var _ admission.Mutator = &Mutator{}
 
 func NewVlanConfigMutator(nodeCache ctlcorev1.NodeCache) *Mutator {
 	return &Mutator{
@@ -29,7 +30,7 @@ func NewVlanConfigMutator(nodeCache ctlcorev1.NodeCache) *Mutator {
 	}
 }
 
-func (m *Mutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, error) {
+func (m *Mutator) Create(_ *admission.Request, newObj runtime.Object) (admission.Patch, error) {
 	vlanConfig := newObj.(*networkv1.VlanConfig)
 
 	annotationPatch, err := m.matchNodes(vlanConfig)
@@ -40,7 +41,7 @@ func (m *Mutator) Create(_ *types.Request, newObj runtime.Object) (types.Patch, 
 	return append(getCnLabelPatch(vlanConfig), annotationPatch...), nil
 }
 
-func (m *Mutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types.Patch, error) {
+func (m *Mutator) Update(_ *admission.Request, oldObj, newObj runtime.Object) (admission.Patch, error) {
 	newVc := newObj.(*networkv1.VlanConfig)
 	oldVc := oldObj.(*networkv1.VlanConfig)
 
@@ -49,7 +50,7 @@ func (m *Mutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types
 		return nil, nil
 	}
 
-	var cnLabelPatch, annotationPatch types.Patch
+	var cnLabelPatch, annotationPatch admission.Patch
 	if newVc.Spec.ClusterNetwork != oldVc.Spec.ClusterNetwork {
 		cnLabelPatch = getCnLabelPatch(newVc)
 	}
@@ -62,7 +63,7 @@ func (m *Mutator) Update(_ *types.Request, oldObj, newObj runtime.Object) (types
 	return append(cnLabelPatch, annotationPatch...), nil
 }
 
-func getCnLabelPatch(v *networkv1.VlanConfig) types.Patch {
+func getCnLabelPatch(v *networkv1.VlanConfig) admission.Patch {
 	if v.Labels != nil && v.Labels[utils.KeyClusterNetworkLabel] == v.Spec.ClusterNetwork {
 		return nil
 	}
@@ -73,15 +74,15 @@ func getCnLabelPatch(v *networkv1.VlanConfig) types.Patch {
 	}
 	labels[utils.KeyClusterNetworkLabel] = v.Spec.ClusterNetwork
 
-	return types.Patch{
-		types.PatchOp{
-			Op:    types.PatchOpReplace,
+	return admission.Patch{
+		admission.PatchOp{
+			Op:    admission.PatchOpReplace,
 			Path:  "/metadata/labels",
 			Value: labels,
 		}}
 }
 
-func (m *Mutator) matchNodes(vc *networkv1.VlanConfig) (types.Patch, error) {
+func (m *Mutator) matchNodes(vc *networkv1.VlanConfig) (admission.Patch, error) {
 	nodes, err := m.nodeCache.List(labels.Set(vc.Spec.NodeSelector).AsSelector())
 	if err != nil {
 		return nil, err
@@ -98,7 +99,7 @@ func (m *Mutator) matchNodes(vc *networkv1.VlanConfig) (types.Patch, error) {
 	return matchedNodesToPatch(vc, matchedNodes)
 }
 
-func matchedNodesToPatch(vc *networkv1.VlanConfig, matchedNodes []string) (types.Patch, error) {
+func matchedNodesToPatch(vc *networkv1.VlanConfig, matchedNodes []string) (admission.Patch, error) {
 	annotations := vc.Annotations
 	if annotations == nil {
 		annotations = map[string]string{}
@@ -110,17 +111,17 @@ func matchedNodesToPatch(vc *networkv1.VlanConfig, matchedNodes []string) (types
 	}
 	annotations[utils.KeyMatchedNodes] = string(nodesBytes)
 
-	return types.Patch{
-		types.PatchOp{
-			Op:    types.PatchOpReplace,
+	return admission.Patch{
+		admission.PatchOp{
+			Op:    admission.PatchOpReplace,
 			Path:  "/metadata/annotations",
 			Value: annotations,
 		},
 	}, nil
 }
 
-func (m *Mutator) Resource() types.Resource {
-	return types.Resource{
+func (m *Mutator) Resource() admission.Resource {
+	return admission.Resource{
 		Names:      []string{"vlanconfigs"},
 		Scope:      admissionregv1.ClusterScope,
 		APIGroup:   networkv1.SchemeGroupVersion.Group,

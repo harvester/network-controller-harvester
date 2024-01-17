@@ -6,11 +6,12 @@ import (
 	"reflect"
 	"strings"
 
-	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
-	"github.com/harvester/webhook/pkg/types"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
+	"github.com/harvester/webhook/pkg/server/admission"
 
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
@@ -23,11 +24,11 @@ const (
 )
 
 type Validator struct {
-	types.DefaultValidator
+	admission.DefaultValidator
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
 }
 
-var _ types.Validator = &Validator{}
+var _ admission.Validator = &Validator{}
 
 func NewNadValidator(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Validator {
 	return &Validator{
@@ -35,7 +36,7 @@ func NewNadValidator(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Valida
 	}
 }
 
-func (v *Validator) Create(_ *types.Request, newObj runtime.Object) error {
+func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	nad := newObj.(*cniv1.NetworkAttachmentDefinition)
 
 	if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute]); err != nil {
@@ -53,7 +54,7 @@ func (v *Validator) Create(_ *types.Request, newObj runtime.Object) error {
 	return nil
 }
 
-func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) error {
+func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) error {
 	newNad := newObj.(*cniv1.NetworkAttachmentDefinition)
 	oldNad := oldObj.(*cniv1.NetworkAttachmentDefinition)
 
@@ -89,7 +90,7 @@ func (v *Validator) Update(_ *types.Request, oldObj, newObj runtime.Object) erro
 	return nil
 }
 
-func (v *Validator) Delete(_ *types.Request, oldObj runtime.Object) error {
+func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	nad := oldObj.(*cniv1.NetworkAttachmentDefinition)
 
 	if err := v.checkVmi(nad); err != nil {
@@ -143,8 +144,8 @@ func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
 	return nil
 }
 
-func (v *Validator) Resource() types.Resource {
-	return types.Resource{
+func (v *Validator) Resource() admission.Resource {
+	return admission.Resource{
 		Names:      []string{"network-attachment-definitions"},
 		Scope:      admissionregv1.NamespacedScope,
 		APIGroup:   cniv1.SchemeGroupVersion.Group,

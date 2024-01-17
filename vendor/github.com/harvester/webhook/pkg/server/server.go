@@ -4,90 +4,106 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"reflect"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/rancher/dynamiclistener"
-	"github.com/rancher/dynamiclistener/server"
+	dls "github.com/rancher/dynamiclistener/server"
+	"github.com/rancher/wrangler/pkg/webhook"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 
 	"github.com/harvester/webhook/pkg/clients"
 	"github.com/harvester/webhook/pkg/config"
-	"github.com/harvester/webhook/pkg/types"
+	"github.com/harvester/webhook/pkg/server/admission"
+	"github.com/harvester/webhook/pkg/server/conversion"
 )
 
 var (
 	port                = int32(443)
 	validationPath      = "/v1/webhook/validation"
 	mutationPath        = "/v1/webhook/mutation"
+	conversionPath      = "/v1/webhook/conversion"
 	failPolicyFail      = v1.Fail
 	failPolicyIgnore    = v1.Ignore
 	sideEffectClassNone = v1.SideEffectClassNone
 )
 
-// AdmissionWebhookServer for listening the AdmissionReview request sent by the apiservers
-type AdmissionWebhookServer struct {
+type server struct {
 	context    context.Context
 	restConfig *rest.Config
 	name       string
 	options    *config.Options
-
-	admitters map[types.AdmissionType][]types.Admitter
+	caBundle   []byte
 }
 
-// New admission webhook server
-func New(ctx context.Context, restConfig *rest.Config, name string, options *config.Options) *AdmissionWebhookServer {
-	return &AdmissionWebhookServer{
-		context:    ctx,
-		restConfig: restConfig,
-		name:       name,
-		options:    options,
+// WebhookServer for listening the AdmissionReview request sent by the apiservers
+type WebhookServer struct {
+	server
 
-		admitters: map[types.AdmissionType][]types.Admitter{
-			types.AdmissionTypeValidation: make([]types.Admitter, 0),
-			types.AdmissionTypeMutation:   make([]types.Admitter, 0),
+	isStarted bool
+
+	validators []admission.Validator
+	mutators   []admission.Mutator
+	converters []conversion.Converter
+}
+
+// NewWebhookServer creates a new server for admitter webhook
+func NewWebhookServer(ctx context.Context, restConfig *rest.Config, name string, options *config.Options) *WebhookServer {
+	return &WebhookServer{
+		server: server{
+			context:    ctx,
+			restConfig: restConfig,
+			name:       name,
+			options:    options,
 		},
 	}
 }
 
-// Start the admission webhook server.
-// The server will apply the validatingwebhookconfiguration and mutatingwebhookconfiguration with cert authentication automatically.
-func (s *AdmissionWebhookServer) Start() error {
+// Start the admitter webhook server.
+// The server will apply the validatingwebhookconfiguration, mutatingwebhookconfiguration
+// and CRD conversion webhook configuration with cert authentication automatically.
+func (s *WebhookServer) Start() error {
 	client, err := clients.New(s.restConfig)
 	if err != nil {
 		return err
 	}
 
-	validationHandler, validationResources, err := s.validation(s.options)
-	if err != nil {
-		return err
-	}
-	mutationHandler, mutationResources, err := s.mutation(s.options)
-	if err != nil {
-		return err
+	router := mux.NewRouter()
+	validatingHandler := s.validatingHandler()
+	if validatingHandler != nil {
+		router.Handle(validationPath, validatingHandler)
 	}
 
-	router := mux.NewRouter()
-	router.Handle(validationPath, validationHandler)
-	router.Handle(mutationPath, mutationHandler)
-	if err := s.listenAndServe(client, router, validationResources, mutationResources); err != nil {
-		logrus.Error(err)
+	mutatingHandler := s.mutatingHandler()
+	if mutatingHandler != nil {
+		router.Handle(mutationPath, mutatingHandler)
+	}
+
+	if len(s.converters) != 0 {
+		router.Handle(conversionPath, conversion.NewHandler(s.converters, client.RESTMapper))
+	}
+
+	if err := s.listenAndServe(client, router); err != nil {
+		logrus.Errorf("listen and serve failed, err: %s", err.Error())
 		return err
 	}
 
 	if err := client.Start(s.context); err != nil {
-		logrus.Error(err)
+		logrus.Errorf("start clients failed, err: %s", err.Error())
 		return err
 	}
+
+	s.isStarted = true
+
 	return nil
 }
 
-func (s *AdmissionWebhookServer) listenAndServe(clients *clients.Clients, handler http.Handler, validationResources []types.Resource, mutationResources []types.Resource) error {
+func (s *WebhookServer) listenAndServe(clients *clients.Clients, handler http.Handler) error {
 	apply := clients.Apply.WithDynamicLookup()
 	caName, certName := s.name+"-ca", s.name+"-tls"
 
@@ -99,65 +115,27 @@ func (s *AdmissionWebhookServer) listenAndServe(clients *clients.Clients, handle
 		// Sleep here to make sure server is listening and all caches are primed
 		time.Sleep(15 * time.Second)
 
-		logrus.Debugf("Building validation rules...")
-		validationRules := s.buildRules(validationResources)
-		logrus.Debugf("Building mutation rules...")
-		mutationRules := s.buildRules(mutationResources)
-
-		validatingWebhookConfiguration := &v1.ValidatingWebhookConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: s.name,
-			},
-			Webhooks: []v1.ValidatingWebhook{
-				{
-					Name: "validator." + s.options.Namespace + "." + s.name,
-					ClientConfig: v1.WebhookClientConfig{
-						Service: &v1.ServiceReference{
-							Namespace: s.options.Namespace,
-							Name:      s.name,
-							Path:      &validationPath,
-							Port:      &port,
-						},
-						CABundle: secret.Data[corev1.TLSCertKey],
-					},
-					Rules:                   validationRules,
-					FailurePolicy:           &failPolicyFail,
-					SideEffects:             &sideEffectClassNone,
-					AdmissionReviewVersions: []string{"v1", "v1beta1"},
-				},
-			},
+		s.caBundle = secret.Data[corev1.TLSCertKey]
+		// configure admitter webhook
+		validatingWebhookConfiguration := s.validatingWebhookConfiguration()
+		mutatingWebhookConfiguration := s.mutatingWebhookConfiguration()
+		if validatingWebhookConfiguration != nil || mutatingWebhookConfiguration != nil {
+			if err := apply.WithOwner(secret).ApplyObjects(validatingWebhookConfiguration, mutatingWebhookConfiguration); err != nil {
+				return nil, fmt.Errorf("configure validatingwebhookconfiguration %s and mutatingwebhookconfiguration %s failed, error: %w",
+					validatingWebhookConfiguration.Name, mutatingWebhookConfiguration.Name, err)
+			}
+		}
+		// configure conversion webhook
+		if err := s.configureCRDConversionWebhook(clients); err != nil {
+			return nil, fmt.Errorf("configure conversion webhook for CRD failed, error: %w", err)
 		}
 
-		mutatingWebhookConfiguration := &v1.MutatingWebhookConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: s.name,
-			},
-			Webhooks: []v1.MutatingWebhook{
-				{
-					Name: "mutator." + s.options.Namespace + "." + s.name,
-					ClientConfig: v1.WebhookClientConfig{
-						Service: &v1.ServiceReference{
-							Namespace: s.options.Namespace,
-							Name:      s.name,
-							Path:      &mutationPath,
-							Port:      &port,
-						},
-						CABundle: secret.Data[corev1.TLSCertKey],
-					},
-					Rules:                   mutationRules,
-					FailurePolicy:           &failPolicyIgnore,
-					SideEffects:             &sideEffectClassNone,
-					AdmissionReviewVersions: []string{"v1", "v1beta1"},
-				},
-			},
-		}
-
-		return secret, apply.WithOwner(secret).ApplyObjects(validatingWebhookConfiguration, mutatingWebhookConfiguration)
+		return secret, nil
 	})
 
 	tlsName := fmt.Sprintf("%s.%s.svc", s.name, s.options.Namespace)
 
-	return server.ListenAndServe(s.context, s.options.HTTPSListenPort, 0, handler, &server.ListenOpts{
+	return dls.ListenAndServe(s.context, s.options.HTTPSListenPort, 0, handler, &dls.ListenOpts{
 		Secrets:       clients.Core.Secret(),
 		CertNamespace: s.options.Namespace,
 		CertName:      certName,
@@ -171,7 +149,167 @@ func (s *AdmissionWebhookServer) listenAndServe(clients *clients.Clients, handle
 	})
 }
 
-func (s *AdmissionWebhookServer) buildRules(resources []types.Resource) []v1.RuleWithOperations {
+func (s *WebhookServer) validatingWebhookConfiguration() *v1.ValidatingWebhookConfiguration {
+	if len(s.validators) == 0 {
+		return nil
+	}
+
+	resources := make([]admission.Resource, 0, len(s.validators))
+	for _, validator := range s.validators {
+		resources = append(resources, validator.Resource())
+	}
+
+	return &v1.ValidatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: s.name,
+		},
+		Webhooks: []v1.ValidatingWebhook{
+			{
+				Name: "validator." + s.options.Namespace + "." + s.name,
+				ClientConfig: v1.WebhookClientConfig{
+					Service: &v1.ServiceReference{
+						Namespace: s.options.Namespace,
+						Name:      s.name,
+						Path:      &validationPath,
+						Port:      &port,
+					},
+					CABundle: s.caBundle,
+				},
+				Rules:                   buildRules(resources),
+				FailurePolicy:           &failPolicyFail,
+				SideEffects:             &sideEffectClassNone,
+				AdmissionReviewVersions: []string{"v1", "v1beta1"},
+			},
+		},
+	}
+}
+
+func (s *WebhookServer) mutatingWebhookConfiguration() *v1.MutatingWebhookConfiguration {
+	if len(s.mutators) == 0 {
+		return nil
+	}
+
+	resources := make([]admission.Resource, 0, len(s.mutators))
+	for _, mutator := range s.mutators {
+		resources = append(resources, mutator.Resource())
+	}
+	return &v1.MutatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: s.name,
+		},
+		Webhooks: []v1.MutatingWebhook{
+			{
+				Name: "mutator." + s.options.Namespace + "." + s.name,
+				ClientConfig: v1.WebhookClientConfig{
+					Service: &v1.ServiceReference{
+						Namespace: s.options.Namespace,
+						Name:      s.name,
+						Path:      &mutationPath,
+						Port:      &port,
+					},
+					CABundle: s.caBundle,
+				},
+				Rules:                   buildRules(resources),
+				FailurePolicy:           &failPolicyIgnore,
+				SideEffects:             &sideEffectClassNone,
+				AdmissionReviewVersions: []string{"v1", "v1beta1"},
+			},
+		},
+	}
+}
+
+func (s *WebhookServer) configureCRDConversionWebhook(clients *clients.Clients) error {
+	crdClient := clients.CRD.CustomResourceDefinition()
+	for _, converter := range s.converters {
+		crd, err := crdClient.Get(converter.GroupResource().String(), metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		// configure conversion webhook
+		crdCopy := crd.DeepCopy()
+		crdCopy.Spec.Conversion.Strategy = apiextensionsv1.WebhookConverter
+		crdCopy.Spec.Conversion.Webhook = &apiextensionsv1.WebhookConversion{
+			ConversionReviewVersions: []string{"v1"},
+			ClientConfig: &apiextensionsv1.WebhookClientConfig{
+				Service: &apiextensionsv1.ServiceReference{
+					Namespace: s.options.Namespace,
+					Name:      s.name,
+					Path:      &conversionPath,
+					Port:      &port,
+				},
+				CABundle: s.caBundle,
+			},
+		}
+		if _, err := crdClient.Update(crdCopy); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// RegisterValidators registers validator to the webhook server.
+// Call it before starting the webhook server.
+func (s *WebhookServer) RegisterValidators(validators ...admission.Validator) error {
+	if s.isStarted {
+		return fmt.Errorf("cannot register validators after the webhook server is started")
+	}
+
+	s.validators = append(s.validators, validators...)
+	return nil
+}
+
+// RegisterMutators registers mutator to the webhook server.
+// Call it before start the webhook server.
+func (s *WebhookServer) RegisterMutators(mutators ...admission.Mutator) error {
+	if s.isStarted {
+		return fmt.Errorf("cannot register mutators after the webhook server is started")
+	}
+
+	s.mutators = append(s.mutators, mutators...)
+	return nil
+}
+
+// RegisterConverters registers converters to the webhook server.
+// Call it before start the webhook server.
+func (s *WebhookServer) RegisterConverters(converters ...conversion.Converter) error {
+	if s.isStarted {
+		return fmt.Errorf("cannot register converters after the webhook server is started")
+	}
+
+	s.converters = append(s.converters, converters...)
+	return nil
+}
+
+func (s *WebhookServer) validatingHandler() http.Handler {
+	if len(s.validators) == 0 {
+		return nil
+	}
+
+	router := webhook.NewRouter()
+	for _, v := range s.validators {
+		h := admission.NewHandler(admission.Validator2Admitter(v), admission.AdmissionTypeValidation, s.options)
+		h.AddToWebhookRouter(router)
+	}
+
+	return router
+}
+
+func (s *WebhookServer) mutatingHandler() http.Handler {
+	if len(s.mutators) == 0 {
+		return nil
+	}
+
+	router := webhook.NewRouter()
+	for _, m := range s.mutators {
+		h := admission.NewHandler(m, admission.AdmissionTypeMutation, s.options)
+		h.AddToWebhookRouter(router)
+	}
+
+	return router
+}
+
+func buildRules(resources []admission.Resource) []v1.RuleWithOperations {
 	rules := make([]v1.RuleWithOperations, 0)
 	for _, rsc := range resources {
 		logrus.Debugf("Add rule for %+v", rsc)
@@ -188,20 +326,4 @@ func (s *AdmissionWebhookServer) buildRules(resources []types.Resource) []v1.Rul
 	}
 
 	return rules
-}
-
-// Register validator or mutator to the admission webhook server.
-// Call it before start the admission webhook server.
-func (s *AdmissionWebhookServer) Register(admitters []types.Admitter) {
-	mutatorType := reflect.TypeOf((*types.ValidatorAdapter)(nil))
-
-	for _, admitter := range admitters {
-		typ := reflect.TypeOf(admitter)
-		logrus.Debugf("admitter type: %s", typ.String())
-		if typ == mutatorType {
-			s.admitters[types.AdmissionTypeValidation] = append(s.admitters[types.AdmissionTypeValidation], admitter)
-			continue
-		}
-		s.admitters[types.AdmissionTypeMutation] = append(s.admitters[types.AdmissionTypeMutation], admitter)
-	}
 }

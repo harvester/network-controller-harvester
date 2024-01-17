@@ -1,4 +1,4 @@
-package types
+package admission
 
 import (
 	"k8s.io/apimachinery/pkg/runtime"

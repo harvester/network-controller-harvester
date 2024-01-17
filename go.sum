@@ -1119,8 +1119,8 @@ github.com/grpc-ecosystem/grpc-gateway v1.16.0/go.mod h1:BDjrQk3hbvj6Nolgz8mAMFb
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.3/go.mod h1:o//XUCC/F+yRGJoPO/VU0GSB0f8Nhgmxx0VIRUvaC0w=
 github.com/harvester/harvester v1.1.2-rc8 h1:kw4OuCdHn2O/vVX5m0ZjUsOFfYZtfXhiOCd8/Ex6VNE=
 github.com/harvester/harvester v1.1.2-rc8/go.mod h1:0u5p38ODTd4L/ZQtgyjoB851Jg8YcGTK29rmqGtA6To=
-github.com/harvester/webhook v0.1.2 h1:fo3PXiDBAEl0Fq2AfOkblMIRihp5Y91wOatP1AERX74=
-github.com/harvester/webhook v0.1.2/go.mod h1:vveGwEGuHUN2lEHbNrZKisiMYBTMakrNd0cLSnRkEGI=
+github.com/harvester/webhook v0.1.3 h1:rPdpOikIFWTRQGidgWaAUoUc/zgv0E5EzjX8MF3Fi8A=
+github.com/harvester/webhook v0.1.3/go.mod h1:vfRPB26WHSPxMF/ONpUVzaEaewTUxpP9qAqu1ZyonR0=
 github.com/hashicorp/consul/api v1.1.0/go.mod h1:VmuI/Lkw1nC05EYQWNKwWGbkg+FbDBtguAZLlVdkD9Q=
 github.com/hashicorp/consul/sdk v0.1.1/go.mod h1:VKf9jXwCTEY1QZP2MOLRhb5i/I/ssyNV1vwHyQBF0x8=
 github.com/hashicorp/errwrap v1.0.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=
@@ -1496,8 +1496,8 @@ github.com/rancher/wrangler v0.6.2-0.20200820173016-2068de651106/go.mod h1:iKqQc
 github.com/rancher/wrangler v0.8.3/go.mod h1:dKEaHNB4izxmPUtpq1Hvr3z3Oh+9k5pCZyFO9sUhlaY=
 github.com/rancher/wrangler v0.8.10/go.mod h1:Lte9WjPtGYxYacIWeiS9qawvu2R4NujFU9xuXWJvc/0=
 github.com/rancher/wrangler v0.8.11-0.20211214201934-f5aa5d9f2e81/go.mod h1:Lte9WjPtGYxYacIWeiS9qawvu2R4NujFU9xuXWJvc/0=
-github.com/rancher/wrangler v1.1.0 h1:1VWistON261oKmCPF5fOPMWb/YwjgEciO9pCw5Z0mzQ=
-github.com/rancher/wrangler v1.1.0/go.mod h1:lQorqAAIMkNWteece1GiuwZTmMqkaVTXL5qjiiPVDxQ=
+github.com/rancher/wrangler v1.1.1 h1:wmqUwqc2M7ADfXnBCJTFkTB5ZREWpD78rnZMzmxwMvM=
+github.com/rancher/wrangler v1.1.1/go.mod h1:ioVbKupzcBOdzsl55MvEDN0R1wdGggj8iNCYGFI5JvM=
 github.com/rancher/wrangler-api v0.6.1-0.20200427172631-a7c2f09b783e/go.mod h1:2lcWR98q8HU3U4mVETnXc8quNG0uXxrt8vKd6cAa/30=
 github.com/remyoudompheng/bigfft v0.0.0-20170806203942-52369c62f446/go.mod h1:uYEyJGbgTkfkS4+E/PavXkNJcbFIpEtjt2B0KDQ5+9M=
 github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=

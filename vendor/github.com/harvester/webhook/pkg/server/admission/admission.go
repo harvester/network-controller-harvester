@@ -1,8 +1,9 @@
-package types
+package admission
 
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/rancher/wrangler/pkg/webhook"
 	"github.com/sirupsen/logrus"
@@ -70,19 +71,19 @@ type Admitter interface {
 	Resource() Resource
 }
 
-// AdmissionHandler is a handler for the admission webhook server
-type AdmissionHandler struct {
+// Handler for the admitter webhook server
+type Handler struct {
 	admitter      Admitter
 	admissionType AdmissionType
 	options       *config.Options
 }
 
-// NewAdmissionHandler returns a new admission handler
-func NewAdmissionHandler(admitter Admitter, admissionType AdmissionType, options *config.Options) *AdmissionHandler {
+// NewHandler returns a new admitter handler
+func NewHandler(admitter Admitter, admissionType AdmissionType, options *config.Options) *Handler {
 	if err := admitter.Resource().Validate(); err != nil {
 		panic(err.Error())
 	}
-	return &AdmissionHandler{
+	return &Handler{
 		admitter:      admitter,
 		admissionType: admissionType,
 		options:       options,
@@ -90,11 +91,11 @@ func NewAdmissionHandler(admitter Admitter, admissionType AdmissionType, options
 }
 
 // Admit function handles the AdmissionReview request
-func (v *AdmissionHandler) Admit(response *webhook.Response, request *webhook.Request) error {
+func (v *Handler) Admit(response *webhook.Response, request *webhook.Request) error {
 	return v.admit(response, NewRequest(request, v.options))
 }
 
-func (v *AdmissionHandler) admit(response *webhook.Response, req *Request) error {
+func (v *Handler) admit(response *webhook.Response, req *Request) error {
 	logrus.Debugf("%s admitting %s", req, v.admissionType)
 
 	oldObj, newObj, err := req.DecodeObjects()
@@ -150,7 +151,7 @@ func (v *AdmissionHandler) admit(response *webhook.Response, req *Request) error
 	return nil
 }
 
-func (v *AdmissionHandler) decodeObjects(request *Request) (oldObj runtime.Object, newObj runtime.Object, err error) {
+func (v *Handler) decodeObjects(request *Request) (oldObj runtime.Object, newObj runtime.Object, err error) {
 	operation := request.Operation
 	if operation == admissionv1.Delete || operation == admissionv1.Update {
 		oldObj, err = request.DecodeOldObject()
@@ -164,4 +165,10 @@ func (v *AdmissionHandler) decodeObjects(request *Request) (oldObj runtime.Objec
 	}
 	newObj, err = request.DecodeObject()
 	return
+}
+
+func (v *Handler) AddToWebhookRouter(router *webhook.Router) {
+	rsc := v.admitter.Resource()
+	kind := reflect.Indirect(reflect.ValueOf(rsc.ObjectType)).Type().Name()
+	router.Kind(kind).Group(rsc.APIGroup).Type(rsc.ObjectType).Handle(v)
 }

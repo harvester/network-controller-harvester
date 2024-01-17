@@ -2,16 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
-	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
-	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
-	ctlkubevirt "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io"
-	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
-	"github.com/harvester/harvester/pkg/indexeres"
-	"github.com/harvester/webhook/pkg/config"
-	"github.com/harvester/webhook/pkg/server"
-	"github.com/harvester/webhook/pkg/types"
 	ctlcore "github.com/rancher/wrangler/pkg/generated/controllers/core"
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	"github.com/rancher/wrangler/pkg/kubeconfig"
@@ -21,6 +14,14 @@ import (
 	"github.com/urfave/cli"
 	"k8s.io/client-go/rest"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+
+	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
+	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
+	ctlkubevirt "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io"
+	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
+	"github.com/harvester/harvester/pkg/indexeres"
+	"github.com/harvester/webhook/pkg/config"
+	"github.com/harvester/webhook/pkg/server"
 
 	ctlnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
@@ -107,15 +108,23 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 		return err
 	}
 
-	webhookServer := server.New(ctx, cfg, name, options)
-	admitters := []types.Admitter{
-		types.Validator2Admitter(clusternetwork.NewCnValidator(c.vcCache)),
-		types.Validator2Admitter(nad.NewNadValidator(c.vmiCache)),
-		types.Validator2Admitter(vlanconfig.NewVlanConfigValidator(c.nadCache, c.vcCache, c.vsCache, c.vmiCache)),
+	webhookServer := server.NewWebhookServer(ctx, cfg, name, options)
+
+	if err := webhookServer.RegisterMutators(
 		nad.NewNadMutator(c.cnCache, c.vcCache),
 		vlanconfig.NewVlanConfigMutator(c.nodeCache),
+	); err != nil {
+		return fmt.Errorf("failed to register mutators: %v", err)
 	}
-	webhookServer.Register(admitters)
+
+	if err := webhookServer.RegisterValidators(
+		clusternetwork.NewCnValidator(c.vcCache),
+		nad.NewNadValidator(c.vmiCache),
+		vlanconfig.NewVlanConfigValidator(c.nadCache, c.vcCache, c.vsCache, c.vmiCache),
+	); err != nil {
+		return fmt.Errorf("failed to register validators: %v", err)
+	}
+
 	if err := webhookServer.Start(); err != nil {
 		return err
 	}
