@@ -67,7 +67,7 @@ require (
 	github.com/deckarep/golang-set/v2 v2.1.0
 	github.com/go-ping/ping v0.0.0-20211014180314-6e2b003bffdd
 	github.com/harvester/harvester v1.1.2-rc8
-	github.com/harvester/webhook v0.1.3
+	github.com/harvester/webhook v0.1.4
 	github.com/insomniacslk/dhcp v0.0.0-20201112113307-4de412bc85d8
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v0.0.0-20200331171230-d50e42f2b669
 	github.com/rancher/lasso v0.0.0-20221227210133-6ea88ca2fbcc
