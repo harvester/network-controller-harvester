@@ -31,10 +31,6 @@ func NewBridge(name string) *Bridge {
 // Ensure bridge
 // set promiscuous mod default
 func (br *Bridge) Ensure() error {
-	if err := disableBridgeNF(); err != nil {
-		return fmt.Errorf("disable net.bridge.bridge-nf-call-iptables failed, error: %w", err)
-	}
-
 	if err := netlink.LinkAdd(br); err != nil && err != syscall.EEXIST {
 		return fmt.Errorf("add iface failed, error: %w, iface: %v", err, br)
 	}
@@ -67,7 +63,7 @@ func (br *Bridge) Ensure() error {
 	return br.Fetch()
 }
 
-func disableBridgeNF() error {
+func DisableBridgeNF() error {
 	return utils.EnsureSysctlValue(bridgeNFCallIptables, "0")
 }
 
