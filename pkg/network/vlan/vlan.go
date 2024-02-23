@@ -108,6 +108,16 @@ func (v *Vlan) AddLocalArea(la *LocalArea) error {
 		if err := v.uplink.AddBridgeVlan(la.Vid); err != nil {
 			return fmt.Errorf("add bridge vlanconfig %d failed, error: %w", la.Vid, err)
 		}
+		br, err := netlink.LinkByName(v.bridge.Name)
+		if err != nil {
+			return fmt.Errorf("bridge %s not found error: %w", v.bridge.Name, err)
+		}
+		brlnk := iface.NewLink(br)
+		if brlnk.IsBridgeVlanPVID(la.Vid) {
+			if err := netlink.BridgeVlanAdd(brlnk, la.Vid, false, true, true, false); err != nil {
+				return fmt.Errorf("add iface untagged vlan failed, error: %v, link: %s, vid: %d", err, br.Attrs().Name, la.Vid)
+			}
+		}
 	}
 
 	if err := iface.EnsureRouteViaGateway(la.Cidr); err != nil {
@@ -125,6 +135,16 @@ func (v *Vlan) RemoveLocalArea(la *LocalArea) error {
 	if v.name != utils.ManagementClusterNetworkName {
 		if err := v.uplink.DelBridgeVlan(la.Vid); err != nil {
 			return fmt.Errorf("remove bridge vlanconfig %d failed, error: %w", la.Vid, err)
+		}
+		br, err := netlink.LinkByName(v.bridge.Name)
+		if err != nil {
+			return fmt.Errorf("bridge %s not found error", v.bridge.Name)
+		}
+		brlnk := iface.NewLink(br)
+		if brlnk.IsBridgeVlanPVID(la.Vid) {
+			if err := netlink.BridgeVlanAdd(brlnk, la.Vid, false, false, true, false); err != nil {
+				return fmt.Errorf("add iface vlan failed, error: %v, link: %s, vid: %d", err, br.Attrs().Name, la.Vid)
+			}
 		}
 	}
 
