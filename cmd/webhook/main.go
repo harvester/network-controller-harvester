@@ -89,7 +89,7 @@ func main() {
 
 	app := cli.NewApp()
 	app.Flags = flags
-	app.Action = func(c *cli.Context) {
+	app.Action = func(_ *cli.Context) {
 		setLogLevel(logLevel)
 		if err := run(ctx, cfg, &options); err != nil {
 			logrus.Fatalf("run webhook server failed: %v", err)
