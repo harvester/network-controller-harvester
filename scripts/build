@@ -6,7 +6,9 @@ source $(dirname $0)/version
 cd $(dirname $0)/..
 
 mkdir -p bin
-[ "$(uname)" != "Darwin" ] && LINKFLAGS="-extldflags -static -s"
-CGO_ENABLED=0 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/harvester-network-controller cmd/network-controller/main.go
-CGO_ENABLED=0 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/harvester-network-helper cmd/network-helper/main.go
-CGO_ENABLED=0 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/harvester-network-webhook cmd/webhook/main.go
+
+for arch in "amd64" "arm64"; do
+    GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/harvester-network-controller-"$arch" cmd/network-controller/main.go
+    GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/harvester-network-helper-"$arch" cmd/network-helper/main.go
+    GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/harvester-network-webhook-"$arch" cmd/webhook/main.go
+done

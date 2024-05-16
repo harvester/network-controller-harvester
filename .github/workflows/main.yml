@@ -1,0 +1,14 @@
+name: Main Build and Publish
+
+on:
+  push:
+    branches:
+    - master
+
+jobs:
+  build-main:
+    uses: ./.github/workflows/template-build.yml
+    with:
+      release-tag-name: ${{ github.ref_name }}-head
+      push: true
+    secrets: inherit
