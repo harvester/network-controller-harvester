@@ -3,7 +3,6 @@ set -e
 
 source $(dirname $0)/version
 
-ARCH=${ARCH:-"amd64"}
 SUFFIX="-${ARCH}"
 
 cd $(dirname $0)/..
@@ -16,9 +15,9 @@ if echo $TAG | grep -q dirty; then
 fi
 
 mkdir -p dist/artifacts
-cp bin/harvester-network-controller dist/artifacts/harvester-network-controller${SUFFIX}
-cp bin/harvester-network-helper dist/artifacts/harvester-network-helper${SUFFIX}
-cp bin/harvester-network-webhook dist/artifacts/harvester-network-webhook${SUFFIX}
+cp bin/harvester-network-controller${SUFFIX} dist/artifacts/harvester-network-controller${SUFFIX}
+cp bin/harvester-network-helper${SUFFIX} dist/artifacts/harvester-network-helper${SUFFIX}
+cp bin/harvester-network-webhook${SUFFIX} dist/artifacts/harvester-network-webhook${SUFFIX}
 
 CONTROLLER_IMAGE=${REPO}/harvester-network-controller:${TAG}
 HELPER_IMAGE=${REPO}/harvester-network-helper:${TAG}
@@ -30,11 +29,11 @@ if [ -e ${DOCKERFILE}.${ARCH} ]; then
     DOCKERFILE=${DOCKERFILE}.${ARCH}
 fi
 
-docker build -f ${DOCKERFILE_CONTROLLER} -t ${CONTROLLER_IMAGE} .
+buildx build --load -f ${DOCKERFILE_CONTROLLER} -t ${CONTROLLER_IMAGE} .
 echo Built ${CONTROLLER_IMAGE}
 
-docker build -f ${DOCKERFILE_HELPER} -t ${HELPER_IMAGE} .
+buildx build --load -f ${DOCKERFILE_HELPER} -t ${HELPER_IMAGE} .
 echo Built ${HELPER_IMAGE}
 
-docker build -f ${DOCKERFILE_WEBHOOK} -t ${WEBHOOK_IMAGE} .
+buildx build --load -f ${DOCKERFILE_WEBHOOK} -t ${WEBHOOK_IMAGE} .
 echo Built ${WEBHOOK_IMAGE}
