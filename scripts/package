@@ -14,11 +14,6 @@ if echo $TAG | grep -q dirty; then
     TAG=dev
 fi
 
-mkdir -p dist/artifacts
-cp bin/harvester-network-controller${SUFFIX} dist/artifacts/harvester-network-controller${SUFFIX}
-cp bin/harvester-network-helper${SUFFIX} dist/artifacts/harvester-network-helper${SUFFIX}
-cp bin/harvester-network-webhook${SUFFIX} dist/artifacts/harvester-network-webhook${SUFFIX}
-
 CONTROLLER_IMAGE=${REPO}/harvester-network-controller:${TAG}
 HELPER_IMAGE=${REPO}/harvester-network-helper:${TAG}
 WEBHOOK_IMAGE=${REPO}/harvester-network-webhook:${TAG}
