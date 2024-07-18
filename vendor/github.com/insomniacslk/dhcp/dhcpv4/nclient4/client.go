@@ -352,7 +352,7 @@ func WithLogger(newLogger Logger) ClientOpt {
 func WithUnicast(srcAddr *net.UDPAddr) ClientOpt {
 	return func(c *Client) (err error) {
 		if srcAddr == nil {
-			srcAddr = &net.UDPAddr{Port: ServerPort}
+			srcAddr = &net.UDPAddr{Port: ClientPort}
 		}
 		c.conn, err = net.ListenUDP("udp4", srcAddr)
 		if err != nil {
@@ -414,6 +414,25 @@ func IsMessageType(t dhcpv4.MessageType, tt ...dhcpv4.MessageType) Matcher {
 	}
 }
 
+// IsCorrectServer returns a matcher that checks for the correct ServerAddress.
+func IsCorrectServer(s net.IP) Matcher {
+	return func(p *dhcpv4.DHCPv4) bool {
+		return p.ServerIdentifier().Equal(s)
+	}
+}
+
+// IsAll returns a matcher that checks for all given matchers to be true.
+func IsAll(ms ...Matcher) Matcher {
+	return func(p *dhcpv4.DHCPv4) bool {
+		for _, m := range ms {
+			if !m(p) {
+				return false
+			}
+		}
+		return true
+	}
+}
+
 // RemoteAddr is the default DHCP server address this client sends messages to.
 func (c *Client) RemoteAddr() *net.UDPAddr {
 	// Make a copy so the caller cannot modify the address once the client
@@ -459,6 +478,25 @@ func (c *Client) Request(ctx context.Context, modifiers ...dhcpv4.Modifier) (lea
 	return c.RequestFromOffer(ctx, offer, modifiers...)
 }
 
+// Inform sends an INFORM request using the given local IP.
+// Returns the ACK response from the server on success.
+func (c *Client) Inform(ctx context.Context, localIP net.IP, modifiers ...dhcpv4.Modifier) (*dhcpv4.DHCPv4, error) {
+	request, err := dhcpv4.NewInform(c.ifaceHWAddr, localIP, modifiers...)
+	if err != nil {
+		return nil, err
+	}
+
+	// DHCP clients must not fill in the server identifier in an INFORM request as per RFC 2131 Section 4.4.1 Table 5,
+	// however, they may still unicast the request to the target server if the address is known (c.serverAddr), as per
+	// Section 4.4.3. The server must then respond with an ACK, as per Section 4.3.5.
+	response, err := c.SendAndRead(ctx, c.serverAddr, request, IsMessageType(dhcpv4.MessageTypeAck))
+	if err != nil {
+		return nil, fmt.Errorf("got an error while processing the request: %w", err)
+	}
+
+	return response, nil
+}
+
 // ErrNak is returned if a DHCP server rejected our Request.
 type ErrNak struct {
 	Offer *dhcpv4.DHCPv4
@@ -474,6 +512,7 @@ func (e *ErrNak) Error() string {
 }
 
 // RequestFromOffer sends a Request message and waits for an response.
+// It assumes the SELECTING state by default, see Section 4.3.2 in RFC 2131 for more details.
 func (c *Client) RequestFromOffer(ctx context.Context, offer *dhcpv4.DHCPv4, modifiers ...dhcpv4.Modifier) (*Lease, error) {
 	// TODO(chrisko): should this be unicast to the server?
 	request, err := dhcpv4.NewRequestFromOffer(offer, dhcpv4.PrependModifiers(modifiers,
@@ -482,7 +521,13 @@ func (c *Client) RequestFromOffer(ctx context.Context, offer *dhcpv4.DHCPv4, mod
 		return nil, fmt.Errorf("unable to create a request: %w", err)
 	}
 
-	response, err := c.SendAndRead(ctx, c.serverAddr, request, IsMessageType(dhcpv4.MessageTypeAck, dhcpv4.MessageTypeNak))
+	// Servers are supposed to only respond to Requests containing their server identifier,
+	// but sometimes non-compliant servers respond anyway.
+	// Clients are not required to validate this field, but servers are required to
+	// include the server identifier in their Offer per RFC 2131 Section 4.3.1 Table 3.
+	response, err := c.SendAndRead(ctx, c.serverAddr, request, IsAll(
+		IsCorrectServer(offer.ServerIdentifier()),
+		IsMessageType(dhcpv4.MessageTypeAck, dhcpv4.MessageTypeNak)))
 	if err != nil {
 		return nil, fmt.Errorf("got an error while processing the request: %w", err)
 	}
