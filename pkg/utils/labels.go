@@ -20,4 +20,6 @@ const (
 
 	ValueTrue  = "true"
 	ValueFalse = "false"
+
+	HarvesterWitnessNodeLabelKey = "node-role.harvesterhci.io/witness"
 )
