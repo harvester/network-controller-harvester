@@ -10,6 +10,7 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
@@ -82,7 +83,13 @@ func getCnLabelPatch(v *networkv1.VlanConfig) admission.Patch {
 }
 
 func (m *Mutator) matchNodes(vc *networkv1.VlanConfig) (admission.Patch, error) {
-	nodes, err := m.nodeCache.List(labels.Set(vc.Spec.NodeSelector).AsSelector())
+	selector := labels.Set(vc.Spec.NodeSelector).AsSelector()
+	witnessFilter, err := labels.NewRequirement(utils.HarvesterWitnessNodeLabelKey, selection.DoesNotExist, nil)
+	if err != nil {
+		return nil, err
+	}
+	selector = selector.Add(*witnessFilter)
+	nodes, err := m.nodeCache.List(selector)
 	if err != nil {
 		return nil, err
 	}
