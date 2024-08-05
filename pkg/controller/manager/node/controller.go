@@ -61,6 +61,11 @@ func (h Handler) OnChange(_ string, node *corev1.Node) (*corev1.Node, error) {
 		return nil, err
 	}
 
+	// skip witness node because we do not allow vlan config on witness node
+	if node.Labels != nil && node.Labels[utils.HarvesterWitnessNodeLabelKey] == "true" {
+		return nil, nil
+	}
+
 	vcs, err := h.vcCache.List(labels.Everything())
 	if err != nil {
 		return nil, err
