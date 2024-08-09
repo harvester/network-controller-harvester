@@ -10,10 +10,12 @@ import (
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
+	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 const (
+	createErr = "could not create cluster network %s because %w"
 	deleteErr = "could not delete cluster network %s because %w"
 )
 
@@ -29,6 +31,19 @@ func NewCnValidator(vcCache ctlnetworkv1.VlanConfigCache) *CnValidator {
 		vcCache: vcCache,
 	}
 	return validator
+}
+
+func (c *CnValidator) Create(_ *admission.Request, newObj runtime.Object) error {
+	cn := newObj.(*networkv1.ClusterNetwork)
+
+	maxClusterNetworkNameLen := iface.MaxDeviceNameLen - len(iface.BridgeSuffix)
+
+	if len(cn.Name) > maxClusterNetworkNameLen {
+		return fmt.Errorf(createErr, cn.Name, fmt.Errorf("the length of the clusterNetwork value is "+
+			"more than %d", maxClusterNetworkNameLen))
+	}
+
+	return nil
 }
 
 func (c *CnValidator) Delete(_ *admission.Request, oldObj runtime.Object) error {
@@ -65,6 +80,7 @@ func (c *CnValidator) Resource() admission.Resource {
 		APIVersion: networkv1.SchemeGroupVersion.Version,
 		ObjectType: &networkv1.ClusterNetwork{},
 		OperationTypes: []admissionregv1.OperationType{
+			admissionregv1.Create,
 			admissionregv1.Delete,
 		},
 	}
