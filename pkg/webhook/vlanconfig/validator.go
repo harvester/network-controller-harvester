@@ -23,9 +23,10 @@ import (
 )
 
 const (
-	createErr = "could not create vlanConfig %s because %w"
-	updateErr = "could not update vlanConfig %s because %w"
-	deleteErr = "could not delete vlanConfig %s because %w"
+	createErr                           = "could not create vlanConfig %s because %w"
+	updateErr                           = "could not update vlanConfig %s because %w"
+	deleteErr                           = "could not delete vlanConfig %s because %w"
+	StorageNetworkNetAttachDefNamespace = "harvester-system"
 )
 
 type Validator struct {
@@ -141,6 +142,17 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 
 	if err := v.checkVmi(vc, nodes); err != nil {
 		return fmt.Errorf(deleteErr, vc.Name, err)
+	}
+
+	nads, err := v.nadCache.List(StorageNetworkNetAttachDefNamespace, labels.Set(map[string]string{
+		utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork,
+	}).AsSelector())
+	if err != nil {
+		return fmt.Errorf(deleteErr, vc.Name, err)
+	}
+
+	if len(nads) > 0 {
+		return fmt.Errorf(deleteErr, vc.Name, fmt.Errorf("storage network is still attached"))
 	}
 
 	return nil
