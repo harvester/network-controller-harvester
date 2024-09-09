@@ -117,7 +117,7 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 	}
 
 	if err := webhookServer.RegisterValidators(
-		clusternetwork.NewCnValidator(c.vcCache),
+		clusternetwork.NewCnValidator(c.vcCache, c.nadCache),
 		nad.NewNadValidator(c.vmiCache),
 		vlanconfig.NewVlanConfigValidator(c.nadCache, c.vcCache, c.vsCache, c.vmiCache),
 	); err != nil {
