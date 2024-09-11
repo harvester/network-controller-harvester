@@ -12,11 +12,13 @@ import (
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	ctlbatchv1 "github.com/rancher/wrangler/pkg/generated/controllers/batch/v1"
+	"github.com/tidwall/sjson"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
 	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
@@ -89,8 +91,63 @@ func Register(ctx context.Context, management *config.Management) error {
 
 	nads.OnChange(ctx, ControllerName, handler.OnChange)
 	nads.OnRemove(ctx, ControllerName, handler.OnRemove)
-
+	cns.OnChange(ctx, ControllerName, handler.OnCNChange)
 	return nil
+}
+
+func (h Handler) OnCNChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.ClusterNetwork, error) {
+	if cn == nil || cn.DeletionTimestamp != nil {
+		return nil, nil
+	}
+
+	// MTU label is not set
+	curLbMTU := cn.Labels[utils.KeyUplinkMTU]
+	if curLbMTU == "" {
+		return nil, nil
+	}
+	MTU, err := strconv.Atoi(curLbMTU)
+	if err != nil {
+		return nil, fmt.Errorf("cluster network %v has an invalid label %v/%v, error %w", cn.Name, utils.KeyUplinkMTU, curLbMTU, err)
+	}
+	// skip
+	if MTU <= 0 {
+		klog.Infof("cluster network %v has an unexpected label %v/%v, skip to sync with nad", cn.Name, utils.KeyUplinkMTU, curLbMTU)
+		return nil, nil
+	}
+
+	nads, err := h.nadCache.List("", labels.Set(map[string]string{
+		utils.KeyClusterNetworkLabel: cn.Name,
+	}).AsSelector())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list cluster network %v related nads, error %w", cn.Name, err)
+	}
+
+	// sync with the possible new MTU
+	for _, nad := range nads {
+		netConf := &utils.NetConf{}
+		if err := json.Unmarshal([]byte(nad.Spec.Config), netConf); err != nil {
+			return nil, fmt.Errorf("failed to Unmarshal nad %v config %v error %w", nad.Name, nad.Spec.Config, err)
+		}
+
+		// default value or equal
+		if (MTU == utils.MTUDefault && netConf.MTU == 0) || MTU == netConf.MTU {
+			continue
+		}
+
+		// Don't modify the unmarshalled structure and marshal it again because some fields may be lost during unmarshalling.
+		newConfig, err := sjson.Set(nad.Spec.Config, "mtu", MTU)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set nad %v with new MTU %v error %w", nad.Name, MTU, err)
+		}
+		nadCopy := nad.DeepCopy()
+		nadCopy.Spec.Config = newConfig
+		if _, err := h.nadClient.Update(nadCopy); err != nil {
+			return nil, err
+		}
+		klog.Infof("sync cluster network %v label mtu %v/%v to nad %v", cn.Name, utils.KeyUplinkMTU, curLbMTU, nad.Name)
+	}
+
+	return nil, nil
 }
 
 func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cniv1.NetworkAttachmentDefinition, error) {

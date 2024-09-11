@@ -50,7 +50,7 @@ func (h Handler) EnsureClusterNetwork(_ string, vc *networkv1.VlanConfig) (*netw
 
 	klog.Infof("vlan config %s has been changed, spec: %+v", vc.Name, vc.Spec)
 
-	if err := h.ensureClusterNetwork(vc.Spec.ClusterNetwork); err != nil {
+	if err := h.ensureClusterNetwork(vc); err != nil {
 		return nil, err
 	}
 	return vc, nil
@@ -83,16 +83,47 @@ func (h Handler) SetClusterNetworkUnready(_ string, vs *networkv1.VlanStatus) (*
 	return vs, nil
 }
 
-func (h Handler) ensureClusterNetwork(name string) error {
-	if _, err := h.cnCache.Get(name); err != nil && !apierrors.IsNotFound(err) {
+func (h Handler) ensureClusterNetwork(vc *networkv1.VlanConfig) error {
+	name := vc.Spec.ClusterNetwork
+	curCn, err := h.cnCache.Get(name)
+	if err != nil && !apierrors.IsNotFound(err) {
 		return err
-	} else if err == nil {
+	}
+
+	MTU := utils.MTUDefault
+	if vc.Spec.Uplink.LinkAttrs.MTU != 0 && MTU != vc.Spec.Uplink.LinkAttrs.MTU {
+		MTU = vc.Spec.Uplink.LinkAttrs.MTU
+	}
+	targetLbMTU := fmt.Sprintf("%v", MTU)
+
+	// check if the configured VC MTU value is updated to ClusterNetwork label
+	if curCn != nil {
+		curLbMTU := curCn.Labels[utils.KeyUplinkMTU]
+		if curLbMTU == targetLbMTU {
+			return nil
+		}
+		// update the new MTU
+		cnCopy := curCn.DeepCopy()
+		if cnCopy.Labels == nil {
+			cnCopy.Labels = make(map[string]string, 2)
+		}
+		cnCopy.Labels[utils.KeyUplinkMTU] = targetLbMTU
+		cnCopy.Labels[utils.KeyMTUSourceVlanConfig] = vc.Name
+		if _, err := h.cnClient.Update(cnCopy); err != nil {
+			return fmt.Errorf("failed to update cluster network %s label %s with MTU %s error %w", name, utils.KeyUplinkMTU, targetLbMTU, err)
+		}
 		return nil
 	}
 
 	// if cn is not existing
 	cn := &networkv1.ClusterNetwork{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Labels: map[string]string{
+				utils.KeyUplinkMTU:           targetLbMTU,
+				utils.KeyMTUSourceVlanConfig: vc.Name,
+			},
+		},
 	}
 	if _, err := h.cnClient.Create(cn); err != nil {
 		return err

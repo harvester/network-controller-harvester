@@ -247,8 +247,13 @@ func (v *Validator) validateMTU(current *networkv1.VlanConfig) error {
 			continue
 		}
 		if current.Spec.Uplink.LinkAttrs.MTU != vc.Spec.Uplink.LinkAttrs.MTU {
-			return fmt.Errorf("the MTU is different from network config %s", vc.Name)
+			return fmt.Errorf("the MTU %v is different from network config %s %v", current.Spec.Uplink.LinkAttrs.MTU, vc.Name, vc.Spec.Uplink.LinkAttrs.MTU)
 		}
+	}
+
+	// MTU can be 0, it means user does not input it and the default value is used
+	if (current.Spec.Uplink.LinkAttrs.MTU < utils.MTUMin && current.Spec.Uplink.LinkAttrs.MTU != 0) || current.Spec.Uplink.LinkAttrs.MTU > utils.MTUMax {
+		return fmt.Errorf("the MTU %v is out of range [0, %v..%v]", current.Spec.Uplink.LinkAttrs.MTU, utils.MTUMin, utils.MTUMax)
 	}
 
 	return nil
