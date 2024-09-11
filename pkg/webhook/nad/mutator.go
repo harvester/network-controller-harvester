@@ -39,7 +39,7 @@ func NewNadMutator(cnCache ctlnetworkv1.ClusterNetworkCache,
 func (m *Mutator) Create(_ *admission.Request, newObj runtime.Object) (admission.Patch, error) {
 	nad := newObj.(*cniv1.NetworkAttachmentDefinition)
 
-	patch, err := m.patchMTU(nad.Spec.Config)
+	patch, err := m.patchMTU(nad)
 	if err != nil {
 		return nil, fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
@@ -182,24 +182,51 @@ func tagRouteOutdated(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *
 	}, nil
 }
 
-func (m *Mutator) patchMTU(config string) (admission.Patch, error) {
+func (m *Mutator) patchMTU(nad *cniv1.NetworkAttachmentDefinition) (admission.Patch, error) {
+	config := nad.Spec.Config
 	netConf := &utils.NetConf{}
 	if err := json.Unmarshal([]byte(config), netConf); err != nil {
 		return nil, err
 	}
 	clusterNetwork := netConf.BrName[:len(netConf.BrName)-len(iface.BridgeSuffix)]
-	vcs, err := m.vcCache.List(k8slabels.Set(map[string]string{
-		utils.KeyClusterNetworkLabel: clusterNetwork,
-	}).AsSelector())
+	cn, err := m.cnCache.Get(clusterNetwork)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(vcs) == 0 || vcs[0].Spec.Uplink.LinkAttrs.MTU == 0 || vcs[0].Spec.Uplink.LinkAttrs.MTU == netConf.MTU {
+	targetMTU := utils.DefaultMTU
+	getMtu := false
+
+	// get MTU from clusternetwork
+	if lbMTU := cn.Labels[utils.KeyUplinkMTU]; lbMTU != "" {
+		if mtu, err := utils.GetMTUFromLabel(lbMTU); err == nil {
+			targetMTU = mtu
+			getMtu = true
+		}
+	}
+
+	// get MTU value from vlanconfig
+	if !getMtu {
+		vcs, err := m.vcCache.List(k8slabels.Set(map[string]string{
+			utils.KeyClusterNetworkLabel: clusterNetwork,
+		}).AsSelector())
+		if err != nil {
+			return nil, err
+		}
+
+		// if there is no vlanconfig, use default
+		if len(vcs) != 0 && utils.IsValidMTU(vcs[0].Spec.Uplink.LinkAttrs.MTU) {
+			targetMTU = vcs[0].Spec.Uplink.LinkAttrs.MTU
+		}
+	}
+
+	if utils.AreEqualMTUs(targetMTU, netConf.MTU) {
 		return nil, nil
 	}
+
+	klog.Infof("nad %s/%s MTU is patched from %v to %v", nad.Namespace, nad.Name, netConf.MTU, targetMTU)
 	// Don't modify the unmarshalled structure and marshal it again because some fields may be lost during unmarshalling.
-	newConfig, err := sjson.Set(config, "mtu", vcs[0].Spec.Uplink.LinkAttrs.MTU)
+	newConfig, err := sjson.Set(config, "mtu", targetMTU)
 	if err != nil {
 		return nil, fmt.Errorf("set mtu failed, error: %w", err)
 	}

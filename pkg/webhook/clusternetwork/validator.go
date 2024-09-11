@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	createErr = "could not create cluster network %s because %w"
-	deleteErr = "could not delete cluster network %s because %w"
+	createErr = "can't create cluster network %s because %w"
+	deleteErr = "can't delete cluster network %s because %w"
 )
 
 type CnValidator struct {
@@ -39,8 +39,7 @@ func (c *CnValidator) Create(_ *admission.Request, newObj runtime.Object) error 
 	maxClusterNetworkNameLen := iface.MaxDeviceNameLen - len(iface.BridgeSuffix)
 
 	if len(cn.Name) > maxClusterNetworkNameLen {
-		return fmt.Errorf(createErr, cn.Name, fmt.Errorf("the length of the clusterNetwork value is "+
-			"more than %d", maxClusterNetworkNameLen))
+		return fmt.Errorf(createErr, cn.Name, fmt.Errorf("the length of name is more than %d", maxClusterNetworkNameLen))
 	}
 
 	return nil
@@ -50,7 +49,7 @@ func (c *CnValidator) Delete(_ *admission.Request, oldObj runtime.Object) error 
 	cn := oldObj.(*networkv1.ClusterNetwork)
 
 	if cn.Name == utils.ManagementClusterNetworkName {
-		return fmt.Errorf(deleteErr, cn.Name, fmt.Errorf("it's not allowed"))
+		return fmt.Errorf(deleteErr, cn.Name, fmt.Errorf("it is not allowed"))
 	}
 
 	vcs, err := c.vcCache.List(labels.Set{
@@ -65,8 +64,7 @@ func (c *CnValidator) Delete(_ *admission.Request, oldObj runtime.Object) error 
 		for _, vc := range vcs {
 			vcNameList = append(vcNameList, vc.Name)
 		}
-		return fmt.Errorf(deleteErr, cn.Name, fmt.Errorf("vlanconfig(s) %v under this clusternetwork is/are "+
-			"still exist(s)", vcNameList))
+		return fmt.Errorf(deleteErr, cn.Name, fmt.Errorf("vlanconfig(s) %v under this clusternetwork are still existing", vcNameList))
 	}
 
 	return nil

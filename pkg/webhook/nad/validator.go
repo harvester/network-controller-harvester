@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	createErr = "could not create nad %s/%s because %w"
-	updateErr = "could not update nad %s/%s because %w"
-	deleteErr = "could not delete nad %s/%s because %w"
+	createErr = "can't create nad %s/%s because %w"
+	updateErr = "can't update nad %s/%s because %w"
+	deleteErr = "can't delete nad %s/%s because %w"
 )
 
 type Validator struct {
@@ -111,7 +111,7 @@ func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf) error {
 
 	lenOfBrName, lenOfBridgeSuffix := len(bridgeConf.BrName), len(iface.BridgeSuffix)
 	if lenOfBrName > iface.MaxDeviceNameLen {
-		return fmt.Errorf("the length of the brName could not be more than 15")
+		return fmt.Errorf("the length of the brName can't be more than %v", iface.MaxDeviceNameLen)
 	}
 	if lenOfBrName <= lenOfBridgeSuffix || bridgeConf.BrName[lenOfBrName-lenOfBridgeSuffix:] != iface.BridgeSuffix {
 		return fmt.Errorf("the suffix of the brName should be -br")
