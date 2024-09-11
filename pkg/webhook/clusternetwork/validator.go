@@ -3,7 +3,6 @@ package clusternetwork
 import (
 	"fmt"
 
-	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	"github.com/harvester/webhook/pkg/server/admission"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -16,23 +15,20 @@ import (
 )
 
 const (
-	createErr                           = "could not create cluster network %s because %w"
-	deleteErr                           = "could not delete cluster network %s because %w"
-	StorageNetworkNetAttachDefNamespace = "harvester-system"
+	createErr = "could not create cluster network %s because %w"
+	deleteErr = "could not delete cluster network %s because %w"
 )
 
 type CnValidator struct {
 	admission.DefaultValidator
-	vcCache  ctlnetworkv1.VlanConfigCache
-	nadCache ctlcniv1.NetworkAttachmentDefinitionCache
+	vcCache ctlnetworkv1.VlanConfigCache
 }
 
 var _ admission.Validator = &CnValidator{}
 
-func NewCnValidator(vcCache ctlnetworkv1.VlanConfigCache, nadCache ctlcniv1.NetworkAttachmentDefinitionCache) *CnValidator {
+func NewCnValidator(vcCache ctlnetworkv1.VlanConfigCache) *CnValidator {
 	validator := &CnValidator{
-		vcCache:  vcCache,
-		nadCache: nadCache,
+		vcCache: vcCache,
 	}
 	return validator
 }
@@ -55,17 +51,6 @@ func (c *CnValidator) Delete(_ *admission.Request, oldObj runtime.Object) error 
 
 	if cn.Name == utils.ManagementClusterNetworkName {
 		return fmt.Errorf(deleteErr, cn.Name, fmt.Errorf("it's not allowed"))
-	}
-
-	nads, err := c.nadCache.List(StorageNetworkNetAttachDefNamespace, labels.Set(map[string]string{
-		utils.KeyClusterNetworkLabel: cn.Name,
-	}).AsSelector())
-	if err != nil {
-		return fmt.Errorf(deleteErr, cn.Name, err)
-	}
-
-	if len(nads) > 0 {
-		return fmt.Errorf(deleteErr, cn.Name, fmt.Errorf("storage network is still attached"))
 	}
 
 	vcs, err := c.vcCache.List(labels.Set{
