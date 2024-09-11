@@ -16,6 +16,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
+	"github.com/harvester/harvester/pkg/util"
+
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
@@ -23,10 +25,10 @@ import (
 )
 
 const (
-	createErr                           = "could not create vlanConfig %s because %w"
-	updateErr                           = "could not update vlanConfig %s because %w"
-	deleteErr                           = "could not delete vlanConfig %s because %w"
-	StorageNetworkNetAttachDefNamespace = "harvester-system"
+	createErr                = "could not create vlanConfig %s because %w"
+	updateErr                = "could not update vlanConfig %s because %w"
+	deleteErr                = "could not delete vlanConfig %s because %w"
+	StorageNetworkAnnotation = "storage-network.settings.harvesterhci.io"
 )
 
 type Validator struct {
@@ -144,7 +146,7 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 		return fmt.Errorf(deleteErr, vc.Name, err)
 	}
 
-	nads, err := v.nadCache.List(StorageNetworkNetAttachDefNamespace, labels.Set(map[string]string{
+	nads, err := v.nadCache.List(util.HarvesterSystemNamespaceName, labels.Set(map[string]string{
 		utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork,
 	}).AsSelector())
 	if err != nil {
@@ -152,7 +154,11 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	}
 
 	if len(nads) > 0 {
-		return fmt.Errorf(deleteErr, vc.Name, fmt.Errorf("storage network is still attached"))
+		for _, nad := range nads {
+			if nad.DeletionTimestamp == nil && nad.Annotations[StorageNetworkAnnotation] == "true" {
+				return fmt.Errorf(deleteErr, vc.Name, fmt.Errorf(`storage network nad %s is still attached`, nad.Name))
+			}
+		}
 	}
 
 	return nil
