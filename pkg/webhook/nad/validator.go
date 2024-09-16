@@ -11,6 +11,7 @@ import (
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
@@ -132,6 +133,11 @@ func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
 		return err
 	}
 
+	return v.warnVmi(nad, vmis)
+}
+
+// for convenicen of test code
+func (v *Validator) warnVmi(_ *cniv1.NetworkAttachmentDefinition, vmis []*kubevirtv1.VirtualMachineInstance) error {
 	if len(vmis) > 0 {
 		vmiNameList := make([]string, 0, len(vmis))
 		for _, vmi := range vmis {
@@ -139,7 +145,6 @@ func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
 		}
 		return fmt.Errorf("it's still used by VM(s) %s which must be stopped at first", strings.Join(vmiNameList, ", "))
 	}
-
 	return nil
 }
 

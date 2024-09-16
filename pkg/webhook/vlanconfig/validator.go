@@ -34,6 +34,7 @@ type Validator struct {
 	nadCache ctlcniv1.NetworkAttachmentDefinitionCache
 	vcCache  ctlnetworkv1.VlanConfigCache
 	vsCache  ctlnetworkv1.VlanStatusCache
+	cnCache  ctlnetworkv1.ClusterNetworkCache
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
 }
 
@@ -41,11 +42,13 @@ func NewVlanConfigValidator(
 	nadCache ctlcniv1.NetworkAttachmentDefinitionCache,
 	vcCache ctlnetworkv1.VlanConfigCache,
 	vsCache ctlnetworkv1.VlanStatusCache,
+	cnCache ctlnetworkv1.ClusterNetworkCache,
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Validator {
 	return &Validator{
 		nadCache: nadCache,
 		vcCache:  vcCache,
 		vsCache:  vsCache,
+		cnCache:  cnCache,
 		vmiCache: vmiCache,
 	}
 }
@@ -162,6 +165,9 @@ func (v *Validator) Resource() admission.Resource {
 }
 
 func (v *Validator) checkOverlaps(vc *networkv1.VlanConfig, nodes mapset.Set[string]) error {
+	if nodes == nil {
+		return nil
+	}
 	overlapNods := mapset.NewSet[string]()
 	for node := range nodes.Iter() {
 		vsName := utils.Name("", vc.Spec.ClusterNetwork, node)
@@ -182,12 +188,15 @@ func (v *Validator) checkOverlaps(vc *networkv1.VlanConfig, nodes mapset.Set[str
 
 // checkVmi is to confirm if any VMIs will be affected on affected nodes. Those VMIs must be stopped in advance.
 func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodes mapset.Set[string]) error {
+	if nodes == nil {
+		return nil
+	}
+
 	// The vlanconfig is not allowed to be deleted if it has applied to some nodes and its clusternetwork is attached by some nads.
 	vss, err := v.vsCache.List(labels.Set(map[string]string{utils.KeyVlanConfigLabel: vc.Name}).AsSelector())
 	if err != nil {
 		return fmt.Errorf(deleteErr, vc.Name, err)
 	}
-
 	if len(vss) == 0 {
 		return nil
 	}
@@ -197,6 +206,9 @@ func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodes mapset.Set[string])
 	}).AsSelector())
 	if err != nil {
 		return fmt.Errorf(deleteErr, vc.Name, err)
+	}
+	if len(nads) == 0 {
+		return nil
 	}
 
 	vmiGetter := utils.VmiGetter{VmiCache: v.vmiCache}

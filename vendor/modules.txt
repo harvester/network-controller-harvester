@@ -159,7 +159,31 @@ github.com/grpc-ecosystem/grpc-gateway/utilities
 github.com/harvester/harvester/pkg/apis/harvesterhci.io
 github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1
 github.com/harvester/harvester/pkg/config
+github.com/harvester/harvester/pkg/generated/clientset/versioned
+github.com/harvester/harvester/pkg/generated/clientset/versioned/fake
 github.com/harvester/harvester/pkg/generated/clientset/versioned/scheme
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/cluster.x-k8s.io/v1alpha4
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/cluster.x-k8s.io/v1alpha4/fake
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/harvesterhci.io/v1beta1
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/harvesterhci.io/v1beta1/fake
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/k8s.cni.cncf.io/v1
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/k8s.cni.cncf.io/v1/fake
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/kubevirt.io/v1
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/kubevirt.io/v1/fake
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/logging.banzaicloud.io/v1beta1
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/logging.banzaicloud.io/v1beta1/fake
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/longhorn.io/v1beta1
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/longhorn.io/v1beta1/fake
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/management.cattle.io/v3
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/management.cattle.io/v3/fake
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/monitoring.coreos.com/v1
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/monitoring.coreos.com/v1/fake
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/networking.k8s.io/v1
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/networking.k8s.io/v1/fake
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/snapshot.storage.k8s.io/v1beta1
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/snapshot.storage.k8s.io/v1beta1/fake
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/upgrade.cattle.io/v1
+github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/upgrade.cattle.io/v1/fake
 github.com/harvester/harvester/pkg/generated/controllers/cluster.x-k8s.io
 github.com/harvester/harvester/pkg/generated/controllers/cluster.x-k8s.io/v1alpha4
 github.com/harvester/harvester/pkg/generated/controllers/core
@@ -186,6 +210,8 @@ github.com/harvester/harvester/pkg/indexeres
 github.com/harvester/harvester/pkg/ref
 github.com/harvester/harvester/pkg/util
 github.com/harvester/harvester/pkg/util/crd
+github.com/harvester/harvester/pkg/util/fakeclients
+github.com/harvester/harvester/tests/framework/fuzz
 # github.com/harvester/webhook v0.1.4
 ## explicit; go 1.19
 github.com/harvester/webhook/pkg/clients
@@ -300,6 +326,9 @@ github.com/pierrec/lz4/v4/internal/xxh32
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
+# github.com/pmezard/go-difflib v1.0.0
+## explicit
+github.com/pmezard/go-difflib/difflib
 # github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.62.0
 ## explicit; go 1.17
 github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring
@@ -520,6 +549,9 @@ github.com/spf13/cast
 # github.com/spf13/pflag v1.0.5
 ## explicit; go 1.12
 github.com/spf13/pflag
+# github.com/stretchr/testify v1.8.3
+## explicit; go 1.20
+github.com/stretchr/testify/assert
 # github.com/tidwall/gjson v1.14.2
 ## explicit; go 1.12
 github.com/tidwall/gjson

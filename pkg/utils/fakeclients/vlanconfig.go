@@ -3,16 +3,14 @@ package fakeclients
 import (
 	"context"
 
-//	"github.com/rancher/wrangler/v3/pkg/generic"
-	"github.com/rancher/wrangler/pkg/generic"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/rest"
 
 	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	networktype "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1"
+	networkctl "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 )
 
 type VlanConfigClient func() networktype.VlanConfigInterface
@@ -49,21 +47,25 @@ func (c VlanConfigClient) Patch(name string, pt types.PatchType, data []byte, su
 	return c().Patch(context.TODO(), name, pt, data, metav1.PatchOptions{}, subresources...)
 }
 
-func (c VlanConfigClient) WithImpersonation(_ rest.ImpersonationConfig) (generic.NonNamespacedClientInterface[*v1beta1.VlanConfig, *v1beta1.VlanConfigList], error) {
-	panic("implement me")
-}
-
 type VlanConfigCache func() networktype.VlanConfigInterface
 
 func (c VlanConfigCache) Get(name string) (*v1beta1.VlanConfig, error) {
 	return c().Get(context.TODO(), name, metav1.GetOptions{})
 }
 
-func (c VlanConfigCache) List(_ labels.Selector) ([]*v1beta1.VlanConfig, error) {
-	panic("implement me")
+func (c VlanConfigCache) List(selector labels.Selector) ([]*v1beta1.VlanConfig, error) {
+	list, err := c().List(context.TODO(), metav1.ListOptions{LabelSelector: selector.String()})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*v1beta1.VlanConfig, 0, len(list.Items))
+	for i := range list.Items {
+		result = append(result, &list.Items[i])
+	}
+	return result, err
 }
 
-func (c VlanConfigCache) AddIndexer(_ string, _ generic.Indexer[*v1beta1.VlanConfig]) {
+func (c VlanConfigCache) AddIndexer(_ string, _ networkctl.VlanConfigIndexer) {
 	panic("implement me")
 }
 
