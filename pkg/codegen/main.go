@@ -64,7 +64,7 @@ func nadControllerInterfaceRefactor() {
 
 	output := bytes.Replace(input, []byte("networkattachmentdefinitions"), []byte("network-attachment-definitions"), -1)
 
-	if err = ioutil.WriteFile(absPath, output, 0644); err != nil {
+	if err = ioutil.WriteFile(absPath, output, 0600); err != nil {
 		logrus.Fatalf("failed to update the network-attachment-definition file: %v", err)
 	}
 }

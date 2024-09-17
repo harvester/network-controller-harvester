@@ -3,6 +3,7 @@ package linkmonitor
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	"github.com/vishvananda/netlink"
@@ -154,19 +155,20 @@ func linkToLinkStatus(l netlink.Link) networkv1.LinkStatus {
 	return linkStatus
 }
 
-func (h Handler) updateStatus(lm *networkv1.LinkMonitor, linkStatusList []networkv1.LinkStatus) error {
-	var currentLinkStatusList []networkv1.LinkStatus
+func (h Handler) updateStatus(lm *networkv1.LinkMonitor, linkStatusList networkv1.LinkStatusList) error {
+	var currentLinkStatusList networkv1.LinkStatusList
 	if lm.Status.LinkStatus != nil {
 		currentLinkStatusList = lm.Status.LinkStatus[h.nodeName]
 	}
-	if compareLinkStatusList(currentLinkStatusList, linkStatusList) {
+
+	if reflect.DeepEqual(currentLinkStatusList, linkStatusList) {
 		return nil
 	}
 
 	lmCopy := lm.DeepCopy()
 
-	if lm.Status.LinkStatus == nil {
-		lmCopy.Status.LinkStatus = make(map[string][]networkv1.LinkStatus)
+	if lmCopy.Status.LinkStatus == nil {
+		lmCopy.Status.LinkStatus = make(map[string]networkv1.LinkStatusList)
 	}
 	lmCopy.Status.LinkStatus[h.nodeName] = linkStatusList
 
@@ -177,27 +179,13 @@ func (h Handler) updateStatus(lm *networkv1.LinkMonitor, linkStatusList []networ
 	return nil
 }
 
-func compareLinkStatusList(m, n []networkv1.LinkStatus) bool {
-	if len(m) != len(n) {
-		return false
-	}
-
-	for i, linkStatus := range m {
-		if linkStatus != n[i] {
-			return false
-		}
-	}
-
-	return true
-}
-
 func (h Handler) syncLinkStatus(lm *networkv1.LinkMonitor) error {
 	pattern := h.linkMonitor.GetPattern(lm.Name)
 	links, err := h.linkMonitor.ScanLinks(pattern)
 	if err != nil {
 		return err
 	}
-	linkStatusList := make([]networkv1.LinkStatus, len(links))
+	linkStatusList := make(networkv1.LinkStatusList, len(links))
 	for i, link := range links {
 		linkStatusList[i] = linkToLinkStatus(link)
 	}

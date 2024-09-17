@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"strconv"
 
-	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/vishvananda/netlink"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/config"
+	ctlcniv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	"github.com/harvester/harvester-network-controller/pkg/network/vlan"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )

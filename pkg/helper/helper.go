@@ -3,12 +3,12 @@ package helper
 import (
 	"net"
 
-	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
-	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
+	ctlcni "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io"
+	ctlcniv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
