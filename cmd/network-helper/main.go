@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"os"
 
-	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
 	"github.com/urfave/cli"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/controller/manager/nad"
+	ctlcni "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io"
 	"github.com/harvester/harvester-network-controller/pkg/helper"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )

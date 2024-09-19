@@ -33,7 +33,7 @@ type LinkMonitorStatus struct {
 	// +optional
 	Conditions []Condition `json:"conditions,omitempty"`
 	// +optional
-	LinkStatus map[string][]LinkStatus `json:"linkStatus,omitempty"`
+	LinkStatus map[string]LinkStatusList `json:"linkStatus,omitempty"`
 }
 
 type TargetLinkRule struct {
@@ -44,6 +44,8 @@ type TargetLinkRule struct {
 	// Support regular expression and empty value means matching all
 	NameRule string `json:"nameRule,omitempty"`
 }
+
+type LinkStatusList []LinkStatus
 
 type LinkStatus struct {
 	Name string `json:"name"`
