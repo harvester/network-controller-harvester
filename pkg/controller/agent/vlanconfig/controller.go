@@ -62,6 +62,10 @@ func Register(ctx context.Context, management *config.Management) error {
 		cnCache:    cns.Cache(),
 	}
 
+	if err := handler.initialize(); err != nil {
+		return fmt.Errorf("initialize error: %w", err)
+	}
+
 	vcs.OnChange(ctx, ControllerName, handler.OnChange)
 	vcs.OnRemove(ctx, ControllerName, handler.OnRemove)
 
@@ -119,6 +123,13 @@ func (h Handler) OnRemove(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanCo
 	}
 
 	return vc, nil
+}
+
+func (h Handler) initialize() error {
+	if err := iface.DisableBridgeNF(); err != nil {
+		return fmt.Errorf("disable net.bridge.bridge-nf-call-iptables failed, error: %v", err)
+	}
+	return nil
 }
 
 // MatchNode will also return the executed vlanconfig with the same clusterNetwork on this node if existing
