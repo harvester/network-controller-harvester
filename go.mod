@@ -1,10 +1,6 @@
 module github.com/harvester/harvester-network-controller
 
-<<<<<<< HEAD
-go 1.21
-=======
 go 1.22.8
->>>>>>> 61615bb7 (CVE: bump protobuf and x related dependecies)
 
 replace (
 	github.com/containerd/containerd => github.com/containerd/containerd v1.6.18
