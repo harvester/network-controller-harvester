@@ -1,6 +1,6 @@
 Harvester Network Controller
 ========
-[![Build Status](https://drone-publish.rancher.io/api/badges/harvester/network-controller-harvester/status.svg)](https://drone-publish.rancher.io/harvester/network-controller-harvester)
+[![Build Status](https://github.com/harvester/network-controller-harvester/actions/workflows/main.yml/badge.svg)](https://github.com/harvester/network-controller-harvester/actions/workflows/main.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/harvester/network-controller-harvester)](https://goreportcard.com/report/github.com/harvester/network-controller-harvester)
 [![Releases](https://img.shields.io/github/release/harvester/network-controller-harvester/all.svg)](https://github.com/harvester/network-controller-harvester/releases)
 
@@ -15,7 +15,7 @@ $ helm install harvester-network-controller harvester/harvester-network-controll
 ```
 
 ## License
-Copyright (c) 2020 [Rancher Labs, Inc.](http://rancher.com)
+Copyright (c) 2024 [Rancher Labs, Inc.](http://rancher.com)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
