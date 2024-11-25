@@ -14,7 +14,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/harvester/harvester/pkg/util"
 
@@ -218,20 +217,13 @@ func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodes mapset.Set[string])
 	}
 
 	vmiGetter := utils.VmiGetter{VmiCache: v.vmiCache}
-	vmis := make([]*kubevirtv1.VirtualMachineInstance, 0)
+	vmiStrList := make([]string, 0)
 	for _, nad := range nads {
 		vmisTemp, err := vmiGetter.WhoUseNad(nad, nodes)
 		if err != nil {
 			return err
 		}
-		vmis = append(vmis, vmisTemp...)
-	}
-
-	if len(vmis) > 0 {
-		vmiStrList := make([]string, len(vmis))
-		for i, vmi := range vmis {
-			vmiStrList[i] = vmi.Namespace + "/" + vmi.Name
-		}
+		vmiStrList = append(vmiStrList, vmisTemp...)
 
 		return fmt.Errorf("it's blocked by VM(s) %s which must be stopped at first", strings.Join(vmiStrList, ", "))
 	}
