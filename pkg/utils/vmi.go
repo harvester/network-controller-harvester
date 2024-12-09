@@ -12,10 +12,11 @@ import (
 
 type VmiGetter struct {
 	VmiCache ctlkubevirtv1.VirtualMachineInstanceCache
+	VMCache  ctlkubevirtv1.VirtualMachineCache
 }
 
 // WhoUseNad requires adding network indexer to the vmi cache before invoking it
-func (v *VmiGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilter mapset.Set[string]) ([]*kubevirtv1.VirtualMachineInstance, error) {
+func (v *VmiGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilter mapset.Set[string]) ([]string, error) {
 	// multus network name can be <networkName> or <namespace>/<networkName>
 	// ref: https://github.com/kubevirt/client-go/blob/148fa0d1c7e83b7a56606a7ca92394ba6768c9ac/api/v1/schema.go#L1436-L1439
 	networkName := fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)
@@ -36,7 +37,11 @@ func (v *VmiGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilte
 	}
 
 	if nodesFilter == nil || nodesFilter.Cardinality() == 0 {
-		return vmis, nil
+		vmiNamePreList := make([]string, 0, len(vmis))
+		for _, vmi := range vmis {
+			vmiNamePreList = append(vmiNamePreList, vmi.Namespace+"/"+vmi.Name)
+		}
+		return vmiNamePreList, nil
 	}
 
 	afterFilter := make([]*kubevirtv1.VirtualMachineInstance, 0, len(vmis))
@@ -47,5 +52,36 @@ func (v *VmiGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilte
 		}
 	}
 
-	return afterFilter, nil
+	vmiNameList := make([]string, 0)
+	if len(afterFilter) > 0 {
+		for _, vmi := range afterFilter {
+			vmiNameList = append(vmiNameList, vmi.Namespace+"/"+vmi.Name)
+		}
+	}
+
+	vms, err := v.VMCache.GetByIndex(indexeres.VMByNetworkIndex, networkName)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, vm := range vms {
+		if vm.Namespace != nad.Namespace {
+			continue
+		}
+		vmiNameList = append(vmiNameList, vm.Namespace+"/"+vm.Name)
+	}
+
+	vmsTmp, err := v.VMCache.GetByIndex(indexeres.VMByNetworkIndex, nad.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, vm := range vmsTmp {
+		if vm.Namespace != nad.Namespace {
+			continue
+		}
+		vmiNameList = append(vmiNameList, vm.Namespace+"/"+vm.Name)
+	}
+
+	return vmiNameList, nil
 }

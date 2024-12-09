@@ -118,7 +118,7 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 
 	if err := webhookServer.RegisterValidators(
 		clusternetwork.NewCnValidator(c.vcCache),
-		nad.NewNadValidator(c.vmiCache),
+		nad.NewNadValidator(c.vmiCache, c.vmCache),
 		vlanconfig.NewVlanConfigValidator(c.nadCache, c.vcCache, c.vsCache, c.vmiCache),
 	); err != nil {
 		return fmt.Errorf("failed to register validators: %v", err)
@@ -135,6 +135,7 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 
 type caches struct {
 	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
+	vmCache   ctlkubevirtv1.VirtualMachineCache
 	vmiCache  ctlkubevirtv1.VirtualMachineInstanceCache
 	vcCache   ctlnetworkv1.VlanConfigCache
 	vsCache   ctlnetworkv1.VlanStatusCache
@@ -155,6 +156,7 @@ func newCaches(ctx context.Context, cfg *rest.Config, threadiness int) (*caches,
 	starters = append(starters, coreFactory)
 	// must declare cache before starting informers
 	c := &caches{
+		vmCache:   kubevirtFactory.Kubevirt().V1().VirtualMachine().Cache(),
 		vmiCache:  kubevirtFactory.Kubevirt().V1().VirtualMachineInstance().Cache(),
 		nadCache:  cniFactory.K8s().V1().NetworkAttachmentDefinition().Cache(),
 		vcCache:   harvesterNetworkFactory.Network().V1beta1().VlanConfig().Cache(),
@@ -164,6 +166,7 @@ func newCaches(ctx context.Context, cfg *rest.Config, threadiness int) (*caches,
 	}
 	// Indexer must be added before starting the informer, otherwise panic `cannot add indexers to running index` happens
 	c.vmiCache.AddIndexer(indexeres.VMByNetworkIndex, vmiByNetwork)
+	c.vmCache.AddIndexer(indexeres.VMByNetworkIndex, indexeres.VMByNetwork)
 
 	if err := start.All(ctx, threadiness, starters...); err != nil {
 		return nil, err
@@ -192,3 +195,6 @@ func vmiByNetwork(obj *kubevirtv1.VirtualMachineInstance) ([]string, error) {
 	}
 	return networkNameList, nil
 }
+
+// already in ./vendor/github.com/harvester/harvester/pkg/indexeres/indexer.go
+// VMByNetwork
