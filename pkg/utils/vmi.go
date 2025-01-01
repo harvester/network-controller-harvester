@@ -16,6 +16,7 @@ type VmiGetter struct {
 
 // WhoUseNad requires adding network indexer to the vmi cache before invoking it
 func (v *VmiGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilter mapset.Set[string]) ([]*kubevirtv1.VirtualMachineInstance, error) {
+	v.VmiCache.AddIndexer(indexeres.VMByNetworkIndex, vmiByNetwork)
 	// multus network name can be <networkName> or <namespace>/<networkName>
 	// ref: https://github.com/kubevirt/client-go/blob/148fa0d1c7e83b7a56606a7ca92394ba6768c9ac/api/v1/schema.go#L1436-L1439
 	networkName := fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)
@@ -48,4 +49,16 @@ func (v *VmiGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilte
 	}
 
 	return afterFilter, nil
+}
+
+func vmiByNetwork(obj *kubevirtv1.VirtualMachineInstance) ([]string, error) {
+	networks := obj.Spec.Networks
+	networkNameList := make([]string, 0, len(networks))
+	for _, network := range networks {
+		if network.NetworkSource.Multus == nil {
+			continue
+		}
+		networkNameList = append(networkNameList, network.NetworkSource.Multus.NetworkName)
+	}
+	return networkNameList, nil
 }
