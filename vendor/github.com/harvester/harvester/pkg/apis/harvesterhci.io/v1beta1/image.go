@@ -1,7 +1,7 @@
 package v1beta1
 
 import (
-	"github.com/rancher/wrangler/pkg/condition"
+	"github.com/rancher/wrangler/v3/pkg/condition"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -10,12 +10,8 @@ var (
 	ImageInitialized        condition.Cond = "Initialized"
 	ImageImported           condition.Cond = "Imported"
 	ImageRetryLimitExceeded condition.Cond = "RetryLimitExceeded"
-)
-
-const (
-	VirtualMachineImageSourceTypeDownload     = "download"
-	VirtualMachineImageSourceTypeUpload       = "upload"
-	VirtualMachineImageSourceTypeExportVolume = "export-from-volume"
+	BackingImageMissing     condition.Cond = "BackingImageMissing"
+	MetadataReady           condition.Cond = "MetadataReady"
 )
 
 // +genclient
@@ -23,6 +19,7 @@ const (
 // +kubebuilder:resource:shortName=vmimage;vmimages,scope=Namespaced
 // +kubebuilder:printcolumn:name="DISPLAY-NAME",type=string,JSONPath=`.spec.displayName`
 // +kubebuilder:printcolumn:name="SIZE",type=integer,JSONPath=`.status.size`
+// +kubebuilder:printcolumn:name="VIRTUALSIZE",type=integer,JSONPath=`.status.virtualSize`
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=`.metadata.creationTimestamp`
 
 type VirtualMachineImage struct {
@@ -41,8 +38,8 @@ type VirtualMachineImageSpec struct {
 	DisplayName string `json:"displayName"`
 
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=download;upload;export-from-volume
-	SourceType string `json:"sourceType"`
+	// +kubebuilder:validation:Enum=download;upload;export-from-volume;restore;clone
+	SourceType VirtualMachineImageSourceType `json:"sourceType"`
 
 	// +optional
 	PVCName string `json:"pvcName"`
@@ -65,7 +62,40 @@ type VirtualMachineImageSpec struct {
 	// +kubebuilder:validation:Maximum:=10
 	// +kubebuilder:validation:Optional
 	Retry int `json:"retry" default:"3"`
+
+	// +optional
+	SecurityParameters *VirtualMachineImageSecurityParameters `json:"securityParameters,omitempty"`
 }
+
+type VirtualMachineImageSecurityParameters struct {
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=encrypt;decrypt
+	CryptoOperation VirtualMachineImageCryptoOperationType `json:"cryptoOperation"`
+
+	// +kubebuilder:validation:Required
+	SourceImageName string `json:"sourceImageName"`
+
+	// +kubebuilder:validation:Required
+	SourceImageNamespace string `json:"sourceImageNamespace"`
+}
+
+// +enum
+type VirtualMachineImageSourceType string
+
+const (
+	VirtualMachineImageSourceTypeDownload     VirtualMachineImageSourceType = "download"
+	VirtualMachineImageSourceTypeUpload       VirtualMachineImageSourceType = "upload"
+	VirtualMachineImageSourceTypeExportVolume VirtualMachineImageSourceType = "export-from-volume"
+	VirtualMachineImageSourceTypeRestore      VirtualMachineImageSourceType = "restore"
+	VirtualMachineImageSourceTypeClone        VirtualMachineImageSourceType = "clone"
+)
+
+type VirtualMachineImageCryptoOperationType string
+
+const (
+	VirtualMachineImageCryptoOperationTypeEncrypt VirtualMachineImageCryptoOperationType = "encrypt"
+	VirtualMachineImageCryptoOperationTypeDecrypt VirtualMachineImageCryptoOperationType = "decrypt"
+)
 
 type VirtualMachineImageStatus struct {
 	// +optional
@@ -78,7 +108,13 @@ type VirtualMachineImageStatus struct {
 	Size int64 `json:"size,omitempty"`
 
 	// +optional
+	VirtualSize int64 `json:"virtualSize,omitempty"`
+
+	// +optional
 	StorageClassName string `json:"storageClassName,omitempty"`
+
+	// +optional
+	BackupTarget *BackupTarget `json:"backupTarget,omitempty"`
 
 	// +optional
 	// +kubebuilder:default:=0

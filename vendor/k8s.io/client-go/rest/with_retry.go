@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"time"
@@ -209,18 +208,19 @@ func (r *withRetry) Before(ctx context.Context, request *Request) error {
 	if r.retryAfter == nil {
 		// we do a backoff sleep before the first attempt is made,
 		// (preserving current behavior).
-		request.backoff.Sleep(request.backoff.CalculateBackoff(url))
+		if request.backoff != nil {
+			request.backoff.Sleep(request.backoff.CalculateBackoff(url))
+		}
 		return nil
 	}
 
 	// if we are here, we have made attempt(s) at least once before.
 	if request.backoff != nil {
-		// TODO(tkashem) with default set to use exponential backoff
-		//  we can merge these two sleeps:
-		//  BackOffManager.Sleep(max(backoffManager.CalculateBackoff(), retryAfter))
-		//  see https://github.com/kubernetes/kubernetes/issues/108302
-		request.backoff.Sleep(r.retryAfter.Wait)
-		request.backoff.Sleep(request.backoff.CalculateBackoff(url))
+		delay := request.backoff.CalculateBackoff(url)
+		if r.retryAfter.Wait > delay {
+			delay = r.retryAfter.Wait
+		}
+		request.backoff.Sleep(delay)
 	}
 
 	// We are retrying the request that we already send to
@@ -242,7 +242,19 @@ func (r *withRetry) After(ctx context.Context, request *Request, resp *http.Resp
 	// parameters calculated from the (response, err) tuple from
 	// attempt N-1, so r.retryAfter is outdated and should not be
 	// referred to here.
+	isRetry := r.retryAfter != nil
 	r.retryAfter = nil
+
+	// the client finishes a single request after N attempts (1..N)
+	//  - all attempts (1..N) are counted to the rest_client_requests_total
+	//    metric (current behavior).
+	//  - every attempt after the first (2..N) are counted to the
+	//    rest_client_request_retries_total metric.
+	updateRequestResultMetric(ctx, request, resp, err)
+	if isRetry {
+		// this is attempt 2 or later
+		updateRequestRetryMetric(ctx, request, resp, err)
+	}
 
 	if request.c.base != nil {
 		if err != nil {
@@ -337,13 +349,21 @@ func readAndCloseResponseBody(resp *http.Response) {
 	defer resp.Body.Close()
 
 	if resp.ContentLength <= maxBodySlurpSize {
-		io.Copy(ioutil.Discard, &io.LimitedReader{R: resp.Body, N: maxBodySlurpSize})
+		io.Copy(io.Discard, &io.LimitedReader{R: resp.Body, N: maxBodySlurpSize})
 	}
 }
 
 func retryAfterResponse() *http.Response {
+	return retryAfterResponseWithDelay("1")
+}
+
+func retryAfterResponseWithDelay(delay string) *http.Response {
+	return retryAfterResponseWithCodeAndDelay(http.StatusInternalServerError, delay)
+}
+
+func retryAfterResponseWithCodeAndDelay(code int, delay string) *http.Response {
 	return &http.Response{
-		StatusCode: http.StatusInternalServerError,
-		Header:     http.Header{"Retry-After": []string{"1"}},
+		StatusCode: code,
+		Header:     http.Header{"Retry-After": []string{delay}},
 	}
 }

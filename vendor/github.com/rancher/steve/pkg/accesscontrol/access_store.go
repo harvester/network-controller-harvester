@@ -7,13 +7,16 @@ import (
 	"sort"
 	"time"
 
-	v1 "github.com/rancher/wrangler/pkg/generated/controllers/rbac/v1"
+	v1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/rbac/v1"
 	"k8s.io/apimachinery/pkg/util/cache"
 	"k8s.io/apiserver/pkg/authentication/user"
 )
 
+//go:generate mockgen --build_flags=--mod=mod -package fake -destination fake/AccessSetLookup.go "github.com/rancher/steve/pkg/accesscontrol" AccessSetLookup
+
 type AccessSetLookup interface {
 	AccessFor(user user.Info) *AccessSet
+	PurgeUserData(id string)
 }
 
 type AccessStore struct {
@@ -63,17 +66,21 @@ func (l *AccessStore) AccessFor(user user.Info) *AccessSet {
 	return result
 }
 
+func (l *AccessStore) PurgeUserData(id string) {
+	l.cache.Remove(id)
+}
+
 func (l *AccessStore) CacheKey(user user.Info) string {
 	d := sha256.New()
 
 	l.users.addRolesToHash(d, user.GetName())
 
 	groupBase := user.GetGroups()
-	groups := make([]string, 0, len(groupBase))
+	groups := make([]string, len(groupBase))
 	copy(groups, groupBase)
-
 	sort.Strings(groups)
-	for _, group := range user.GetGroups() {
+
+	for _, group := range groups {
 		l.groups.addRolesToHash(d, group)
 	}
 
