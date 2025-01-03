@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2024 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,12 +19,12 @@ limitations under the License.
 package longhorn
 
 import (
-	v1beta1 "github.com/harvester/harvester/pkg/generated/controllers/longhorn.io/v1beta1"
+	v1beta2 "github.com/harvester/harvester/pkg/generated/controllers/longhorn.io/v1beta2"
 	"github.com/rancher/lasso/pkg/controller"
 )
 
 type Interface interface {
-	V1beta1() v1beta1.Interface
+	V1beta2() v1beta2.Interface
 }
 
 type group struct {
@@ -38,6 +38,6 @@ func New(controllerFactory controller.SharedControllerFactory) Interface {
 	}
 }
 
-func (g *group) V1beta1() v1beta1.Interface {
-	return v1beta1.New(g.controllerFactory)
+func (g *group) V1beta2() v1beta2.Interface {
+	return v1beta2.New(g.controllerFactory)
 }

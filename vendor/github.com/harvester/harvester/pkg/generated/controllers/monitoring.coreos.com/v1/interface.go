@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2024 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,8 @@ package v1
 import (
 	v1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/rancher/lasso/pkg/controller"
-	"github.com/rancher/wrangler/pkg/schemes"
+	"github.com/rancher/wrangler/v3/pkg/generic"
+	"github.com/rancher/wrangler/v3/pkg/schemes"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -44,9 +45,10 @@ type version struct {
 	controllerFactory controller.SharedControllerFactory
 }
 
-func (c *version) Alertmanager() AlertmanagerController {
-	return NewAlertmanagerController(schema.GroupVersionKind{Group: "monitoring.coreos.com", Version: "v1", Kind: "Alertmanager"}, "alertmanagers", true, c.controllerFactory)
+func (v *version) Alertmanager() AlertmanagerController {
+	return generic.NewController[*v1.Alertmanager, *v1.AlertmanagerList](schema.GroupVersionKind{Group: "monitoring.coreos.com", Version: "v1", Kind: "Alertmanager"}, "alertmanagers", true, v.controllerFactory)
 }
-func (c *version) Prometheus() PrometheusController {
-	return NewPrometheusController(schema.GroupVersionKind{Group: "monitoring.coreos.com", Version: "v1", Kind: "Prometheus"}, "prometheuses", true, c.controllerFactory)
+
+func (v *version) Prometheus() PrometheusController {
+	return generic.NewController[*v1.Prometheus, *v1.PrometheusList](schema.GroupVersionKind{Group: "monitoring.coreos.com", Version: "v1", Kind: "Prometheus"}, "prometheuses", true, v.controllerFactory)
 }
