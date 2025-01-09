@@ -1,7 +1,7 @@
 package v1
 
 import (
-	"github.com/pborman/uuid"
+	"github.com/google/uuid"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -106,7 +106,7 @@ func SetDefaults_I6300ESBWatchdog(obj *I6300ESBWatchdog) {
 
 func SetDefaults_Firmware(obj *Firmware) {
 	if obj.UUID == "" {
-		obj.UUID = types.UID(uuid.NewRandom().String())
+		obj.UUID = types.UID(uuid.NewString())
 	}
 }
 
@@ -120,29 +120,28 @@ func SetDefaults_VirtualMachineInstance(obj *VirtualMachineInstance) {
 	}
 
 	setDefaults_Disk(obj)
+	setDefaults_Input(obj)
 	SetDefaults_Probe(obj.Spec.ReadinessProbe)
 	SetDefaults_Probe(obj.Spec.LivenessProbe)
 }
 
 func setDefaults_Disk(obj *VirtualMachineInstance) {
-	// Setting SATA as the default bus since it is typically supported out of the box by
-	// guest operating systems (we support only q35 and therefore IDE is not supported)
-	// TODO: consider making this OS-specific (VIRTIO for linux, SATA for others)
-	bus := DiskBusSATA
-
 	for i := range obj.Spec.Domain.Devices.Disks {
 		disk := &obj.Spec.Domain.Devices.Disks[i].DiskDevice
-
 		SetDefaults_DiskDevice(disk)
+	}
+}
 
-		if disk.Disk != nil && disk.Disk.Bus == "" {
-			disk.Disk.Bus = bus
+func setDefaults_Input(obj *VirtualMachineInstance) {
+	for i := range obj.Spec.Domain.Devices.Inputs {
+		input := &obj.Spec.Domain.Devices.Inputs[i]
+
+		if input.Bus == "" {
+			input.Bus = InputBusUSB
 		}
-		if disk.CDRom != nil && disk.CDRom.Bus == "" {
-			disk.CDRom.Bus = bus
-		}
-		if disk.LUN != nil && disk.LUN.Bus == "" {
-			disk.LUN.Bus = bus
+
+		if input.Type == "" {
+			input.Type = InputTypeTablet
 		}
 	}
 }
@@ -192,31 +191,11 @@ func DefaultBridgeNetworkInterface() *Interface {
 	return iface
 }
 
-func DefaultSlirpNetworkInterface() *Interface {
-	iface := &Interface{
-		Name: "default",
-		InterfaceBindingMethod: InterfaceBindingMethod{
-			Slirp: &InterfaceSlirp{},
-		},
-	}
-	return iface
-}
-
 func DefaultMasqueradeNetworkInterface() *Interface {
 	iface := &Interface{
 		Name: "default",
 		InterfaceBindingMethod: InterfaceBindingMethod{
 			Masquerade: &InterfaceMasquerade{},
-		},
-	}
-	return iface
-}
-
-func DefaultMacvtapNetworkInterface(ifaceName string) *Interface {
-	iface := &Interface{
-		Name: ifaceName,
-		InterfaceBindingMethod: InterfaceBindingMethod{
-			Macvtap: &InterfaceMacvtap{},
 		},
 	}
 	return iface

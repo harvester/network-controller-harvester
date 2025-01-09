@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2024 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -240,6 +240,40 @@ type AddonList struct {
 
 func NewAddon(namespace, name string, obj Addon) *Addon {
 	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("Addon").ToAPIVersionAndKind()
+	obj.Name = name
+	obj.Namespace = namespace
+	return &obj
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// ResourceQuotaList is a list of ResourceQuota resources
+type ResourceQuotaList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []ResourceQuota `json:"items"`
+}
+
+func NewResourceQuota(namespace, name string, obj ResourceQuota) *ResourceQuota {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("ResourceQuota").ToAPIVersionAndKind()
+	obj.Name = name
+	obj.Namespace = namespace
+	return &obj
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// ScheduleVMBackupList is a list of ScheduleVMBackup resources
+type ScheduleVMBackupList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []ScheduleVMBackup `json:"items"`
+}
+
+func NewScheduleVMBackup(namespace, name string, obj ScheduleVMBackup) *ScheduleVMBackup {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("ScheduleVMBackup").ToAPIVersionAndKind()
 	obj.Name = name
 	obj.Namespace = namespace
 	return &obj
