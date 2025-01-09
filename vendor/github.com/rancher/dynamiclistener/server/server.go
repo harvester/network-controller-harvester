@@ -15,12 +15,14 @@ import (
 	"github.com/rancher/dynamiclistener/storage/file"
 	"github.com/rancher/dynamiclistener/storage/kubernetes"
 	"github.com/rancher/dynamiclistener/storage/memory"
-	v1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
+	v1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/acme/autocert"
 )
 
 type ListenOpts struct {
+	CAChain []*x509.Certificate
+	// Deprecated: Use CAChain instead
 	CA                *x509.Certificate
 	CAKey             crypto.Signer
 	Storage           dynamiclistener.TLSStorage
@@ -132,7 +134,7 @@ func getTLSListener(ctx context.Context, tcp net.Listener, handler http.Handler,
 		return nil, nil, err
 	}
 
-	listener, dynHandler, err := dynamiclistener.NewListener(tcp, storage, caCert, caKey, opts.TLSListenerConfig)
+	listener, dynHandler, err := dynamiclistener.NewListenerWithChain(tcp, storage, caCert, caKey, opts.TLSListenerConfig)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -140,13 +142,17 @@ func getTLSListener(ctx context.Context, tcp net.Listener, handler http.Handler,
 	return listener, wrapHandler(dynHandler, handler), nil
 }
 
-func getCA(opts ListenOpts) (*x509.Certificate, crypto.Signer, error) {
-	if opts.CA != nil && opts.CAKey != nil {
-		return opts.CA, opts.CAKey, nil
+func getCA(opts ListenOpts) ([]*x509.Certificate, crypto.Signer, error) {
+	if opts.CAKey != nil {
+		if opts.CAChain != nil {
+			return opts.CAChain, opts.CAKey, nil
+		} else if opts.CA != nil {
+			return []*x509.Certificate{opts.CA}, opts.CAKey, nil
+		}
 	}
 
 	if opts.Secrets == nil {
-		return factory.LoadOrGenCA()
+		return factory.LoadOrGenCAChain()
 	}
 
 	if opts.CAName == "" {
@@ -161,7 +167,7 @@ func getCA(opts ListenOpts) (*x509.Certificate, crypto.Signer, error) {
 		opts.CANamespace = "kube-system"
 	}
 
-	return kubernetes.LoadOrGenCA(opts.Secrets, opts.CANamespace, opts.CAName)
+	return kubernetes.LoadOrGenCAChain(opts.Secrets, opts.CANamespace, opts.CAName)
 }
 
 func newStorage(ctx context.Context, opts ListenOpts) dynamiclistener.TLSStorage {
