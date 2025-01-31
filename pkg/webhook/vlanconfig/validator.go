@@ -46,7 +46,7 @@ func NewVlanConfigValidator(
 	vcCache ctlnetworkv1.VlanConfigCache,
 	vsCache ctlnetworkv1.VlanStatusCache,
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache,
-	cnCache  ctlnetworkv1.ClusterNetworkCache) *Validator {
+	cnCache ctlnetworkv1.ClusterNetworkCache) *Validator {
 	return &Validator{
 		nadCache: nadCache,
 		vcCache:  vcCache,
