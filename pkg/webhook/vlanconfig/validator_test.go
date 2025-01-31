@@ -7,12 +7,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	harvesterfake "github.com/harvester/harvester/pkg/generated/clientset/versioned/fake"
+	harvesterfakeclients "github.com/harvester/harvester/pkg/util/fakeclients"
+
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/fake"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/harvester/harvester-network-controller/pkg/utils/fakeclients"
-	harvesterfake "github.com/harvester/harvester/pkg/generated/clientset/versioned/fake"
-	harvesterfakeclients "github.com/harvester/harvester/pkg/util/fakeclients"
 )
 
 const testCnName = "test-cn"
