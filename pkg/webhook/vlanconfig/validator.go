@@ -38,18 +38,21 @@ type Validator struct {
 	vcCache  ctlnetworkv1.VlanConfigCache
 	vsCache  ctlnetworkv1.VlanStatusCache
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
+	cnCache  ctlnetworkv1.ClusterNetworkCache
 }
 
 func NewVlanConfigValidator(
 	nadCache ctlcniv1.NetworkAttachmentDefinitionCache,
 	vcCache ctlnetworkv1.VlanConfigCache,
 	vsCache ctlnetworkv1.VlanStatusCache,
-	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Validator {
+	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache,
+	cnCache  ctlnetworkv1.ClusterNetworkCache) *Validator {
 	return &Validator{
 		nadCache: nadCache,
 		vcCache:  vcCache,
 		vsCache:  vsCache,
 		vmiCache: vmiCache,
+		cnCache:  cnCache,
 	}
 }
 
@@ -180,6 +183,9 @@ func (v *Validator) Resource() admission.Resource {
 }
 
 func (v *Validator) checkOverlaps(vc *networkv1.VlanConfig, nodes mapset.Set[string]) error {
+	if nodes == nil {
+		return nil
+	}
 	overlapNods := mapset.NewSet[string]()
 	for node := range nodes.Iter() {
 		vsName := utils.Name("", vc.Spec.ClusterNetwork, node)
