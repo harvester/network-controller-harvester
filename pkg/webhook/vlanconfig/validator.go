@@ -14,7 +14,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/harvester/harvester/pkg/util"
 
@@ -137,15 +136,6 @@ func getAffectedNodes(oldCn, newCn string, oldNodes, newNodes mapset.Set[string]
 func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	vc := oldObj.(*networkv1.VlanConfig)
 
-	nodes, err := getMatchNodes(vc)
-	if err != nil {
-		return fmt.Errorf(deleteErr, vc.Name, err)
-	}
-
-	if err := v.checkVmi(vc, nodes); err != nil {
-		return fmt.Errorf(deleteErr, vc.Name, err)
-	}
-
 	nads, err := v.nadCache.List(util.HarvesterSystemNamespaceName, labels.Set(map[string]string{
 		utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork,
 	}).AsSelector())
@@ -154,10 +144,12 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	}
 
 	if len(nads) > 0 {
+		nadStrList := make([]string, 0, len(nads))
 		for _, nad := range nads {
-			if nad.DeletionTimestamp == nil && nad.Annotations[StorageNetworkAnnotation] == "true" {
-				return fmt.Errorf(deleteErr, vc.Name, fmt.Errorf(`storage network nad %s is still attached`, nad.Name))
+			if nad.DeletionTimestamp == nil {
+				nadStrList = append(nadStrList, nad.Name)
 			}
+			return fmt.Errorf(deleteErr, vc.Name, fmt.Errorf(`delete attached nad %s first`, strings.Join(nadStrList, ", ")))
 		}
 	}
 
@@ -218,20 +210,13 @@ func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodes mapset.Set[string])
 	}
 
 	vmiGetter := utils.VmiGetter{VmiCache: v.vmiCache}
-	vmis := make([]*kubevirtv1.VirtualMachineInstance, 0)
+	vmiStrList := make([]string, 0)
 	for _, nad := range nads {
 		vmisTemp, err := vmiGetter.WhoUseNad(nad, nodes)
 		if err != nil {
 			return err
 		}
-		vmis = append(vmis, vmisTemp...)
-	}
-
-	if len(vmis) > 0 {
-		vmiStrList := make([]string, len(vmis))
-		for i, vmi := range vmis {
-			vmiStrList[i] = vmi.Namespace + "/" + vmi.Name
-		}
+		vmiStrList = append(vmiStrList, vmisTemp...)
 
 		return fmt.Errorf("it's blocked by VM(s) %s which must be stopped at first", strings.Join(vmiStrList, ", "))
 	}
