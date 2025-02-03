@@ -25,9 +25,9 @@ import (
 )
 
 const (
-	createErr                = "could not create vlanConfig %s because %w"
-	updateErr                = "could not update vlanConfig %s because %w"
-	deleteErr                = "could not delete vlanConfig %s because %w"
+	createErr                = "can't create vlanConfig %s because %w"
+	updateErr                = "can't update vlanConfig %s because %w"
+	deleteErr                = "can't delete vlanConfig %s because %w"
 	StorageNetworkAnnotation = "storage-network.settings.harvesterhci.io"
 )
 
@@ -38,18 +38,21 @@ type Validator struct {
 	vcCache  ctlnetworkv1.VlanConfigCache
 	vsCache  ctlnetworkv1.VlanStatusCache
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
+	cnCache  ctlnetworkv1.ClusterNetworkCache
 }
 
 func NewVlanConfigValidator(
 	nadCache ctlcniv1.NetworkAttachmentDefinitionCache,
 	vcCache ctlnetworkv1.VlanConfigCache,
 	vsCache ctlnetworkv1.VlanStatusCache,
-	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Validator {
+	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache,
+	cnCache ctlnetworkv1.ClusterNetworkCache) *Validator {
 	return &Validator{
 		nadCache: nadCache,
 		vcCache:  vcCache,
 		vsCache:  vsCache,
 		vmiCache: vmiCache,
+		cnCache:  cnCache,
 	}
 }
 
@@ -59,7 +62,7 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	vc := newObj.(*networkv1.VlanConfig)
 
 	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
-		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("cluster network could not be %s",
+		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("cluster network can't be %s",
 			utils.ManagementClusterNetworkName))
 	}
 
@@ -79,7 +82,7 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	maxClusterNetworkNameLen := iface.MaxDeviceNameLen - len(iface.BridgeSuffix)
 
 	if len(vc.Spec.ClusterNetwork) > maxClusterNetworkNameLen {
-		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("the length of the clusterNetwork value is "+
+		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("the length of the clusterNetwork name is "+
 			"more than %d", maxClusterNetworkNameLen))
 	}
 
@@ -91,7 +94,7 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	newVc := newObj.(*networkv1.VlanConfig)
 
 	if newVc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
-		return fmt.Errorf(updateErr, newVc.Name, fmt.Errorf("cluster network could not be %s",
+		return fmt.Errorf(updateErr, newVc.Name, fmt.Errorf("cluster network can't be %s",
 			utils.ManagementClusterNetworkName))
 	}
 	// skip validation if spec is not changed
@@ -180,6 +183,9 @@ func (v *Validator) Resource() admission.Resource {
 }
 
 func (v *Validator) checkOverlaps(vc *networkv1.VlanConfig, nodes mapset.Set[string]) error {
+	if nodes == nil {
+		return nil
+	}
 	overlapNods := mapset.NewSet[string]()
 	for node := range nodes.Iter() {
 		vsName := utils.Name("", vc.Spec.ClusterNetwork, node)
@@ -253,6 +259,12 @@ func getMatchNodes(vc *networkv1.VlanConfig) (mapset.Set[string], error) {
 }
 
 func (v *Validator) validateMTU(current *networkv1.VlanConfig) error {
+	// MTU can be 0, it means user does not input it and the default value is used
+	if !utils.IsValidMTU(current.Spec.Uplink.LinkAttrs.MTU) {
+		return fmt.Errorf("the MTU %v is out of range [0, %v..%v]", current.Spec.Uplink.LinkAttrs.MTU, utils.MinMTU, utils.MaxMTU)
+	}
+
+	// ensure all vlanconfigs on one clusternetwork have the same MTU
 	vcs, err := v.vcCache.List(labels.Set(map[string]string{
 		utils.KeyClusterNetworkLabel: current.Spec.ClusterNetwork,
 	}).AsSelector())
@@ -264,8 +276,8 @@ func (v *Validator) validateMTU(current *networkv1.VlanConfig) error {
 		if vc.Name == current.Name {
 			continue
 		}
-		if current.Spec.Uplink.LinkAttrs.MTU != vc.Spec.Uplink.LinkAttrs.MTU {
-			return fmt.Errorf("the MTU is different from network config %s", vc.Name)
+		if !utils.AreEqualMTUs(current.Spec.Uplink.LinkAttrs.MTU, vc.Spec.Uplink.LinkAttrs.MTU) {
+			return fmt.Errorf("the vlanconfig %s MTU %v is different with another vlanconfig %s MTU %v, all vlanconfigs on one clusternetwork need to have same MTU", current.Name, current.Spec.Uplink.LinkAttrs.MTU, vc.Name, vc.Spec.Uplink.LinkAttrs.MTU)
 		}
 	}
 
