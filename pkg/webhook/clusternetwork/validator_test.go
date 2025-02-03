@@ -46,6 +46,17 @@ func TestCreateClusterNetwork(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:      "user can't add the MTU label",
+			returnErr: false,
+			errKey:    "",
+			newCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   testCnName,
+					Labels: map[string]string{utils.KeyUplinkMTU: "1500"},
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -70,6 +81,97 @@ func TestCreateClusterNetwork(t *testing.T) {
 			}
 			validator := NewCnValidator(vcCache)
 			err := validator.Create(nil, tc.newCN)
+			if tc.returnErr {
+				assert.NotNil(t, err)
+				assert.True(t, strings.Contains(err.Error(), tc.errKey))
+			}
+		})
+	}
+}
+
+func TestUpdateClusterNetwork(t *testing.T) {
+	tests := []struct {
+		name      string
+		returnErr bool
+		errKey    string
+		currentCN *networkv1.ClusterNetwork
+		currentVC *networkv1.VlanConfig
+		newCN     *networkv1.ClusterNetwork
+	}{
+		{
+			name:      "ClusterNetwork is ok to update",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+		},
+		{
+			name:      "user can't update the MTU label",
+			returnErr: true,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   testCnName,
+					Labels: map[string]string{utils.KeyUplinkMTU: "1500"},
+				},
+			},
+			newCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   testCnName,
+					Labels: map[string]string{utils.KeyUplinkMTU: "1501"},
+				},
+			},
+		},
+		{
+			name:      "user can delete the MTU label",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   testCnName,
+					Labels: map[string]string{utils.KeyUplinkMTU: "1500"},
+				},
+			},
+			newCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testCnName,
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.NotNil(t, tc.newCN)
+			if tc.newCN == nil {
+				return
+			}
+
+			nchclientset := fake.NewSimpleClientset()
+			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
+
+			// client to inject test data
+			cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
+			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
+
+			if tc.currentVC != nil {
+				vcClient.Create(tc.currentVC)
+			}
+			if tc.currentCN != nil {
+				cnClient.Create(tc.currentCN)
+			}
+			validator := NewCnValidator(vcCache)
+			err := validator.Update(nil, tc.currentCN, tc.newCN)
 			if tc.returnErr {
 				assert.NotNil(t, err)
 				assert.True(t, strings.Contains(err.Error(), tc.errKey))

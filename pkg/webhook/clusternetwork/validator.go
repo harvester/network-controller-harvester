@@ -16,6 +16,7 @@ import (
 
 const (
 	createErr = "can't create cluster network %s because %w"
+	updateErr = "can't update cluster network %s because %w"
 	deleteErr = "can't delete cluster network %s because %w"
 )
 
@@ -40,6 +41,39 @@ func (c *CnValidator) Create(_ *admission.Request, newObj runtime.Object) error 
 
 	if len(cn.Name) > maxClusterNetworkNameLen {
 		return fmt.Errorf(createErr, cn.Name, fmt.Errorf("the length of name is more than %d", maxClusterNetworkNameLen))
+	}
+
+	// this label can only be operated by controller
+	if cn.Labels != nil {
+		if _, ok := cn.Labels[utils.KeyUplinkMTU]; ok {
+			return fmt.Errorf(createErr, cn.Name, fmt.Errorf("label %v can't be added", utils.KeyUplinkMTU))
+		}
+	}
+
+	return nil
+}
+
+func (c *CnValidator) Update(_ *admission.Request, oldObj, newObj runtime.Object) error {
+	oldCn := oldObj.(*networkv1.ClusterNetwork)
+	newCn := newObj.(*networkv1.ClusterNetwork)
+
+	// user can't add or update this label
+	// user can delete the label
+	oldMtu := ""
+	if oldCn.Labels != nil {
+		if mtu, ok := oldCn.Labels[utils.KeyUplinkMTU]; ok {
+			oldMtu = mtu
+		}
+	}
+	if newCn.Labels != nil {
+		if mtu, ok := newCn.Labels[utils.KeyUplinkMTU]; ok {
+			if oldMtu == "" {
+				return fmt.Errorf(updateErr, newCn.Name, fmt.Errorf("label %v can't be added", utils.KeyUplinkMTU))
+			}
+			if mtu != oldMtu {
+				return fmt.Errorf(updateErr, newCn.Name, fmt.Errorf("label %v can't be updated", utils.KeyUplinkMTU))
+			}
+		}
 	}
 
 	return nil
@@ -79,6 +113,7 @@ func (c *CnValidator) Resource() admission.Resource {
 		ObjectType: &networkv1.ClusterNetwork{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
+			admissionregv1.Update,
 			admissionregv1.Delete,
 		},
 	}
