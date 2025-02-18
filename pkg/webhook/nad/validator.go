@@ -11,15 +11,16 @@ import (
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 const (
-	createErr = "could not create nad %s/%s because %w"
-	updateErr = "could not update nad %s/%s because %w"
-	deleteErr = "could not delete nad %s/%s because %w"
+	createErr = "can't create nad %s/%s because %w"
+	updateErr = "can't update nad %s/%s because %w"
+	deleteErr = "can't delete nad %s/%s because %w"
 )
 
 type Validator struct {
@@ -111,7 +112,7 @@ func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf) error {
 
 	lenOfBrName, lenOfBridgeSuffix := len(bridgeConf.BrName), len(iface.BridgeSuffix)
 	if lenOfBrName > iface.MaxDeviceNameLen {
-		return fmt.Errorf("the length of the brName could not be more than 15")
+		return fmt.Errorf("the length of the brName can't be more than %v", iface.MaxDeviceNameLen)
 	}
 	if lenOfBrName <= lenOfBridgeSuffix || bridgeConf.BrName[lenOfBrName-lenOfBridgeSuffix:] != iface.BridgeSuffix {
 		return fmt.Errorf("the suffix of the brName should be -br")
@@ -132,6 +133,11 @@ func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
 		return err
 	}
 
+	return v.generateVmiNoneStopError(nad, vmis)
+}
+
+// for convenicen of test code
+func (v *Validator) generateVmiNoneStopError(_ *cniv1.NetworkAttachmentDefinition, vmis []*kubevirtv1.VirtualMachineInstance) error {
 	if len(vmis) > 0 {
 		vmiNameList := make([]string, 0, len(vmis))
 		for _, vmi := range vmis {
@@ -139,7 +145,6 @@ func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
 		}
 		return fmt.Errorf("it's still used by VM(s) %s which must be stopped at first", strings.Join(vmiNameList, ", "))
 	}
-
 	return nil
 }
 
