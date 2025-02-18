@@ -25,13 +25,16 @@ const (
 type Validator struct {
 	admission.DefaultValidator
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
+	vmCache  ctlkubevirtv1.VirtualMachineCache
 }
 
 var _ admission.Validator = &Validator{}
 
-func NewNadValidator(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Validator {
+func NewNadValidator(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache,
+	vmCache ctlkubevirtv1.VirtualMachineCache) *Validator {
 	return &Validator{
 		vmiCache: vmiCache,
+		vmCache:  vmCache,
 	}
 }
 
@@ -126,7 +129,7 @@ func (v *Validator) checkRoute(config string) error {
 }
 
 func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
-	vmiGetter := utils.VmiGetter{VmiCache: v.vmiCache}
+	vmiGetter := utils.VmiGetter{VmiCache: v.vmiCache, VMCache: v.vmCache}
 	vmis, err := vmiGetter.WhoUseNad(nad, nil)
 	if err != nil {
 		return err
@@ -135,9 +138,9 @@ func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
 	if len(vmis) > 0 {
 		vmiNameList := make([]string, 0, len(vmis))
 		for _, vmi := range vmis {
-			vmiNameList = append(vmiNameList, vmi.Namespace+"/"+vmi.Name)
+			vmiNameList = append(vmiNameList, vmi)
 		}
-		return fmt.Errorf("it's still used by VM(s) %s which must be stopped at first", strings.Join(vmiNameList, ", "))
+		return fmt.Errorf("VM(s) %s still attached", strings.Join(vmiNameList, ", "))
 	}
 
 	return nil
