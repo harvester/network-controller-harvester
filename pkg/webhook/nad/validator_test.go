@@ -13,7 +13,6 @@ import (
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 
 	harvesterfake "github.com/harvester/harvester/pkg/generated/clientset/versioned/fake"
-	harvesterfakeclients "github.com/harvester/harvester/pkg/util/fakeclients"
 
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/fake"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
@@ -22,8 +21,8 @@ import (
 
 const (
 	testCnName    = "test-cn"
-	testNADConfig = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br0\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
-	testNADName   = "testNad"
+	testNadConfig = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
+	testNadName   = "net1-vlan"
 	testVMName    = "vm1"
 	testNamespace = "test"
 )
@@ -39,7 +38,7 @@ func TestCreateNAD(t *testing.T) {
 		newNAD     *cniv1.NetworkAttachmentDefinition
 	}{
 		{
-			name:      "NAD is valid to create",
+			name:      "valid NAD can be created",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
@@ -50,18 +49,104 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: testNADConfig,
+					Config: testNadConfig,
 				},
 			},
 		},
 		{
-			name:      "NAD has invalid config string",
+			name:      "valid NAD can be created when it does not have label",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testNadConfig,
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as it's label does not match bridge name",
+			returnErr: true,
+			errKey:    "does not match",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: "test-cn-mismatch"}, // does not match bridge name
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as it's label and config refer to a none-existing cluster network",
+			returnErr: true,
+			errKey:    "none-existing",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: "none"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"none-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as it's config refers to a none-existing cluster network",
+			returnErr: true,
+			errKey:    "none-existing",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"none-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as it has invalid config string",
 			returnErr: true,
 			errKey:    "unmarshal",
 			currentCN: &networkv1.ClusterNetwork{
@@ -72,18 +157,18 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br0\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+					Config: "{\"cniVersion\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
 				},
 			},
 		},
 		{
-			name:      "NAD has invalid VLAN id which is -1",
+			name:      "NAD can't be created as it has invalid VLAN id which is -1",
 			returnErr: true,
 			errKey:    "VLAN ID must",
 			currentCN: &networkv1.ClusterNetwork{
@@ -94,18 +179,18 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br0\",\"promiscMode\":true,\"vlan\":-1,\"ipam\":{}}",
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":-1,\"ipam\":{}}",
 				},
 			},
 		},
 		{
-			name:      "NAD has invalid VLAN id which is 4095",
+			name:      "NAD can't be created as it has invalid VLAN id which is 4095",
 			returnErr: true,
 			errKey:    "VLAN ID must",
 			currentCN: &networkv1.ClusterNetwork{
@@ -116,18 +201,18 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br0\",\"promiscMode\":true,\"vlan\":4095,\"ipam\":{}}",
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":4095,\"ipam\":{}}",
 				},
 			},
 		},
 		{
-			name:      "NAD has too long bridge name",
+			name:      "NAD can't be created as it has too long bridge name",
 			returnErr: true,
 			errKey:    "the length of the brName",
 			currentCN: &networkv1.ClusterNetwork{
@@ -138,18 +223,18 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br0-too-long\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br-too-long\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
 				},
 			},
 		},
 		{
-			name:      "NAD has too short bridge name",
+			name:      "NAD can't be created as it has too short bridge name",
 			returnErr: true,
 			errKey:    "the suffix of the brName",
 			currentCN: &networkv1.ClusterNetwork{
@@ -160,7 +245,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
@@ -171,7 +256,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 		},
 		{
-			name:      "NAD has invalid bridge suffix",
+			name:      "NAD can't be created as has invalid bridge suffix",
 			returnErr: true,
 			errKey:    "the suffix of the brName",
 			currentCN: &networkv1.ClusterNetwork{
@@ -182,7 +267,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
@@ -205,11 +290,14 @@ func TestCreateNAD(t *testing.T) {
 			nchclientset := fake.NewSimpleClientset()
 			harvesterclientset := harvesterfake.NewSimpleClientset()
 
-			vmiCache := harvesterfakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
+			vmCache := fakeclients.VirtualMachineCache(harvesterclientset.KubevirtV1().VirtualMachines)
+			vmiCache := fakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
 
 			// client to inject test data
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
 			cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
+			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
+			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
 
 			if tc.currentVC != nil {
 				vcClient.Create(tc.currentVC)
@@ -218,9 +306,10 @@ func TestCreateNAD(t *testing.T) {
 				cnClient.Create(tc.currentCN)
 			}
 
-			validator := NewNadValidator(vmiCache)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache)
 
 			err := validator.Create(nil, tc.newNAD)
+			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
 				assert.True(t, strings.Contains(err.Error(), tc.errKey))
@@ -235,46 +324,112 @@ func TestDeleteNAD(t *testing.T) {
 		returnErr  bool
 		errKey     string
 		currentNAD *cniv1.NetworkAttachmentDefinition
-		usedVMs    []*kubevirtv1.VirtualMachineInstance
+		currentVM  *kubevirtv1.VirtualMachine
+		currentVmi *kubevirtv1.VirtualMachineInstance
 	}{
 		{
-			name:      "NAD has used VMs and can't be deleted",
+			name:      "NAD can't be deleted as it has used VMIs",
 			returnErr: true,
 			errKey:    testVMName,
 			currentNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: testNADConfig,
+					Config: testNadConfig,
 				},
 			},
-			usedVMs: []*kubevirtv1.VirtualMachineInstance{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        testVMName,
-						Namespace:   testNamespace,
-						Annotations: map[string]string{"test": "test"},
+			currentVmi: &kubevirtv1.VirtualMachineInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testVMName,
+					Namespace: testNamespace,
+				},
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					Networks: []kubevirtv1.Network{
+						{
+							Name: "nic-1",
+							NetworkSource: kubevirtv1.NetworkSource{
+								Multus: &kubevirtv1.MultusNetwork{
+									NetworkName: testNamespace + "/" + testNadName, // same with nad namesapce
+								},
+							},
+						},
+					},
+					Domain: kubevirtv1.DomainSpec{
+						Devices: kubevirtv1.Devices{
+							Interfaces: []kubevirtv1.Interface{
+								{
+									Name: "nic-1",
+								},
+							},
+						},
+					},
+				}, // vmi.spec
+			}, // vmi
+		},
+		{
+			name:      "NAD can't be deleted as it has used VMs",
+			returnErr: true,
+			errKey:    testVMName,
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testNadConfig,
+				},
+			},
+			currentVM: &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testVMName,
+					Namespace: testNamespace,
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+						Spec: kubevirtv1.VirtualMachineInstanceSpec{
+							Networks: []kubevirtv1.Network{
+								{
+									Name: "nic-1",
+									NetworkSource: kubevirtv1.NetworkSource{
+										Multus: &kubevirtv1.MultusNetwork{
+											NetworkName: testNamespace + "/" + testNadName, // same with nad namesapce
+										},
+									},
+								},
+							},
+							Domain: kubevirtv1.DomainSpec{
+								Devices: kubevirtv1.Devices{
+									Interfaces: []kubevirtv1.Interface{
+										{
+											Name: "nic-1",
+										},
+									},
+								},
+							},
+						}, // vmi.spec
 					},
 				},
 			},
 		},
 		{
-			name:      "NAD has no used VMs and can be deleted",
+			name:      "NAD can be deleted as it has no used VMs",
 			returnErr: false,
 			errKey:    "",
 			currentNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: testNADConfig,
+					Config: testNadConfig,
 				},
 			},
 		},
@@ -287,15 +442,31 @@ func TestDeleteNAD(t *testing.T) {
 				return
 			}
 
+			nchclientset := fake.NewSimpleClientset()
 			harvesterclientset := harvesterfake.NewSimpleClientset()
-			vmiCache := harvesterfakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
-			validator := NewNadValidator(vmiCache)
+			vmCache := fakeclients.VirtualMachineCache(harvesterclientset.KubevirtV1().VirtualMachines)
+			vmiCache := fakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
+			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
+			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache)
 
-			// due to fake vmiCache limitation, just test generateVmiNoneStopError() instead of Delete()
-			err := validator.generateVmiNoneStopError(tc.currentNAD, tc.usedVMs)
+			if tc.currentVM != nil {
+				err := harvesterclientset.Tracker().Add(tc.currentVM)
+				assert.Nil(t, err, "mock resource vm should add into fake controller tracker")
+			}
+
+			if tc.currentVmi != nil {
+				err := harvesterclientset.Tracker().Add(tc.currentVmi)
+				assert.Nil(t, err, "mock resource vmi should add into fake controller tracker")
+			}
+
+			err := validator.Delete(nil, tc.currentNAD)
+			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
-				assert.True(t, strings.Contains(err.Error(), tc.errKey))
+				if err != nil {
+					assert.True(t, strings.Contains(err.Error(), tc.errKey))
+				}
 			}
 		})
 	}

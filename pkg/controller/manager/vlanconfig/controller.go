@@ -94,25 +94,26 @@ func (h Handler) ensureClusterNetwork(vc *networkv1.VlanConfig) error {
 	if utils.IsValidMTU(vc.Spec.Uplink.LinkAttrs.MTU) && vc.Spec.Uplink.LinkAttrs.MTU != 0 {
 		MTU = vc.Spec.Uplink.LinkAttrs.MTU
 	}
-	targetLbMTU := fmt.Sprintf("%v", MTU)
+	targetMTU := fmt.Sprintf("%v", MTU)
 
-	// check if the configured VC MTU value is updated to ClusterNetwork label
+	// check if the configured VC MTU value is updated to ClusterNetwork annotations
 	if curCn != nil {
-		curLbMTU := curCn.Labels[utils.KeyUplinkMTU]
-		if curLbMTU == targetLbMTU {
-			// do not compare KeyMTUSourceVlanConfig, which is used for reference
+		curMTU := curCn.Annotations[utils.KeyUplinkMTU]
+		if curMTU == targetMTU {
+			// do not compare KeyMTUSourceVlanConfig, which is only used for reference
 			return nil
 		}
 		// update the new MTU, e.g. a new MTU value is set on the vlanconfig
 		cnCopy := curCn.DeepCopy()
-		if cnCopy.Labels == nil {
-			cnCopy.Labels = make(map[string]string, 2)
+		if cnCopy.Annotations == nil {
+			cnCopy.Annotations = make(map[string]string, 2)
 		}
-		cnCopy.Labels[utils.KeyUplinkMTU] = targetLbMTU
-		cnCopy.Labels[utils.KeyMTUSourceVlanConfig] = vc.Name
+		cnCopy.Annotations[utils.KeyUplinkMTU] = targetMTU
+		cnCopy.Annotations[utils.KeyMTUSourceVlanConfig] = vc.Name
 		if _, err := h.cnClient.Update(cnCopy); err != nil {
-			return fmt.Errorf("failed to update cluster network %s label %s with MTU %s error %w", name, utils.KeyUplinkMTU, targetLbMTU, err)
+			return fmt.Errorf("failed to update cluster network %s annotation %s with MTU %s error %w", name, utils.KeyUplinkMTU, targetMTU, err)
 		}
+		klog.Infof("update cluster network %s annotation %s to %s", name, utils.KeyUplinkMTU, targetMTU)
 		return nil
 	}
 
@@ -120,8 +121,8 @@ func (h Handler) ensureClusterNetwork(vc *networkv1.VlanConfig) error {
 	cn := &networkv1.ClusterNetwork{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
-			Labels: map[string]string{
-				utils.KeyUplinkMTU:           targetLbMTU,
+			Annotations: map[string]string{
+				utils.KeyUplinkMTU:           targetMTU,
 				utils.KeyMTUSourceVlanConfig: vc.Name,
 			},
 		},

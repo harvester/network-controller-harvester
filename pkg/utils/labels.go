@@ -24,4 +24,9 @@ const (
 	ValueFalse = "false"
 
 	HarvesterWitnessNodeLabelKey = "node-role.harvesterhci.io/witness"
+
+	// defined in Harvester pkg/controller/master/storagenetwork/storage_network.go
+	// to avoid loop references, needs to wait until Harvester move this to its const and then refers to
+	StorageNetworkAnnotation         = "storage-network.settings.harvesterhci.io"
+	StorageNetworkNetAttachDefPrefix = "storagenetwork-"
 )

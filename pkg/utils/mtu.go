@@ -17,13 +17,13 @@ func AreEqualMTUs(MTU1, MTU2 int) bool {
 	return (MTU1 == MTU2) || (MTU1 == 0 && MTU2 == DefaultMTU) || (MTU1 == DefaultMTU && MTU2 == 0)
 }
 
-func GetMTUFromLabel(label string) (int, error) {
-	MTU, err := strconv.Atoi(label)
+func GetMTUFromAnnotation(annotation string) (int, error) {
+	MTU, err := strconv.Atoi(annotation)
 	if err != nil {
-		return 0, fmt.Errorf("label %v value is not int, error %w", label, err)
+		return 0, fmt.Errorf("annotation %v value is not an integer, error %w", annotation, err)
 	}
 	if !IsValidMTU(MTU) {
-		return 0, fmt.Errorf("label %v value is not in range [0, %v..%v]", label, MinMTU, MaxMTU)
+		return 0, fmt.Errorf("annotation %v value is not in range [0, %v..%v]", annotation, MinMTU, MaxMTU)
 	}
 	return MTU, nil
 }
