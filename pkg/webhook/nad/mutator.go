@@ -198,8 +198,8 @@ func (m *Mutator) patchMTU(nad *cniv1.NetworkAttachmentDefinition) (admission.Pa
 	getMtu := false
 
 	// get MTU from clusternetwork
-	if lbMTU := cn.Labels[utils.KeyUplinkMTU]; lbMTU != "" {
-		if mtu, err := utils.GetMTUFromLabel(lbMTU); err == nil {
+	if lbMTU := cn.Annotations[utils.KeyUplinkMTU]; lbMTU != "" {
+		if mtu, err := utils.GetMTUFromAnnotation(lbMTU); err == nil {
 			targetMTU = mtu
 			getMtu = true
 		}

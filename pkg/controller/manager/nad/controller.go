@@ -105,16 +105,16 @@ func (h Handler) OnCNChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.
 		return nil, nil
 	}
 
-	// MTU label is not set
-	curLbMTU := cn.Labels[utils.KeyUplinkMTU]
-	if curLbMTU == "" {
+	// MTU annotation is not set
+	curMTU := cn.Annotations[utils.KeyUplinkMTU]
+	if curMTU == "" {
 		return nil, nil
 	}
 
-	MTU, err := utils.GetMTUFromLabel(curLbMTU)
+	MTU, err := utils.GetMTUFromAnnotation(curMTU)
 	// skip if MTU is invalid
 	if err != nil {
-		klog.Infof("cluster network %v has MTU label %v/%v with invalid MTU value, skip to sync with nad %s", cn.Name, utils.KeyUplinkMTU, curLbMTU, err.Error())
+		klog.Infof("cluster network %v has MTU annotation %v/%v with invalid value, skip to sync with nad %s", cn.Name, utils.KeyUplinkMTU, curMTU, err.Error())
 		return nil, nil
 	}
 
@@ -146,7 +146,7 @@ func (h Handler) OnCNChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.
 		if _, err := h.nadClient.Update(nadCopy); err != nil {
 			return nil, err
 		}
-		klog.Infof("sync cluster network %v label mtu %v/%v to nad %v", cn.Name, utils.KeyUplinkMTU, curLbMTU, nad.Name)
+		klog.Infof("sync cluster network %v annotation mtu %v/%v to nad %v", cn.Name, utils.KeyUplinkMTU, curMTU, nad.Name)
 	}
 
 	return nil, nil
