@@ -116,7 +116,7 @@ func TestUpdateClusterNetwork(t *testing.T) {
 			},
 		},
 		{
-			name:      "MTU label on ClusterNetwork can't be changed",
+			name:      "ClusterNetwork can't be changed as MTU label is not allowed to be changed by user",
 			returnErr: true,
 			errKey:    "can't be changed",
 			currentCN: &networkv1.ClusterNetwork{
@@ -133,7 +133,7 @@ func TestUpdateClusterNetwork(t *testing.T) {
 			},
 		},
 		{
-			name:      "MTU label on ClusterNetwork can be deleted",
+			name:      "ClusterNetwork can be changed as MTU label is allowed to be deleted by user",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{

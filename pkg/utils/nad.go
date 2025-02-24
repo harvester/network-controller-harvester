@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 
 	cniv1 "github.com/containernetworking/cni/pkg/types"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+
+	harvesterutil "github.com/harvester/harvester/pkg/util"
 )
 
 type Connectivity string
@@ -131,4 +134,22 @@ func isMaskZero(ipnet *net.IPNet) bool {
 	}
 
 	return true
+}
+
+// if this nad is a storagenetwork nad
+func IsStorageNetworkNad(nad *nadv1.NetworkAttachmentDefinition) bool {
+	if nad == nil {
+		return false
+	}
+
+	// seems Harvester webhook has no protection on this annotation
+	if nad.Annotations[StorageNetworkAnnotation] == "true" {
+		return true
+	}
+
+	if nad.Namespace == harvesterutil.HarvesterSystemNamespaceName && strings.HasPrefix(nad.Name, StorageNetworkNetAttachDefPrefix) {
+		return true
+	}
+
+	return false
 }

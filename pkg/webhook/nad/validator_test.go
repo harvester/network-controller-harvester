@@ -22,7 +22,7 @@ import (
 
 const (
 	testCnName    = "test-cn"
-	testNADConfig = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br0\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
+	testNADConfig = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
 	testNADName   = "testNad"
 	testVMName    = "vm1"
 	testNamespace = "test"
@@ -39,7 +39,7 @@ func TestCreateNAD(t *testing.T) {
 		newNAD     *cniv1.NetworkAttachmentDefinition
 	}{
 		{
-			name:      "NAD is valid to create",
+			name:      "NAD can be created",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
@@ -61,7 +61,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 		},
 		{
-			name:      "NAD has invalid config string",
+			name:      "NAD can't be created as it has invalid config string",
 			returnErr: true,
 			errKey:    "unmarshal",
 			currentCN: &networkv1.ClusterNetwork{
@@ -78,12 +78,12 @@ func TestCreateNAD(t *testing.T) {
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br0\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+					Config: "{\"cniVersion\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
 				},
 			},
 		},
 		{
-			name:      "NAD has invalid VLAN id which is -1",
+			name:      "NAD can't be created as it has invalid VLAN id which is -1",
 			returnErr: true,
 			errKey:    "VLAN ID must",
 			currentCN: &networkv1.ClusterNetwork{
@@ -100,12 +100,12 @@ func TestCreateNAD(t *testing.T) {
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br0\",\"promiscMode\":true,\"vlan\":-1,\"ipam\":{}}",
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br\",\"promiscMode\":true,\"vlan\":-1,\"ipam\":{}}",
 				},
 			},
 		},
 		{
-			name:      "NAD has invalid VLAN id which is 4095",
+			name:      "NAD can't be created as it has invalid VLAN id which is 4095",
 			returnErr: true,
 			errKey:    "VLAN ID must",
 			currentCN: &networkv1.ClusterNetwork{
@@ -122,12 +122,12 @@ func TestCreateNAD(t *testing.T) {
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br0\",\"promiscMode\":true,\"vlan\":4095,\"ipam\":{}}",
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br\",\"promiscMode\":true,\"vlan\":4095,\"ipam\":{}}",
 				},
 			},
 		},
 		{
-			name:      "NAD has too long bridge name",
+			name:      "NAD can't be created as it has too long bridge name",
 			returnErr: true,
 			errKey:    "the length of the brName",
 			currentCN: &networkv1.ClusterNetwork{
@@ -144,12 +144,12 @@ func TestCreateNAD(t *testing.T) {
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br0-too-long\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br-too-long\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
 				},
 			},
 		},
 		{
-			name:      "NAD has too short bridge name",
+			name:      "NAD can't be created as it has too short bridge name",
 			returnErr: true,
 			errKey:    "the suffix of the brName",
 			currentCN: &networkv1.ClusterNetwork{
@@ -221,6 +221,7 @@ func TestCreateNAD(t *testing.T) {
 			validator := NewNadValidator(vmiCache)
 
 			err := validator.Create(nil, tc.newNAD)
+			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
 				assert.True(t, strings.Contains(err.Error(), tc.errKey))
@@ -238,7 +239,7 @@ func TestDeleteNAD(t *testing.T) {
 		usedVMs    []*kubevirtv1.VirtualMachineInstance
 	}{
 		{
-			name:      "NAD has used VMs and can't be deleted",
+			name:      "NAD can't be deleted as it has used VMs",
 			returnErr: true,
 			errKey:    testVMName,
 			currentNAD: &cniv1.NetworkAttachmentDefinition{
@@ -263,7 +264,7 @@ func TestDeleteNAD(t *testing.T) {
 			},
 		},
 		{
-			name:      "NAD has no used VMs and can be deleted",
+			name:      "NAD can be deleted as it has no used VMs",
 			returnErr: false,
 			errKey:    "",
 			currentNAD: &cniv1.NetworkAttachmentDefinition{
@@ -271,6 +272,22 @@ func TestDeleteNAD(t *testing.T) {
 					Name:        testNADName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testNADConfig,
+				},
+			},
+		},
+		{
+			name:      "NAD can be deleted as it is used by storagenetwork",
+			returnErr: false,
+			errKey:    "",
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNADName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{utils.StorageNetworkAnnotation: "true"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
@@ -293,6 +310,7 @@ func TestDeleteNAD(t *testing.T) {
 
 			// due to fake vmiCache limitation, just test generateVmiNoneStopError() instead of Delete()
 			err := validator.generateVmiNoneStopError(tc.currentNAD, tc.usedVMs)
+			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
 				assert.True(t, strings.Contains(err.Error(), tc.errKey))

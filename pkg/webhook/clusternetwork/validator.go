@@ -44,9 +44,20 @@ func (c *CnValidator) Create(_ *admission.Request, newObj runtime.Object) error 
 	}
 
 	// this label can only be operated by controller
-	if cn.Labels != nil {
+	if cn.Name != utils.ManagementClusterNetworkName {
+		if cn.Labels == nil {
+			return nil
+		}
 		if _, ok := cn.Labels[utils.KeyUplinkMTU]; ok {
 			return fmt.Errorf(createErr, cn.Name, fmt.Errorf("label %v can't be added", utils.KeyUplinkMTU))
+		}
+		return nil
+	}
+
+	// mgmt network, user can set the MTU
+	if mtu, ok := cn.Labels[utils.KeyUplinkMTU]; ok {
+		if _, err := utils.GetMTUFromLabel(mtu); err != nil {
+			return fmt.Errorf(createErr, cn.Name, err)
 		}
 	}
 
@@ -57,19 +68,29 @@ func (c *CnValidator) Update(_ *admission.Request, oldObj, newObj runtime.Object
 	oldCn := oldObj.(*networkv1.ClusterNetwork)
 	newCn := newObj.(*networkv1.ClusterNetwork)
 
-	// user can't add or update this label
-	// user can delete the label
-	oldMtu := ""
-	if oldCn.Labels != nil {
-		if mtu, ok := oldCn.Labels[utils.KeyUplinkMTU]; ok {
-			oldMtu = mtu
-		}
-	}
-	if newCn.Labels != nil {
-		if mtu, ok := newCn.Labels[utils.KeyUplinkMTU]; ok {
-			if mtu != oldMtu {
-				return fmt.Errorf(updateErr, newCn.Name, fmt.Errorf("label %v can't be changed", utils.KeyUplinkMTU))
+	if newCn.Name != utils.ManagementClusterNetworkName {
+		// user can't add or update this label
+		// user can delete the label
+		oldMtu := ""
+		if oldCn.Labels != nil {
+			if mtu, ok := oldCn.Labels[utils.KeyUplinkMTU]; ok {
+				oldMtu = mtu
 			}
+		}
+		if newCn.Labels != nil {
+			if mtu, ok := newCn.Labels[utils.KeyUplinkMTU]; ok {
+				if mtu != oldMtu {
+					return fmt.Errorf(updateErr, newCn.Name, fmt.Errorf("label %v can't be changed", utils.KeyUplinkMTU))
+				}
+			}
+		}
+		return nil
+	}
+
+	// mgmt network
+	if mtu, ok := newCn.Labels[utils.KeyUplinkMTU]; ok {
+		if _, err := utils.GetMTUFromLabel(mtu); err != nil {
+			return fmt.Errorf(createErr, newCn.Name, err)
 		}
 	}
 
@@ -80,7 +101,7 @@ func (c *CnValidator) Delete(_ *admission.Request, oldObj runtime.Object) error 
 	cn := oldObj.(*networkv1.ClusterNetwork)
 
 	if cn.Name == utils.ManagementClusterNetworkName {
-		return fmt.Errorf(deleteErr, cn.Name, fmt.Errorf("is not allowed"))
+		return fmt.Errorf(deleteErr, cn.Name, fmt.Errorf("it is not allowed"))
 	}
 
 	vcs, err := c.vcCache.List(labels.Set{

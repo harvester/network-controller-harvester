@@ -29,7 +29,7 @@ func TestCreateVlanConfig(t *testing.T) {
 		newVC     *networkv1.VlanConfig
 	}{
 		{
-			name:      "can't create VlanConfig on mgmt network",
+			name:      "VlanConfig can't be created on mgmt network",
 			returnErr: true,
 			errKey:    "mgmt",
 			newVC: &networkv1.VlanConfig{
@@ -43,7 +43,7 @@ func TestCreateVlanConfig(t *testing.T) {
 			},
 		},
 		{
-			name:      "MTU is too small",
+			name:      "VlanConfig can't be created as MTU is too small",
 			returnErr: true,
 			errKey:    "out of range",
 			currentCN: &networkv1.ClusterNetwork{
@@ -69,7 +69,7 @@ func TestCreateVlanConfig(t *testing.T) {
 			},
 		},
 		{
-			name:      "MTU is too big",
+			name:      "VlanConfig can't be created as MTU is too big",
 			returnErr: true,
 			errKey:    "out of range",
 			currentCN: &networkv1.ClusterNetwork{
@@ -95,7 +95,7 @@ func TestCreateVlanConfig(t *testing.T) {
 			},
 		},
 		{
-			name:      "MTU is valid",
+			name:      "VlanConfig can't be created as MTU is valid",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
@@ -121,7 +121,7 @@ func TestCreateVlanConfig(t *testing.T) {
 			},
 		},
 		{
-			name:      "MTU is 0 and will fallback to default value",
+			name:      "VlanConfig can be created with MTU 0 and MTU will fallback to default value",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
@@ -147,7 +147,7 @@ func TestCreateVlanConfig(t *testing.T) {
 			},
 		},
 		{
-			name:      "VlanConfigs under one ClusterNetwork can't have different MTUs",
+			name:      "VlanConfig can't be created as VlanConfigs under one ClusterNetwork have different MTUs",
 			returnErr: true,
 			errKey:    "MTU",
 			currentCN: &networkv1.ClusterNetwork{
@@ -188,7 +188,7 @@ func TestCreateVlanConfig(t *testing.T) {
 			},
 		},
 		{
-			name:      "VlanConfigs have overlaps",
+			name:      "VlanConfig can't be created as VlanConfigs have overlaps",
 			returnErr: true,
 			errKey:    "overlaps",
 			currentCN: &networkv1.ClusterNetwork{
@@ -258,6 +258,7 @@ func TestCreateVlanConfig(t *testing.T) {
 			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
 
 			err := validator.Create(nil, tc.newVC)
+			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
 				assert.True(t, strings.Contains(err.Error(), tc.errKey))
@@ -277,7 +278,7 @@ func TestDeleteVlanConfig(t *testing.T) {
 		currentVS *networkv1.VlanStatus
 	}{
 		{
-			name:      "VlanConfig has no matched nodes",
+			name:      "VlanConfig can be deleted as it has no matched nodes",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
@@ -312,7 +313,7 @@ func TestDeleteVlanConfig(t *testing.T) {
 			},
 		},
 		{
-			name:      "VlanConfig has matched nodes but no VlanStatus",
+			name:      "VlanConfig can be deleted as has matched nodes but no VlanStatus",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
@@ -338,7 +339,7 @@ func TestDeleteVlanConfig(t *testing.T) {
 			},
 		},
 		{
-			name:      "VlanConfig has matched nodes and matched VlanStatus but no nad",
+			name:      "VlanConfig can be deleted as it has matched nodes and matched VlanStatus but no nad",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
@@ -375,7 +376,7 @@ func TestDeleteVlanConfig(t *testing.T) {
 			},
 		},
 		{
-			name:      "VlanConfig has matched nodes and matched VlanStatus and nad but no vmi",
+			name:      "VlanConfig can be deleted as it has matched nodes and matched VlanStatus and nad but no vmi",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
@@ -445,6 +446,7 @@ func TestDeleteVlanConfig(t *testing.T) {
 			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
 
 			err := validator.Delete(nil, tc.currentVC)
+			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
 				assert.True(t, strings.Contains(err.Error(), tc.errKey))

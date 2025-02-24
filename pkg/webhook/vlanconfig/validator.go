@@ -25,10 +25,9 @@ import (
 )
 
 const (
-	createErr                = "can't create vlanConfig %s because %w"
-	updateErr                = "can't update vlanConfig %s because %w"
-	deleteErr                = "can't delete vlanConfig %s because %w"
-	StorageNetworkAnnotation = "storage-network.settings.harvesterhci.io"
+	createErr = "can't create vlanConfig %s because %w"
+	updateErr = "can't update vlanConfig %s because %w"
+	deleteErr = "can't delete vlanConfig %s because %w"
 )
 
 type Validator struct {
@@ -158,7 +157,7 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 
 	if len(nads) > 0 {
 		for _, nad := range nads {
-			if nad.DeletionTimestamp == nil && nad.Annotations[StorageNetworkAnnotation] == "true" {
+			if nad.DeletionTimestamp == nil && utils.IsStorageNetworkNad(nad) {
 				return fmt.Errorf(deleteErr, vc.Name, fmt.Errorf(`storage network nad %s is still attached`, nad.Name))
 			}
 		}

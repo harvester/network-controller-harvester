@@ -21,6 +21,8 @@ const (
 	createErr = "can't create nad %s/%s because %w"
 	updateErr = "can't update nad %s/%s because %w"
 	deleteErr = "can't delete nad %s/%s because %w"
+
+	storageNetworkErr = "it is used by storagenetwork"
 )
 
 type Validator struct {
@@ -43,7 +45,7 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
-	conf, err := encodeConfig(nad.Spec.Config)
+	conf, err := decodeConfig(nad.Spec.Config)
 	if err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
@@ -67,11 +69,11 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
-	newConf, err := encodeConfig(newNad.Spec.Config)
+	newConf, err := decodeConfig(newNad.Spec.Config)
 	if err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
-	oldConf, err := encodeConfig(oldNad.Spec.Config)
+	oldConf, err := decodeConfig(oldNad.Spec.Config)
 	if err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
@@ -87,6 +89,12 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
+	// storagenetwork nad's params can't be changed, the only way is to clear & set storagenetwork
+	// then all storagenetwork related PODs will be replaced with new nad
+	if err := v.checkStorageNetwork(newNad); err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+	}
+
 	return nil
 }
 
@@ -94,6 +102,11 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	nad := oldObj.(*cniv1.NetworkAttachmentDefinition)
 
 	if err := v.checkVmi(nad); err != nil {
+		return fmt.Errorf(deleteErr, nad.Namespace, nad.Name, err)
+	}
+
+	// storagenetwork can't be deleted by user, only the harvester storagenetwork controller can
+	if err := v.checkStorageNetwork(nad); err != nil {
 		return fmt.Errorf(deleteErr, nad.Namespace, nad.Name, err)
 	}
 
@@ -136,6 +149,14 @@ func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
 	return v.generateVmiNoneStopError(nad, vmis)
 }
 
+func (v *Validator) checkStorageNetwork(nad *cniv1.NetworkAttachmentDefinition) error {
+	if utils.IsStorageNetworkNad(nad) {
+		fmt.Errorf(storageNetworkErr)
+	}
+
+	return nil
+}
+
 // for convenicen of test code
 func (v *Validator) generateVmiNoneStopError(_ *cniv1.NetworkAttachmentDefinition, vmis []*kubevirtv1.VirtualMachineInstance) error {
 	if len(vmis) > 0 {
@@ -163,7 +184,8 @@ func (v *Validator) Resource() admission.Resource {
 	}
 }
 
-func encodeConfig(config string) (*utils.NetConf, error) {
+// decode config string to a config struct
+func decodeConfig(config string) (*utils.NetConf, error) {
 	conf := &utils.NetConf{}
 	if config == "" {
 		return conf, nil
