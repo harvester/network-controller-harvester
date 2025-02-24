@@ -25,7 +25,7 @@ func TestCreateClusterNetwork(t *testing.T) {
 		newCN     *networkv1.ClusterNetwork
 	}{
 		{
-			name:      "ClusterNetwork name is too long",
+			name:      "ClusterNetwork can't be created as name is too long",
 			returnErr: true,
 			errKey:    "the length of",
 			newCN: &networkv1.ClusterNetwork{
@@ -36,7 +36,7 @@ func TestCreateClusterNetwork(t *testing.T) {
 			},
 		},
 		{
-			name:      "ClusterNetwork is ok to create",
+			name:      "ClusterNetwork can be created",
 			returnErr: false,
 			errKey:    "",
 			newCN: &networkv1.ClusterNetwork{
@@ -47,9 +47,9 @@ func TestCreateClusterNetwork(t *testing.T) {
 			},
 		},
 		{
-			name:      "user can't add the MTU label",
-			returnErr: false,
-			errKey:    "",
+			name:      "ClusterNetwork can't be created as MTU label is not allowed to be added by user",
+			returnErr: true,
+			errKey:    "can't be added",
 			newCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   testCnName,
@@ -68,7 +68,6 @@ func TestCreateClusterNetwork(t *testing.T) {
 
 			nchclientset := fake.NewSimpleClientset()
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
-
 			// client to inject test data
 			cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
@@ -81,6 +80,7 @@ func TestCreateClusterNetwork(t *testing.T) {
 			}
 			validator := NewCnValidator(vcCache)
 			err := validator.Create(nil, tc.newCN)
+			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
 				assert.True(t, strings.Contains(err.Error(), tc.errKey))
@@ -99,7 +99,7 @@ func TestUpdateClusterNetwork(t *testing.T) {
 		newCN     *networkv1.ClusterNetwork
 	}{
 		{
-			name:      "ClusterNetwork is ok to update",
+			name:      "ClusterNetwork can be updated",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
@@ -116,9 +116,9 @@ func TestUpdateClusterNetwork(t *testing.T) {
 			},
 		},
 		{
-			name:      "user can't update the MTU label",
+			name:      "MTU label on ClusterNetwork can't be changed",
 			returnErr: true,
-			errKey:    "",
+			errKey:    "can't be changed",
 			currentCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   testCnName,
@@ -133,7 +133,7 @@ func TestUpdateClusterNetwork(t *testing.T) {
 			},
 		},
 		{
-			name:      "user can delete the MTU label",
+			name:      "MTU label on ClusterNetwork can be deleted",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
@@ -159,8 +159,6 @@ func TestUpdateClusterNetwork(t *testing.T) {
 
 			nchclientset := fake.NewSimpleClientset()
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
-
-			// client to inject test data
 			cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
 
@@ -172,6 +170,7 @@ func TestUpdateClusterNetwork(t *testing.T) {
 			}
 			validator := NewCnValidator(vcCache)
 			err := validator.Update(nil, tc.currentCN, tc.newCN)
+			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
 				assert.True(t, strings.Contains(err.Error(), tc.errKey))
@@ -189,7 +188,7 @@ func TestDeleteClusterNetwork(t *testing.T) {
 		currentVC *networkv1.VlanConfig
 	}{
 		{
-			name:      "ClusterNetwork mgmt is not allowed to be deleted",
+			name:      "ClusterNetwork mgmt can't be deleted",
 			returnErr: true,
 			errKey:    "not allowed",
 			currentCN: &networkv1.ClusterNetwork{
@@ -200,7 +199,7 @@ func TestDeleteClusterNetwork(t *testing.T) {
 			},
 		},
 		{
-			name:      "ClusterNetwork is not allowed to be deleted as VlanConfig is existing",
+			name:      "ClusterNetwork can't be deleted as it has VlanConfig",
 			returnErr: true,
 			errKey:    "still exist",
 			currentCN: &networkv1.ClusterNetwork{
@@ -226,7 +225,7 @@ func TestDeleteClusterNetwork(t *testing.T) {
 			},
 		},
 		{
-			name:      "ClusterNetwork is allowed to be deleted",
+			name:      "ClusterNetwork can be deleted as it has no VlanConfig",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
@@ -239,7 +238,7 @@ func TestDeleteClusterNetwork(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "VC1",
 					Annotations: map[string]string{utils.KeyMatchedNodes: "[\"node1\"]"},
-					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: "unrelated"},
 				},
 				Spec: networkv1.VlanConfigSpec{
 					ClusterNetwork: "unrelated",
@@ -262,8 +261,6 @@ func TestDeleteClusterNetwork(t *testing.T) {
 
 			nchclientset := fake.NewSimpleClientset()
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
-
-			// client to inject test data
 			cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
 
@@ -275,6 +272,7 @@ func TestDeleteClusterNetwork(t *testing.T) {
 			}
 			validator := NewCnValidator(vcCache)
 			err := validator.Delete(nil, tc.currentCN)
+			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
 				assert.True(t, strings.Contains(err.Error(), tc.errKey))

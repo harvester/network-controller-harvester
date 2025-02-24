@@ -67,11 +67,8 @@ func (c *CnValidator) Update(_ *admission.Request, oldObj, newObj runtime.Object
 	}
 	if newCn.Labels != nil {
 		if mtu, ok := newCn.Labels[utils.KeyUplinkMTU]; ok {
-			if oldMtu == "" {
-				return fmt.Errorf(updateErr, newCn.Name, fmt.Errorf("label %v can't be added", utils.KeyUplinkMTU))
-			}
 			if mtu != oldMtu {
-				return fmt.Errorf(updateErr, newCn.Name, fmt.Errorf("label %v can't be updated", utils.KeyUplinkMTU))
+				return fmt.Errorf(updateErr, newCn.Name, fmt.Errorf("label %v can't be changed", utils.KeyUplinkMTU))
 			}
 		}
 	}
@@ -83,7 +80,7 @@ func (c *CnValidator) Delete(_ *admission.Request, oldObj runtime.Object) error 
 	cn := oldObj.(*networkv1.ClusterNetwork)
 
 	if cn.Name == utils.ManagementClusterNetworkName {
-		return fmt.Errorf(deleteErr, cn.Name, fmt.Errorf("it is not allowed"))
+		return fmt.Errorf(deleteErr, cn.Name, fmt.Errorf("is not allowed"))
 	}
 
 	vcs, err := c.vcCache.List(labels.Set{
