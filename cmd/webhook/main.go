@@ -118,8 +118,8 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 
 	if err := webhookServer.RegisterValidators(
 		clusternetwork.NewCnValidator(c.vcCache),
-		nad.NewNadValidator(c.vmiCache),
-		vlanconfig.NewVlanConfigValidator(c.nadCache, c.vcCache, c.vsCache, c.vmiCache),
+		nad.NewNadValidator(c.vmiCache, c.cnCache),
+		vlanconfig.NewVlanConfigValidator(c.nadCache, c.vcCache, c.vsCache, c.vmiCache, c.cnCache),
 	); err != nil {
 		return fmt.Errorf("failed to register validators: %v", err)
 	}
