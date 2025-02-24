@@ -61,6 +61,49 @@ func TestCreateNAD(t *testing.T) {
 			},
 		},
 		{
+			name:      "NAD can't be created as it does not have label",
+			returnErr: true,
+			errKey:    "nad does not have label",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNADName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as it refers to none-existing cluster network",
+			returnErr: true,
+			errKey:    "nad refers to none-existing cluster network",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNADName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: "invalid"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
 			name:      "NAD can't be created as it has invalid config string",
 			returnErr: true,
 			errKey:    "unmarshal",
@@ -210,6 +253,7 @@ func TestCreateNAD(t *testing.T) {
 			// client to inject test data
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
 			cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
+			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
 
 			if tc.currentVC != nil {
 				vcClient.Create(tc.currentVC)
@@ -218,7 +262,7 @@ func TestCreateNAD(t *testing.T) {
 				cnClient.Create(tc.currentCN)
 			}
 
-			validator := NewNadValidator(vmiCache)
+			validator := NewNadValidator(vmiCache, cnCache)
 
 			err := validator.Create(nil, tc.newNAD)
 			assert.True(t, tc.returnErr == (err != nil))
@@ -304,9 +348,12 @@ func TestDeleteNAD(t *testing.T) {
 				return
 			}
 
+			nchclientset := fake.NewSimpleClientset()
+
 			harvesterclientset := harvesterfake.NewSimpleClientset()
 			vmiCache := harvesterfakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
-			validator := NewNadValidator(vmiCache)
+			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
+			validator := NewNadValidator(vmiCache, cnCache)
 
 			// due to fake vmiCache limitation, just test generateVmiNoneStopError() instead of Delete()
 			err := validator.generateVmiNoneStopError(tc.currentNAD, tc.usedVMs)

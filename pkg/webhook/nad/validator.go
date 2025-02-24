@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
+	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
@@ -28,18 +29,25 @@ const (
 type Validator struct {
 	admission.DefaultValidator
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
+	cnCache  ctlnetworkv1.ClusterNetworkCache
 }
 
 var _ admission.Validator = &Validator{}
 
-func NewNadValidator(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Validator {
+func NewNadValidator(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache, cnCache ctlnetworkv1.ClusterNetworkCache) *Validator {
 	return &Validator{
 		vmiCache: vmiCache,
+		cnCache:  cnCache,
 	}
 }
 
 func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	nad := newObj.(*cniv1.NetworkAttachmentDefinition)
+
+	// check clusternetwrork
+	if err := v.checkClusterNetwork(nad); err != nil {
+		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
+	}
 
 	if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute]); err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
@@ -63,6 +71,16 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	// ignore the update if the resource is being deleted
 	if newNad.DeletionTimestamp != nil {
 		return nil
+	}
+
+	// check clusternetwrork
+	if err := v.checkClusterNetworkUnchanged(oldNad, newNad); err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+	}
+
+	// check clusternetwrork
+	if err := v.checkClusterNetwork(newNad); err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
 	if err := v.checkRoute(newNad.Annotations[utils.KeyNetworkRoute]); err != nil {
@@ -147,6 +165,43 @@ func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
 	}
 
 	return v.generateVmiNoneStopError(nad, vmis)
+}
+
+func (v *Validator) checkClusterNetwork(nad *cniv1.NetworkAttachmentDefinition) error {
+	if nad.Labels == nil {
+		return fmt.Errorf("nad does not have label")
+	}
+
+	cnName := nad.Labels[utils.KeyClusterNetworkLabel]
+	if cnName == "" {
+		return fmt.Errorf("nad has empty cluster network name label")
+	}
+
+	if _, err := v.cnCache.Get(cnName); err != nil {
+		return fmt.Errorf("nad refers to none-existing cluster network %s", cnName)
+	}
+
+	return nil
+}
+
+func (v *Validator) checkClusterNetworkUnchanged(oldNad, newNad *cniv1.NetworkAttachmentDefinition) error {
+	if oldNad.Labels == nil {
+		return fmt.Errorf("old nad does not have label")
+	}
+
+	if newNad.Labels == nil {
+		return fmt.Errorf("new nad does not have label")
+	}
+
+	if oldNad.Labels[utils.KeyClusterNetworkLabel] != newNad.Labels[utils.KeyClusterNetworkLabel] {
+		return fmt.Errorf("nad network can't be changed from %s to %s", oldNad.Labels[utils.KeyClusterNetworkLabel], newNad.Labels[utils.KeyClusterNetworkLabel])
+	}
+
+	if oldNad.Labels[utils.KeyNetworkType] != newNad.Labels[utils.KeyNetworkType] {
+		return fmt.Errorf("nad network type can't be changed from %s to %s", oldNad.Labels[utils.KeyNetworkType], newNad.Labels[utils.KeyNetworkType])
+	}
+
+	return nil
 }
 
 func (v *Validator) checkStorageNetwork(nad *cniv1.NetworkAttachmentDefinition) error {
