@@ -22,7 +22,7 @@ import (
 
 const (
 	testCnName    = "test-cn"
-	testNADConfig = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
+	testNADConfig = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
 	testNADName   = "testNad"
 	testVMName    = "vm1"
 	testNamespace = "test"
@@ -39,7 +39,7 @@ func TestCreateNAD(t *testing.T) {
 		newNAD     *cniv1.NetworkAttachmentDefinition
 	}{
 		{
-			name:      "NAD can be created",
+			name:      "valid NAD can be created",
 			returnErr: false,
 			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
@@ -61,9 +61,9 @@ func TestCreateNAD(t *testing.T) {
 			},
 		},
 		{
-			name:      "NAD can't be created as it does not have label",
-			returnErr: true,
-			errKey:    "nad does not have label",
+			name:      "valid NAD can be created when it does not have label",
+			returnErr: false,
+			errKey:    "",
 			currentCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testCnName,
@@ -77,14 +77,14 @@ func TestCreateNAD(t *testing.T) {
 					Annotations: map[string]string{"test": "test"},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+					Config: testNADConfig,
 				},
 			},
 		},
 		{
-			name:      "NAD can't be created as it refers to none-existing cluster network",
+			name:      "NAD can't be created as it's label does not match bridge name",
 			returnErr: true,
-			errKey:    "nad refers to none-existing cluster network",
+			errKey:    "does not match",
 			currentCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testCnName,
@@ -96,10 +96,53 @@ func TestCreateNAD(t *testing.T) {
 					Name:        testNADName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
-					Labels:      map[string]string{utils.KeyClusterNetworkLabel: "invalid"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: "test-cn-mismatch"}, // does not match bridge name
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as it's label and config refer to a none-existing cluster network",
+			returnErr: true,
+			errKey:    "none-existing",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: "none"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNADName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"none-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as it's config refers to a none-existing cluster network",
+			returnErr: true,
+			errKey:    "none-existing",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNADName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"none-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
 				},
 			},
 		},
@@ -121,7 +164,7 @@ func TestCreateNAD(t *testing.T) {
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+					Config: "{\"cniVersion\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
 				},
 			},
 		},
@@ -143,7 +186,7 @@ func TestCreateNAD(t *testing.T) {
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br\",\"promiscMode\":true,\"vlan\":-1,\"ipam\":{}}",
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":-1,\"ipam\":{}}",
 				},
 			},
 		},
@@ -165,7 +208,7 @@ func TestCreateNAD(t *testing.T) {
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"harvester-br\",\"promiscMode\":true,\"vlan\":4095,\"ipam\":{}}",
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":4095,\"ipam\":{}}",
 				},
 			},
 		},
@@ -214,7 +257,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 		},
 		{
-			name:      "NAD has invalid bridge suffix",
+			name:      "NAD can't be created as has invalid bridge suffix",
 			returnErr: true,
 			errKey:    "the suffix of the brName",
 			currentCN: &networkv1.ClusterNetwork{

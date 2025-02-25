@@ -44,11 +44,6 @@ func NewNadValidator(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache, cnCache
 func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	nad := newObj.(*cniv1.NetworkAttachmentDefinition)
 
-	// check clusternetwrork
-	if err := v.checkClusterNetwork(nad); err != nil {
-		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
-	}
-
 	if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute]); err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
@@ -57,7 +52,8 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	if err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
-	if err := v.checkNadConfig(conf); err != nil {
+
+	if err := v.checkNadConfig(conf, nad); err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
@@ -73,16 +69,6 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return nil
 	}
 
-	// check clusternetwrork
-	if err := v.checkClusterNetworkUnchanged(oldNad, newNad); err != nil {
-		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
-	}
-
-	// check clusternetwrork
-	if err := v.checkClusterNetwork(newNad); err != nil {
-		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
-	}
-
 	if err := v.checkRoute(newNad.Annotations[utils.KeyNetworkRoute]); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
@@ -93,13 +79,17 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	}
 	oldConf, err := decodeConfig(oldNad.Spec.Config)
 	if err != nil {
-		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+		return fmt.Errorf(updateErr, oldNad.Namespace, oldNad.Name, err)
 	}
 	// skip the update if the config is not changed
 	if reflect.DeepEqual(newConf, oldConf) {
 		return nil
 	}
-	if err := v.checkNadConfig(newConf); err != nil {
+	if err := v.checkNadConfig(newConf, newNad); err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+	}
+
+	if err := v.checkNadConfigBridgeName(oldConf, newConf); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
@@ -131,7 +121,7 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	return nil
 }
 
-func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf) error {
+func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf, nad *cniv1.NetworkAttachmentDefinition) error {
 	if bridgeConf == nil {
 		return fmt.Errorf("config is empty")
 	}
@@ -146,7 +136,36 @@ func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf) error {
 		return fmt.Errorf("the length of the brName can't be more than %v", iface.MaxDeviceNameLen)
 	}
 	if lenOfBrName <= lenOfBridgeSuffix || bridgeConf.BrName[lenOfBrName-lenOfBridgeSuffix:] != iface.BridgeSuffix {
-		return fmt.Errorf("the suffix of the brName should be -br")
+		return fmt.Errorf("the suffix of the brName should be %s", iface.BridgeSuffix)
+	}
+
+	clusterNetwork := getNadClusterNetworkLabel(nad)
+	cnName := bridgeConf.BrName[:lenOfBrName-lenOfBridgeSuffix]
+	// if there is clusterNetwork label, then check if it matchs the bridge name
+	if clusterNetwork != "" && cnName != clusterNetwork {
+		return fmt.Errorf("the nad label %s does not match bridge name %s", clusterNetwork, cnName)
+	}
+
+	// check if clusternetwork exists
+	if _, err := v.cnCache.Get(cnName); err != nil {
+		return fmt.Errorf("nad refers to a none-existing cluster network %s or error %w", cnName, err)
+	}
+
+	return nil
+}
+
+// BrName can't be changed
+func (v *Validator) checkNadConfigBridgeName(oldNC, newNC *utils.NetConf) error {
+	if oldNC == nil {
+		return fmt.Errorf("old nad config is empty")
+	}
+
+	if newNC == nil {
+		return fmt.Errorf("new nad config is empty")
+	}
+
+	if oldNC.BrName != newNC.BrName {
+		return fmt.Errorf("nad bridge name can't be changed from %v to %v", oldNC.BrName, newNC.BrName)
 	}
 
 	return nil
@@ -167,41 +186,11 @@ func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
 	return v.generateVmiNoneStopError(nad, vmis)
 }
 
-func (v *Validator) checkClusterNetwork(nad *cniv1.NetworkAttachmentDefinition) error {
-	if nad.Labels == nil {
-		return fmt.Errorf("nad does not have label")
+func getNadClusterNetworkLabel(nad *cniv1.NetworkAttachmentDefinition) string {
+	if nad == nil || nad.Labels == nil {
+		return ""
 	}
-
-	cnName := nad.Labels[utils.KeyClusterNetworkLabel]
-	if cnName == "" {
-		return fmt.Errorf("nad has empty cluster network name label")
-	}
-
-	if _, err := v.cnCache.Get(cnName); err != nil {
-		return fmt.Errorf("nad refers to none-existing cluster network %s", cnName)
-	}
-
-	return nil
-}
-
-func (v *Validator) checkClusterNetworkUnchanged(oldNad, newNad *cniv1.NetworkAttachmentDefinition) error {
-	if oldNad.Labels == nil {
-		return fmt.Errorf("old nad does not have label")
-	}
-
-	if newNad.Labels == nil {
-		return fmt.Errorf("new nad does not have label")
-	}
-
-	if oldNad.Labels[utils.KeyClusterNetworkLabel] != newNad.Labels[utils.KeyClusterNetworkLabel] {
-		return fmt.Errorf("nad network can't be changed from %s to %s", oldNad.Labels[utils.KeyClusterNetworkLabel], newNad.Labels[utils.KeyClusterNetworkLabel])
-	}
-
-	if oldNad.Labels[utils.KeyNetworkType] != newNad.Labels[utils.KeyNetworkType] {
-		return fmt.Errorf("nad network type can't be changed from %s to %s", oldNad.Labels[utils.KeyNetworkType], newNad.Labels[utils.KeyNetworkType])
-	}
-
-	return nil
+	return nad.Labels[utils.KeyClusterNetworkLabel]
 }
 
 func (v *Validator) checkStorageNetwork(nad *cniv1.NetworkAttachmentDefinition) error {
