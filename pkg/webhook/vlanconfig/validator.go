@@ -37,19 +37,19 @@ type Validator struct {
 	nadCache ctlcniv1.NetworkAttachmentDefinitionCache
 	vcCache  ctlnetworkv1.VlanConfigCache
 	vsCache  ctlnetworkv1.VlanStatusCache
-	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
+	vmCache  ctlkubevirtv1.VirtualMachineCache
 }
 
 func NewVlanConfigValidator(
 	nadCache ctlcniv1.NetworkAttachmentDefinitionCache,
 	vcCache ctlnetworkv1.VlanConfigCache,
 	vsCache ctlnetworkv1.VlanStatusCache,
-	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Validator {
+	vmCache ctlkubevirtv1.VirtualMachineCache) *Validator {
 	return &Validator{
 		nadCache: nadCache,
 		vcCache:  vcCache,
 		vsCache:  vsCache,
-		vmiCache: vmiCache,
+		vmCache:  vmCache,
 	}
 }
 
@@ -112,37 +112,13 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return fmt.Errorf(updateErr, newVc.Name, err)
 	}
 
-	oldNodes, err := getMatchNodes(oldVc)
-	if err != nil {
-		return fmt.Errorf(updateErr, oldVc.Name, err)
-	}
-
-	// get affected nodes after updating
-	affectedNodes := getAffectedNodes(oldVc.Spec.ClusterNetwork, newVc.Spec.ClusterNetwork, oldNodes, newNodes)
-	if err := v.checkVmi(oldVc, affectedNodes); err != nil {
-		return fmt.Errorf(updateErr, oldVc.Name, err)
-	}
-
 	return nil
-}
-
-func getAffectedNodes(oldCn, newCn string, oldNodes, newNodes mapset.Set[string]) mapset.Set[string] {
-	if newCn != oldCn {
-		return oldNodes
-	}
-
-	return oldNodes.Difference(newNodes)
 }
 
 func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	vc := oldObj.(*networkv1.VlanConfig)
 
-	nodes, err := getMatchNodes(vc)
-	if err != nil {
-		return fmt.Errorf(deleteErr, vc.Name, err)
-	}
-
-	if err := v.checkVmi(vc, nodes); err != nil {
+	if err := v.checkVmi(vc); err != nil {
 		return fmt.Errorf(deleteErr, vc.Name, err)
 	}
 
@@ -199,7 +175,7 @@ func (v *Validator) checkOverlaps(vc *networkv1.VlanConfig, nodes mapset.Set[str
 }
 
 // checkVmi is to confirm if any VMIs will be affected on affected nodes. Those VMIs must be stopped in advance.
-func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodes mapset.Set[string]) error {
+func (v *Validator) checkVmi(vc *networkv1.VlanConfig) error {
 	// The vlanconfig is not allowed to be deleted if it has applied to some nodes and its clusternetwork is attached by some nads.
 	vss, err := v.vsCache.List(labels.Set(map[string]string{utils.KeyVlanConfigLabel: vc.Name}).AsSelector())
 	if err != nil {
@@ -217,23 +193,23 @@ func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodes mapset.Set[string])
 		return fmt.Errorf(deleteErr, vc.Name, err)
 	}
 
-	vmiGetter := utils.VmiGetter{VmiCache: v.vmiCache}
-	vmis := make([]*kubevirtv1.VirtualMachineInstance, 0)
+	vmGetter := utils.VMGetter{VMCache: v.vmCache}
+	vms := make([]*kubevirtv1.VirtualMachine, 0)
 	for _, nad := range nads {
-		vmisTemp, err := vmiGetter.WhoUseNad(nad, nodes)
+		vmsTemp, err := vmGetter.WhoUseNad(nad)
 		if err != nil {
 			return err
 		}
-		vmis = append(vmis, vmisTemp...)
+		vms = append(vms, vmsTemp...)
 	}
 
-	if len(vmis) > 0 {
-		vmiStrList := make([]string, len(vmis))
-		for i, vmi := range vmis {
-			vmiStrList[i] = vmi.Namespace + "/" + vmi.Name
+	if len(vms) > 0 {
+		vmStrList := make([]string, len(vms))
+		for i, vm := range vms {
+			vmStrList[i] = vm.Namespace + "/" + vm.Name
 		}
 
-		return fmt.Errorf("it's blocked by VM(s) %s which must be stopped at first", strings.Join(vmiStrList, ", "))
+		return fmt.Errorf("it's blocked by VM(s) %s which must be removed at first", strings.Join(vmStrList, ", "))
 	}
 
 	return nil
