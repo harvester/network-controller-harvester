@@ -81,7 +81,7 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	if err != nil {
 		return fmt.Errorf(updateErr, oldNad.Namespace, oldNad.Name, err)
 	}
-	// skip the update if the config is not changed
+	// skip the following check if the config is not changed
 	if reflect.DeepEqual(newConf, oldConf) {
 		return nil
 	}
@@ -195,7 +195,7 @@ func getNadClusterNetworkLabel(nad *cniv1.NetworkAttachmentDefinition) string {
 
 func (v *Validator) checkStorageNetwork(nad *cniv1.NetworkAttachmentDefinition) error {
 	if utils.IsStorageNetworkNad(nad) {
-		fmt.Errorf(storageNetworkErr)
+		return fmt.Errorf(storageNetworkErr)
 	}
 
 	return nil

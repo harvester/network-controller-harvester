@@ -143,10 +143,11 @@ func IsStorageNetworkNad(nad *nadv1.NetworkAttachmentDefinition) bool {
 	}
 
 	// seems Harvester webhook has no protection on this annotation
-	if nad.Annotations[StorageNetworkAnnotation] == "true" {
+	if nad.Annotations != nil && nad.Annotations[StorageNetworkAnnotation] == "true" {
 		return true
 	}
 
+	// check name
 	if nad.Namespace == harvesterutil.HarvesterSystemNamespaceName && strings.HasPrefix(nad.Name, StorageNetworkNetAttachDefPrefix) {
 		return true
 	}

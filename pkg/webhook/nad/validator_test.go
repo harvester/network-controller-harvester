@@ -13,6 +13,7 @@ import (
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 
 	harvesterfake "github.com/harvester/harvester/pkg/generated/clientset/versioned/fake"
+	harvesterutil "github.com/harvester/harvester/pkg/util"
 	harvesterfakeclients "github.com/harvester/harvester/pkg/util/fakeclients"
 
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/fake"
@@ -319,11 +320,13 @@ func TestCreateNAD(t *testing.T) {
 
 func TestDeleteNAD(t *testing.T) {
 	tests := []struct {
-		name       string
-		returnErr  bool
-		errKey     string
-		currentNAD *cniv1.NetworkAttachmentDefinition
-		usedVMs    []*kubevirtv1.VirtualMachineInstance
+		name        string
+		returnErr   bool
+		errKey      string
+		currentNAD  *cniv1.NetworkAttachmentDefinition
+		usedVMs     []*kubevirtv1.VirtualMachineInstance
+		returnSNErr bool // for storagenetwork check
+		errKeySN    string
 	}{
 		{
 			name:      "NAD can't be deleted as it has used VMs",
@@ -367,7 +370,7 @@ func TestDeleteNAD(t *testing.T) {
 			},
 		},
 		{
-			name:      "NAD can be deleted as it is used by storagenetwork",
+			name:      "NAD can't be deleted as it is used by storagenetwork via annotation",
 			returnErr: false,
 			errKey:    "",
 			currentNAD: &cniv1.NetworkAttachmentDefinition{
@@ -381,6 +384,25 @@ func TestDeleteNAD(t *testing.T) {
 					Config: testNADConfig,
 				},
 			},
+			returnSNErr: true,
+			errKeySN:    storageNetworkErr,
+		},
+		{
+			name:      "NAD can't be deleted as it is used by storagenetwork via namespace and name",
+			returnErr: false,
+			errKey:    "",
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      utils.StorageNetworkNetAttachDefPrefix + "test",
+					Namespace: harvesterutil.HarvesterSystemNamespaceName,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testNADConfig,
+				},
+			},
+			returnSNErr: true,
+			errKeySN:    storageNetworkErr,
 		},
 	}
 
@@ -404,6 +426,14 @@ func TestDeleteNAD(t *testing.T) {
 			if tc.returnErr {
 				assert.NotNil(t, err)
 				assert.True(t, strings.Contains(err.Error(), tc.errKey))
+			}
+
+			// storagenetwork related check
+			err = validator.checkStorageNetwork(tc.currentNAD)
+			assert.True(t, tc.returnSNErr == (err != nil))
+			if tc.returnSNErr {
+				assert.NotNil(t, err)
+				assert.True(t, strings.Contains(err.Error(), tc.errKeySN))
 			}
 		})
 	}
