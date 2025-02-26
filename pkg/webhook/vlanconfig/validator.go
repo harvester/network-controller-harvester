@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
-	"github.com/harvester/harvester/pkg/util"
+	harvesterutil "github.com/harvester/harvester/pkg/util"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
@@ -28,6 +28,8 @@ const (
 	createErr = "can't create vlanConfig %s because %w"
 	updateErr = "can't update vlanConfig %s because %w"
 	deleteErr = "can't delete vlanConfig %s because %w"
+
+	maxClusterNetworkNameLen = iface.MaxDeviceNameLen - len(iface.BridgeSuffix)
 )
 
 type Validator struct {
@@ -77,8 +79,6 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	if err := v.checkOverlaps(vc, nodes); err != nil {
 		return fmt.Errorf(createErr, vc.Name, err)
 	}
-
-	maxClusterNetworkNameLen := iface.MaxDeviceNameLen - len(iface.BridgeSuffix)
 
 	if len(vc.Spec.ClusterNetwork) > maxClusterNetworkNameLen {
 		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("the length of the clusterNetwork name is "+
@@ -148,7 +148,7 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 		return fmt.Errorf(deleteErr, vc.Name, err)
 	}
 
-	nads, err := v.nadCache.List(util.HarvesterSystemNamespaceName, labels.Set(map[string]string{
+	nads, err := v.nadCache.List(harvesterutil.HarvesterSystemNamespaceName, labels.Set(map[string]string{
 		utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork,
 	}).AsSelector())
 	if err != nil {

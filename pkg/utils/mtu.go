@@ -20,7 +20,7 @@ func AreEqualMTUs(MTU1, MTU2 int) bool {
 func GetMTUFromLabel(label string) (int, error) {
 	MTU, err := strconv.Atoi(label)
 	if err != nil {
-		return 0, fmt.Errorf("label %v value is not int, error %w", label, err)
+		return 0, fmt.Errorf("label %v value is not an integer, error %w", label, err)
 	}
 	if !IsValidMTU(MTU) {
 		return 0, fmt.Errorf("label %v value is not in range [0, %v..%v]", label, MinMTU, MaxMTU)
