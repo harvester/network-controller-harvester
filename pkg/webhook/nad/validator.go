@@ -11,7 +11,6 @@ import (
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
@@ -85,6 +84,7 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	if reflect.DeepEqual(newConf, oldConf) {
 		return nil
 	}
+
 	if err := v.checkNadConfig(newConf, newNad); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
@@ -131,16 +131,14 @@ func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf, nad *cniv1.Network
 		return fmt.Errorf("VLAN ID must >=0 and <=4094")
 	}
 
-	lenOfBrName, lenOfBridgeSuffix := len(bridgeConf.BrName), len(iface.BridgeSuffix)
-	if lenOfBrName > iface.MaxDeviceNameLen {
-		return fmt.Errorf("the length of the brName can't be more than %v", iface.MaxDeviceNameLen)
-	}
-	if lenOfBrName <= lenOfBridgeSuffix || bridgeConf.BrName[lenOfBrName-lenOfBridgeSuffix:] != iface.BridgeSuffix {
-		return fmt.Errorf("the suffix of the brName should be %s", iface.BridgeSuffix)
+	// check and get the bridge name
+	cnName, err := iface.GetBridgeNamePrefix(bridgeConf.BrName)
+	if err != nil {
+		return err
 	}
 
 	clusterNetwork := getNadClusterNetworkLabel(nad)
-	cnName := bridgeConf.BrName[:lenOfBrName-lenOfBridgeSuffix]
+
 	// if there is clusterNetwork label, then check if it matchs the bridge name
 	if clusterNetwork != "" && cnName != clusterNetwork {
 		return fmt.Errorf("the nad label %s does not match bridge name %s", clusterNetwork, cnName)
@@ -183,7 +181,15 @@ func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
 		return err
 	}
 
-	return v.generateVmiNoneStopError(nad, vmis)
+	if len(vmis) > 0 {
+		vmiNameList := make([]string, len(vmis), len(vmis))
+		for i, vmi := range vmis {
+			vmiNameList[i] = vmi.Namespace + "/" + vmi.Name
+		}
+		return fmt.Errorf("it's still used by VM(s) %s which must be stopped at first", strings.Join(vmiNameList, ", "))
+	}
+
+	return nil
 }
 
 func getNadClusterNetworkLabel(nad *cniv1.NetworkAttachmentDefinition) string {
@@ -198,18 +204,6 @@ func (v *Validator) checkStorageNetwork(nad *cniv1.NetworkAttachmentDefinition) 
 		return fmt.Errorf(storageNetworkErr)
 	}
 
-	return nil
-}
-
-// for convenicen of test code
-func (v *Validator) generateVmiNoneStopError(_ *cniv1.NetworkAttachmentDefinition, vmis []*kubevirtv1.VirtualMachineInstance) error {
-	if len(vmis) > 0 {
-		vmiNameList := make([]string, 0, len(vmis))
-		for _, vmi := range vmis {
-			vmiNameList = append(vmiNameList, vmi.Namespace+"/"+vmi.Name)
-		}
-		return fmt.Errorf("it's still used by VM(s) %s which must be stopped at first", strings.Join(vmiNameList, ", "))
-	}
 	return nil
 }
 

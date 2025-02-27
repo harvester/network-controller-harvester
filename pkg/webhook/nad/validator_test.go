@@ -14,7 +14,6 @@ import (
 
 	harvesterfake "github.com/harvester/harvester/pkg/generated/clientset/versioned/fake"
 	harvesterutil "github.com/harvester/harvester/pkg/util"
-	harvesterfakeclients "github.com/harvester/harvester/pkg/util/fakeclients"
 
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/fake"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
@@ -23,8 +22,8 @@ import (
 
 const (
 	testCnName    = "test-cn"
-	testNADConfig = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
-	testNADName   = "testNad"
+	testNadConfig = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
+	testNadName   = "testNad"
 	testVMName    = "vm1"
 	testNamespace = "test"
 )
@@ -51,13 +50,13 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: testNADConfig,
+					Config: testNadConfig,
 				},
 			},
 		},
@@ -73,12 +72,12 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: testNADConfig,
+					Config: testNadConfig,
 				},
 			},
 		},
@@ -94,7 +93,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: "test-cn-mismatch"}, // does not match bridge name
@@ -117,7 +116,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 				},
@@ -138,7 +137,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 				},
@@ -159,7 +158,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
@@ -181,7 +180,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
@@ -203,7 +202,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
@@ -225,7 +224,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
@@ -247,7 +246,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
@@ -269,7 +268,7 @@ func TestCreateNAD(t *testing.T) {
 			},
 			newNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
@@ -292,7 +291,7 @@ func TestCreateNAD(t *testing.T) {
 			nchclientset := fake.NewSimpleClientset()
 			harvesterclientset := harvesterfake.NewSimpleClientset()
 
-			vmiCache := harvesterfakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
+			vmiCache := fakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
 
 			// client to inject test data
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
@@ -320,13 +319,11 @@ func TestCreateNAD(t *testing.T) {
 
 func TestDeleteNAD(t *testing.T) {
 	tests := []struct {
-		name        string
-		returnErr   bool
-		errKey      string
-		currentNAD  *cniv1.NetworkAttachmentDefinition
-		usedVMs     []*kubevirtv1.VirtualMachineInstance
-		returnSNErr bool // for storagenetwork check
-		errKeySN    string
+		name       string
+		returnErr  bool
+		errKey     string
+		currentNAD *cniv1.NetworkAttachmentDefinition
+		currentVmi *kubevirtv1.VirtualMachineInstance
 	}{
 		{
 			name:      "NAD can't be deleted as it has used VMs",
@@ -334,24 +331,42 @@ func TestDeleteNAD(t *testing.T) {
 			errKey:    testVMName,
 			currentNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: testNADConfig,
+					Config: testNadConfig,
 				},
 			},
-			usedVMs: []*kubevirtv1.VirtualMachineInstance{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        testVMName,
-						Namespace:   testNamespace,
-						Annotations: map[string]string{"test": "test"},
+			currentVmi: &kubevirtv1.VirtualMachineInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testVMName,
+					Namespace: testNamespace,
+				},
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					Networks: []kubevirtv1.Network{
+						{
+							Name: "nic-1",
+							NetworkSource: kubevirtv1.NetworkSource{
+								Multus: &kubevirtv1.MultusNetwork{
+									NetworkName: testNamespace + "/" + testNadName, // same with nad namesapce
+								},
+							},
+						},
 					},
-				},
-			},
+					Domain: kubevirtv1.DomainSpec{
+						Devices: kubevirtv1.Devices{
+							Interfaces: []kubevirtv1.Interface{
+								{
+									Name: "nic-1",
+								},
+							},
+						},
+					},
+				}, // vmi.spec
+			}, // vmi
 		},
 		{
 			name:      "NAD can be deleted as it has no used VMs",
@@ -359,38 +374,36 @@ func TestDeleteNAD(t *testing.T) {
 			errKey:    "",
 			currentNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{"test": "test"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: testNADConfig,
+					Config: testNadConfig,
 				},
 			},
 		},
 		{
 			name:      "NAD can't be deleted as it is used by storagenetwork via annotation",
-			returnErr: false,
-			errKey:    "",
+			returnErr: true,
+			errKey:    storageNetworkErr,
 			currentNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNADName,
+					Name:        testNadName,
 					Namespace:   testNamespace,
 					Annotations: map[string]string{utils.StorageNetworkAnnotation: "true"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: testNADConfig,
+					Config: testNadConfig,
 				},
 			},
-			returnSNErr: true,
-			errKeySN:    storageNetworkErr,
 		},
 		{
 			name:      "NAD can't be deleted as it is used by storagenetwork via namespace and name",
-			returnErr: false,
-			errKey:    "",
+			returnErr: true,
+			errKey:    storageNetworkErr,
 			currentNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      utils.StorageNetworkNetAttachDefPrefix + "test",
@@ -398,11 +411,9 @@ func TestDeleteNAD(t *testing.T) {
 					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: testNADConfig,
+					Config: testNadConfig,
 				},
 			},
-			returnSNErr: true,
-			errKeySN:    storageNetworkErr,
 		},
 	}
 
@@ -414,26 +425,23 @@ func TestDeleteNAD(t *testing.T) {
 			}
 
 			nchclientset := fake.NewSimpleClientset()
-
 			harvesterclientset := harvesterfake.NewSimpleClientset()
-			vmiCache := harvesterfakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
+			vmiCache := fakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
 			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
 			validator := NewNadValidator(vmiCache, cnCache)
 
-			// due to fake vmiCache limitation, just test generateVmiNoneStopError() instead of Delete()
-			err := validator.generateVmiNoneStopError(tc.currentNAD, tc.usedVMs)
+			if tc.currentVmi != nil {
+				err := harvesterclientset.Tracker().Add(tc.currentVmi)
+				assert.Nil(t, err, "mock resource vmi should add into fake controller tracker")
+			}
+
+			err := validator.Delete(nil, tc.currentNAD)
 			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
-				assert.True(t, strings.Contains(err.Error(), tc.errKey))
-			}
-
-			// storagenetwork related check
-			err = validator.checkStorageNetwork(tc.currentNAD)
-			assert.True(t, tc.returnSNErr == (err != nil))
-			if tc.returnSNErr {
-				assert.NotNil(t, err)
-				assert.True(t, strings.Contains(err.Error(), tc.errKeySN))
+				if err != nil {
+					assert.True(t, strings.Contains(err.Error(), tc.errKey))
+				}
 			}
 		})
 	}
