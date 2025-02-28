@@ -14,9 +14,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	kubevirtv1 "kubevirt.io/api/core/v1"
-
-	harvesterutil "github.com/harvester/harvester/pkg/util"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
@@ -62,15 +59,26 @@ var _ admission.Validator = &Validator{}
 func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	vc := newObj.(*networkv1.VlanConfig)
 
+	if len(vc.Spec.ClusterNetwork) > maxClusterNetworkNameLen {
+		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("the length of the clusterNetwork name is "+
+			"more than %d", maxClusterNetworkNameLen))
+	}
+
 	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
 		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("cluster network can't be %s",
 			utils.ManagementClusterNetworkName))
+	}
+
+	// check if clusternetwork exists
+	if _, err := v.cnCache.Get(vc.Spec.ClusterNetwork); err != nil {
+		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("it refers to a none-existing cluster network %s or error %w", vc.Spec.ClusterNetwork, err))
 	}
 
 	if err := v.validateMTU(vc); err != nil {
 		return fmt.Errorf(createErr, vc.Name, err)
 	}
 
+	// note: the mutator has patched the Annotations[utils.KeyMatchedNodes] if selector is set and exclude the witness-node
 	nodes, err := getMatchNodes(vc)
 	if err != nil {
 		return fmt.Errorf(createErr, vc.Name, err)
@@ -78,11 +86,6 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 
 	if err := v.checkOverlaps(vc, nodes); err != nil {
 		return fmt.Errorf(createErr, vc.Name, err)
-	}
-
-	if len(vc.Spec.ClusterNetwork) > maxClusterNetworkNameLen {
-		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("the length of the clusterNetwork name is "+
-			"more than %d", maxClusterNetworkNameLen))
 	}
 
 	return nil
@@ -101,10 +104,23 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return nil
 	}
 
+	// check if clusternetwork exists
+	if _, err := v.cnCache.Get(newVc.Spec.ClusterNetwork); err != nil {
+		return fmt.Errorf(updateErr, newVc.Name, fmt.Errorf("it refers to a none-existing cluster network %s or error %w", newVc.Spec.ClusterNetwork, err))
+	}
+
+	// TODO: do not allow such change?
+	/*
+		if oldVc.Spec.ClusterNetwork != oldVc.Spec.ClusterNetwork {
+			return fmt.Errorf("cluster network can't be changed from %v to %v", oldVc.Spec.ClusterNetwork, oldVc.Spec.ClusterNetwork)
+		}
+	*/
+
 	if err := v.validateMTU(newVc); err != nil {
 		return fmt.Errorf(updateErr, newVc.Name, err)
 	}
 
+	// note: the mutator has patched the Annotations[utils.KeyMatchedNodes] if selector is set and exclude the witness-node
 	newNodes, err := getMatchNodes(newVc)
 	if err != nil {
 		return fmt.Errorf(updateErr, newVc.Name, err)
@@ -122,6 +138,10 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	// get affected nodes after updating
 	affectedNodes := getAffectedNodes(oldVc.Spec.ClusterNetwork, newVc.Spec.ClusterNetwork, oldNodes, newNodes)
 	if err := v.checkVmi(oldVc, affectedNodes); err != nil {
+		return fmt.Errorf(updateErr, oldVc.Name, err)
+	}
+
+	if err := v.checkStorageNetwork(oldVc, affectedNodes); err != nil {
 		return fmt.Errorf(updateErr, oldVc.Name, err)
 	}
 
@@ -148,19 +168,8 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 		return fmt.Errorf(deleteErr, vc.Name, err)
 	}
 
-	nads, err := v.nadCache.List(harvesterutil.HarvesterSystemNamespaceName, labels.Set(map[string]string{
-		utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork,
-	}).AsSelector())
-	if err != nil {
+	if err := v.checkStorageNetwork(vc, nodes); err != nil {
 		return fmt.Errorf(deleteErr, vc.Name, err)
-	}
-
-	if len(nads) > 0 {
-		for _, nad := range nads {
-			if nad.DeletionTimestamp == nil && utils.IsStorageNetworkNad(nad) {
-				return fmt.Errorf(deleteErr, vc.Name, fmt.Errorf(`storage network nad %s is still attached`, nad.Name))
-			}
-		}
 	}
 
 	return nil
@@ -205,40 +214,32 @@ func (v *Validator) checkOverlaps(vc *networkv1.VlanConfig, nodes mapset.Set[str
 
 // checkVmi is to confirm if any VMIs will be affected on affected nodes. Those VMIs must be stopped in advance.
 func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodes mapset.Set[string]) error {
-	// The vlanconfig is not allowed to be deleted if it has applied to some nodes and its clusternetwork is attached by some nads.
+	// The vlanconfig is not allowed to be deleted if it has been applied to some nodes and its clusternetwork is attached by some nads.
 	vss, err := v.vsCache.List(labels.Set(map[string]string{utils.KeyVlanConfigLabel: vc.Name}).AsSelector())
 	if err != nil {
-		return fmt.Errorf(deleteErr, vc.Name, err)
+		return fmt.Errorf("failed to list vlanstatus erro %w", err)
 	}
 
 	if len(vss) == 0 {
 		return nil
 	}
 
-	nads, err := v.nadCache.List("", labels.Set(map[string]string{
-		utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork,
-	}).AsSelector())
+	// affect no nodes
+	if nodes == nil || nodes.Cardinality() == 0 {
+		return nil
+	}
+
+	nadGetter := utils.NewNadGetter(v.nadCache)
+	nads, err := nadGetter.ListNadsOnClusterNetwork(vc.Spec.ClusterNetwork)
 	if err != nil {
-		return fmt.Errorf(deleteErr, vc.Name, err)
+		return err
 	}
 
-	vmiGetter := utils.VmiGetter{VmiCache: v.vmiCache}
-	vmis := make([]*kubevirtv1.VirtualMachineInstance, 0)
-	for _, nad := range nads {
-		vmisTemp, err := vmiGetter.WhoUseNad(nad, nodes)
-		if err != nil {
-			return err
-		}
-		vmis = append(vmis, vmisTemp...)
-	}
-
-	if len(vmis) > 0 {
-		vmiStrList := make([]string, len(vmis))
-		for i, vmi := range vmis {
-			vmiStrList[i] = vmi.Namespace + "/" + vmi.Name
-		}
-
-		return fmt.Errorf("it's blocked by VM(s) %s which must be stopped at first", strings.Join(vmiStrList, ", "))
+	vmiGetter := utils.NewVmiGetter(v.vmiCache)
+	if vmiStrList, err := vmiGetter.VmiNamesWhoUseNads(nads, nodes); err != nil {
+		return err
+	} else if len(vmiStrList) > 0 {
+		return fmt.Errorf("it is blocked by VM(s) %s which must be stopped at first", strings.Join(vmiStrList, ", "))
 	}
 
 	return nil
@@ -278,6 +279,26 @@ func (v *Validator) validateMTU(current *networkv1.VlanConfig) error {
 		if !utils.AreEqualMTUs(current.Spec.Uplink.LinkAttrs.MTU, vc.Spec.Uplink.LinkAttrs.MTU) {
 			return fmt.Errorf("the vlanconfig %s MTU %v is different with another vlanconfig %s MTU %v, all vlanconfigs on one clusternetwork need to have same MTU", current.Name, current.Spec.Uplink.LinkAttrs.MTU, vc.Name, vc.Spec.Uplink.LinkAttrs.MTU)
 		}
+	}
+
+	return nil
+}
+
+// if storagenetwork nad is there, and affected node number > 0, then deny
+func (v *Validator) checkStorageNetwork(vc *networkv1.VlanConfig, nodes mapset.Set[string]) error {
+	// affect no nodes
+	if nodes == nil || nodes.Cardinality() == 0 {
+		return nil
+	}
+
+	nadGetter := utils.NewNadGetter(v.nadCache)
+	nad, err := nadGetter.GetFirstActiveStorageNetworkNadOnClusterNetwork(vc.Spec.ClusterNetwork)
+	if err != nil {
+		return err
+	}
+
+	if nad != nil {
+		return fmt.Errorf("the storage network nad %s is still attached", nad.Name)
 	}
 
 	return nil

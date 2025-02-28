@@ -175,18 +175,11 @@ func (v *Validator) checkRoute(config string) error {
 }
 
 func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
-	vmiGetter := utils.VmiGetter{VmiCache: v.vmiCache}
-	vmis, err := vmiGetter.WhoUseNad(nad, nil)
-	if err != nil {
+	vmiGetter := utils.NewVmiGetter(v.vmiCache)
+	if vmiStrList, err := vmiGetter.VmiNamesWhoUseNad(nad, nil); err != nil {
 		return err
-	}
-
-	if len(vmis) > 0 {
-		vmiNameList := make([]string, len(vmis), len(vmis))
-		for i, vmi := range vmis {
-			vmiNameList[i] = vmi.Namespace + "/" + vmi.Name
-		}
-		return fmt.Errorf("it's still used by VM(s) %s which must be stopped at first", strings.Join(vmiNameList, ", "))
+	} else if len(vmiStrList) > 0 {
+		return fmt.Errorf("it's still used by VM(s) %s which must be stopped at first", strings.Join(vmiStrList, ", "))
 	}
 
 	return nil

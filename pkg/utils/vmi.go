@@ -14,6 +14,10 @@ type VmiGetter struct {
 	VmiCache ctlkubevirtv1.VirtualMachineInstanceCache
 }
 
+func NewVmiGetter(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *VmiGetter {
+	return &VmiGetter{VmiCache: vmiCache}
+}
+
 // WhoUseNad requires adding network indexer to the vmi cache before invoking it
 func (v *VmiGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilter mapset.Set[string]) ([]*kubevirtv1.VirtualMachineInstance, error) {
 	// multus network name can be <networkName> or <namespace>/<networkName>
@@ -65,7 +69,7 @@ func (v *VmiGetter) WhoUseNads(nads []*nadv1.NetworkAttachmentDefinition, nodesF
 }
 
 // Get the vmi name list who uses the nad
-func (v *VmiGetter) VmiNameWhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilter mapset.Set[string]) ([]string, error) {
+func (v *VmiGetter) VmiNamesWhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilter mapset.Set[string]) ([]string, error) {
 	vmis, err := v.WhoUseNad(nad, nodesFilter)
 	if err != nil {
 		return nil, err
@@ -75,7 +79,7 @@ func (v *VmiGetter) VmiNameWhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nod
 }
 
 // Get the vmi name list who uses a group of nads, duplicated names may exist when they attache to mutli nads
-func (v *VmiGetter) VmiNameWhoUseNads(nads []*nadv1.NetworkAttachmentDefinition, nodesFilter mapset.Set[string]) ([]string, error) {
+func (v *VmiGetter) VmiNamesWhoUseNads(nads []*nadv1.NetworkAttachmentDefinition, nodesFilter mapset.Set[string]) ([]string, error) {
 	vmis, err := v.WhoUseNads(nads, nodesFilter)
 	if err != nil {
 		return nil, err

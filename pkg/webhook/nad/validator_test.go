@@ -391,7 +391,7 @@ func TestDeleteNAD(t *testing.T) {
 			currentNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testNadName,
-					Namespace:   testNamespace,
+					Namespace:   harvesterutil.HarvesterSystemNamespaceName, // storagenetwork nad is in given namespace
 					Annotations: map[string]string{utils.StorageNetworkAnnotation: "true"},
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
