@@ -38,18 +38,21 @@ type Validator struct {
 	vcCache  ctlnetworkv1.VlanConfigCache
 	vsCache  ctlnetworkv1.VlanStatusCache
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
+	vmCache  ctlkubevirtv1.VirtualMachineCache
 }
 
 func NewVlanConfigValidator(
 	nadCache ctlcniv1.NetworkAttachmentDefinitionCache,
 	vcCache ctlnetworkv1.VlanConfigCache,
 	vsCache ctlnetworkv1.VlanStatusCache,
-	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Validator {
+	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache,
+	vmCache ctlkubevirtv1.VirtualMachineCache) *Validator {
 	return &Validator{
 		nadCache: nadCache,
 		vcCache:  vcCache,
 		vsCache:  vsCache,
 		vmiCache: vmiCache,
+		vmCache:  vmCache,
 	}
 }
 
@@ -146,6 +149,10 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 		return fmt.Errorf(deleteErr, vc.Name, err)
 	}
 
+	if err := v.checkVM(vc); err != nil {
+		return fmt.Errorf(deleteErr, vc.Name, err)
+	}
+
 	nads, err := v.nadCache.List(util.HarvesterSystemNamespaceName, labels.Set(map[string]string{
 		utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork,
 	}).AsSelector())
@@ -234,6 +241,38 @@ func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodes mapset.Set[string])
 		}
 
 		return fmt.Errorf("it's blocked by VM(s) %s which must be stopped at first", strings.Join(vmiStrList, ", "))
+	}
+
+	return nil
+}
+
+// do checkVM after checkVmi and it should only validate in Delete()
+func (v *Validator) checkVM(vc *networkv1.VlanConfig) error {
+	nads, err := v.nadCache.List("", labels.Set(map[string]string{
+		utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork,
+	}).AsSelector())
+	if err != nil {
+		return fmt.Errorf(deleteErr, vc.Name, err)
+	}
+
+	vmGetter := utils.VMGetter{VMCache: v.vmCache}
+	vms := make([]*kubevirtv1.VirtualMachine, 0)
+
+	for _, nad := range nads {
+		vmsTemp, err := vmGetter.VMUseNad(nad)
+		if err != nil {
+			return err
+		}
+		vms = append(vms, vmsTemp...)
+	}
+
+	if len(vms) > 0 {
+		vmStrList := make([]string, len(vms))
+		for i, vm := range vms {
+			vmStrList[i] = vm.Namespace + "/" + vm.Name
+		}
+
+		return fmt.Errorf("it's blocked by VM(s) %s which must be removed at first", strings.Join(vmStrList, ", "))
 	}
 
 	return nil

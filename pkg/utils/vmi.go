@@ -14,6 +14,34 @@ type VmiGetter struct {
 	VmiCache ctlkubevirtv1.VirtualMachineInstanceCache
 }
 
+type VMGetter struct {
+	VMCache ctlkubevirtv1.VirtualMachineCache
+}
+
+// WhoUseNad requires adding network indexer to the vmi cache before invoking it
+func (v *VMGetter) VMUseNad(nad *nadv1.NetworkAttachmentDefinition) ([]*kubevirtv1.VirtualMachine, error) {
+	// multus network name can be <networkName> or <namespace>/<networkName>
+	// ref: https://github.com/kubevirt/client-go/blob/148fa0d1c7e83b7a56606a7ca92394ba6768c9ac/api/v1/schema.go#L1436-L1439
+	networkName := fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)
+	vms, err := v.VMCache.GetByIndex(indexeres.VMByNetworkIndex, networkName)
+	if err != nil {
+		return nil, err
+	}
+
+	vmsTmp, err := v.VMCache.GetByIndex(indexeres.VMByNetworkIndex, nad.Name)
+	if err != nil {
+		return nil, err
+	}
+	for _, vm := range vmsTmp {
+		if vm.Namespace != nad.Namespace {
+			continue
+		}
+		vms = append(vms, vm)
+	}
+
+	return vms, nil
+}
+
 // WhoUseNad requires adding network indexer to the vmi cache before invoking it
 func (v *VmiGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition, nodesFilter mapset.Set[string]) ([]*kubevirtv1.VirtualMachineInstance, error) {
 	// multus network name can be <networkName> or <namespace>/<networkName>
