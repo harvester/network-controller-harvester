@@ -63,6 +63,26 @@ func (l *Link) DelBridgeVlan(vid uint16) error {
 	return nil
 }
 
+func (l *Link) IsBridgeVlanPVID(vid uint16) bool {
+	m, err := netlink.BridgeVlanList()
+	if err != nil {
+		return false
+	}
+
+	vlanInfo, ok := m[int32(l.Attrs().Index)]
+	if !ok {
+		return false
+	}
+
+	for i := range vlanInfo {
+		if vid == vlanInfo[i].Vid {
+			return vlanInfo[i].PortVID()
+		}
+	}
+
+	return false
+}
+
 func (l *Link) ListBridgeVlan() ([]uint16, error) {
 	m, err := netlink.BridgeVlanList()
 	if err != nil {
