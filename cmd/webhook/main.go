@@ -9,7 +9,6 @@ import (
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	ctlkubevirt "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io"
 	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
-	"github.com/harvester/harvester/pkg/indexeres"
 	"github.com/harvester/webhook/pkg/config"
 	"github.com/harvester/webhook/pkg/server"
 	ctlcore "github.com/rancher/wrangler/pkg/generated/controllers/core"
@@ -133,6 +132,10 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 	return nil
 }
 
+const (
+	VMIByNetworkIndex = "vm.harvesterhci.io/vmi-by-network"
+)
+
 type caches struct {
 	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
 	vmiCache  ctlkubevirtv1.VirtualMachineInstanceCache
@@ -163,7 +166,7 @@ func newCaches(ctx context.Context, cfg *rest.Config, threadiness int) (*caches,
 		nodeCache: coreFactory.Core().V1().Node().Cache(),
 	}
 	// Indexer must be added before starting the informer, otherwise panic `cannot add indexers to running index` happens
-	c.vmiCache.AddIndexer(indexeres.VMByNetworkIndex, vmiByNetwork)
+	c.vmiCache.AddIndexer(VMIByNetworkIndex, vmiByNetwork)
 
 	if err := start.All(ctx, threadiness, starters...); err != nil {
 		return nil, err

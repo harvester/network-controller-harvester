@@ -5,7 +5,7 @@ package v1beta1
 // 1. live VM snapshot/backup should be supported, but it is prohibited on the Kubevirt side.
 // 2. restore a VM backup to a new VM should be supported.
 import (
-	"github.com/rancher/wrangler/pkg/condition"
+	"github.com/rancher/wrangler/v3/pkg/condition"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -17,6 +17,9 @@ const (
 
 	// ConditionProgressing is the "progressing" condition type
 	BackupConditionProgressing condition.Cond = "InProgress"
+
+	// BackupConditionMetadataReady is the "metadataReady" condition type
+	BackupConditionMetadataReady condition.Cond = "MetadataReady"
 )
 
 // DeletionPolicy defines that to do with resources when VirtualMachineRestore is deleted
@@ -92,6 +95,9 @@ type VirtualMachineBackupStatus struct {
 	SecretBackups []SecretBackup `json:"secretBackups,omitempty"`
 
 	// +optional
+	Progress int `json:"progress,omitempty"`
+
+	// +optional
 	ReadyToUse *bool `json:"readyToUse,omitempty"`
 
 	// +optional
@@ -137,6 +143,12 @@ type VolumeBackup struct {
 
 	// +optional
 	LonghornBackupName *string `json:"longhornBackupName,omitempty"`
+
+	// +optional
+	VolumeSize int64 `json:"volumeSize,omitempty"`
+
+	// +optional
+	Progress int `json:"progress,omitempty"`
 
 	// +optional
 	ReadyToUse *bool `json:"readyToUse,omitempty"`
@@ -199,6 +211,11 @@ type VirtualMachineRestoreSpec struct {
 
 	// +optional
 	DeletionPolicy DeletionPolicy `json:"deletionPolicy,omitempty"`
+
+	// +optional
+	// KeepMacAddress only works when NewVM is true.
+	// For replacing original VM, the macaddress will be the same.
+	KeepMacAddress bool `json:"keepMacAddress,omitempty"`
 }
 
 // VirtualMachineRestoreStatus is the spec for a VirtualMachineRestore resource
@@ -219,6 +236,9 @@ type VirtualMachineRestoreStatus struct {
 	Conditions []Condition `json:"conditions,omitempty"`
 
 	TargetUID *types.UID `json:"targetUID,omitempty"`
+
+	// +optional
+	Progress int `json:"progress,omitempty"`
 }
 
 // VolumeRestore contains the volume data need to restore a PVC
@@ -228,4 +248,13 @@ type VolumeRestore struct {
 	PersistentVolumeClaim PersistentVolumeClaimSourceSpec `json:"persistentVolumeClaimSpec,omitempty"`
 
 	VolumeBackupName string `json:"volumeBackupName,omitempty"`
+
+	// +optional
+	LonghornEngineName *string `json:"longhornEngineName,omitempty"`
+
+	// +optional
+	Progress int `json:"progress,omitempty"`
+
+	// +optional
+	VolumeSize int64 `json:"volumeSize,omitempty"`
 }

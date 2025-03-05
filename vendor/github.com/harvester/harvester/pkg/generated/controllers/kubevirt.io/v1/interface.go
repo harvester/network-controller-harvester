@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2024 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,8 @@ package v1
 
 import (
 	"github.com/rancher/lasso/pkg/controller"
-	"github.com/rancher/wrangler/pkg/schemes"
+	"github.com/rancher/wrangler/v3/pkg/generic"
+	"github.com/rancher/wrangler/v3/pkg/schemes"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	v1 "kubevirt.io/api/core/v1"
 )
@@ -30,6 +31,7 @@ func init() {
 }
 
 type Interface interface {
+	KubeVirt() KubeVirtController
 	VirtualMachine() VirtualMachineController
 	VirtualMachineInstance() VirtualMachineInstanceController
 	VirtualMachineInstanceMigration() VirtualMachineInstanceMigrationController
@@ -45,12 +47,18 @@ type version struct {
 	controllerFactory controller.SharedControllerFactory
 }
 
-func (c *version) VirtualMachine() VirtualMachineController {
-	return NewVirtualMachineController(schema.GroupVersionKind{Group: "kubevirt.io", Version: "v1", Kind: "VirtualMachine"}, "virtualmachines", true, c.controllerFactory)
+func (v *version) KubeVirt() KubeVirtController {
+	return generic.NewController[*v1.KubeVirt, *v1.KubeVirtList](schema.GroupVersionKind{Group: "kubevirt.io", Version: "v1", Kind: "KubeVirt"}, "kubevirts", true, v.controllerFactory)
 }
-func (c *version) VirtualMachineInstance() VirtualMachineInstanceController {
-	return NewVirtualMachineInstanceController(schema.GroupVersionKind{Group: "kubevirt.io", Version: "v1", Kind: "VirtualMachineInstance"}, "virtualmachineinstances", true, c.controllerFactory)
+
+func (v *version) VirtualMachine() VirtualMachineController {
+	return generic.NewController[*v1.VirtualMachine, *v1.VirtualMachineList](schema.GroupVersionKind{Group: "kubevirt.io", Version: "v1", Kind: "VirtualMachine"}, "virtualmachines", true, v.controllerFactory)
 }
-func (c *version) VirtualMachineInstanceMigration() VirtualMachineInstanceMigrationController {
-	return NewVirtualMachineInstanceMigrationController(schema.GroupVersionKind{Group: "kubevirt.io", Version: "v1", Kind: "VirtualMachineInstanceMigration"}, "virtualmachineinstancemigrations", true, c.controllerFactory)
+
+func (v *version) VirtualMachineInstance() VirtualMachineInstanceController {
+	return generic.NewController[*v1.VirtualMachineInstance, *v1.VirtualMachineInstanceList](schema.GroupVersionKind{Group: "kubevirt.io", Version: "v1", Kind: "VirtualMachineInstance"}, "virtualmachineinstances", true, v.controllerFactory)
+}
+
+func (v *version) VirtualMachineInstanceMigration() VirtualMachineInstanceMigrationController {
+	return generic.NewController[*v1.VirtualMachineInstanceMigration, *v1.VirtualMachineInstanceMigrationList](schema.GroupVersionKind{Group: "kubevirt.io", Version: "v1", Kind: "VirtualMachineInstanceMigration"}, "virtualmachineinstancemigrations", true, v.controllerFactory)
 }
