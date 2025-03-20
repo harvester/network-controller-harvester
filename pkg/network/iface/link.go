@@ -2,6 +2,7 @@ package iface
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/coreos/go-iptables/iptables"
@@ -206,4 +207,24 @@ func (l *Link) Remove() error {
 	}
 
 	return netlink.LinkDel(l)
+}
+
+func GetMgmtVlan() (vlanID int, err error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return vlanID, err
+	}
+
+	for _, link := range links {
+		if !strings.Contains(link.Attrs().Name, "mgmt-br.") {
+			continue
+		}
+
+		result := strings.Split(link.Attrs().Name, ".")
+		if vlanID, err = strconv.Atoi(result[1]); err != nil {
+			return vlanID, err
+		}
+	}
+
+	return vlanID, nil
 }
