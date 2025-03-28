@@ -21,7 +21,25 @@ limitations under the License.
 package v1beta1
 
 import (
+	//"context"
+	//"sync"
+	//"time"
+
+	//"github.com/rancher/lasso/pkg/controller"
+	//"github.com/rancher/wrangler/v3/pkg/apply"
+	//"github.com/rancher/wrangler/v3/pkg/condition"
+	//"github.com/rancher/wrangler/v3/pkg/generic"
+	//"github.com/rancher/wrangler/v3/pkg/kv"
+	//"github.com/rancher/wrangler/v3/pkg/schemes"
+	//"k8s.io/apimachinery/pkg/api/equality"
+	//"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	//"k8s.io/apimachinery/pkg/labels"
+	//"k8s.io/apimachinery/pkg/runtime"
+	//"k8s.io/apimachinery/pkg/runtime/schema"
+	//"k8s.io/apimachinery/pkg/types"
+	//"k8s.io/apimachinery/pkg/watch"
+	//"k8s.io/client-go/rest"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

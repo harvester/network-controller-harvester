@@ -19,7 +19,7 @@ type SockStat struct {
 	TCPMemory    uint64 `json:"tcp_memory" field:"TCP.mem"`
 
 	//TCP6:
-	TCP6InUse    uint64 `json:"tcp6_in_use" field:"TCP6.inuse"`
+	TCP6InUse uint64 `json:"tcp6_in_use" field:"TCP6.inuse"`
 
 	// UDP:
 	UDPInUse  uint64 `json:"udp_in_use" field:"UDP.inuse"`

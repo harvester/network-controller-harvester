@@ -1,6 +1,10 @@
 package utils
 
-import "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
+import (
+	"github.com/kubeovn/kube-ovn/pkg/apis/kubeovn"
+
+	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
+)
 
 const (
 	KeyVlanLabel = network.GroupName + "/vlan-id"
@@ -15,6 +19,7 @@ const (
 	KeyLastNetworkType         = network.GroupName + "/last-type"
 	KeyNetworkReady            = network.GroupName + "/ready"
 	KeyNetworkRoute            = network.GroupName + "/route"
+	KeyKubeOVNType             = kubeovn.GroupName + "/type"
 
 	KeyMatchedNodes = network.GroupName + "/matched-nodes"
 

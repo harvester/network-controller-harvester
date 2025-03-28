@@ -38,14 +38,15 @@ func NewNadValidator(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Valida
 func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	nad := newObj.(*cniv1.NetworkAttachmentDefinition)
 
-	if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute]); err != nil {
-		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
-	}
-
 	conf, err := encodeConfig(nad.Spec.Config)
 	if err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
+
+	if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute], conf.Type); err != nil {
+		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
+	}
+
 	if err := v.checkNadConfig(conf); err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
@@ -62,10 +63,6 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return nil
 	}
 
-	if err := v.checkRoute(newNad.Annotations[utils.KeyNetworkRoute]); err != nil {
-		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
-	}
-
 	newConf, err := encodeConfig(newNad.Spec.Config)
 	if err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
@@ -78,6 +75,11 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	if reflect.DeepEqual(newConf, oldConf) {
 		return nil
 	}
+
+	if err := v.checkRoute(newNad.Annotations[utils.KeyNetworkRoute], newConf.Type); err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+	}
+
 	if err := v.checkNadConfig(newConf); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
@@ -104,6 +106,10 @@ func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf) error {
 		return fmt.Errorf("config is empty")
 	}
 
+	if bridgeConf.Type == utils.KubeOVNCNI {
+		return nil
+	}
+
 	// The VLAN value of untagged network will be empty or number 0.
 	if bridgeConf.Vlan < 0 || bridgeConf.Vlan > 4094 {
 		return fmt.Errorf("VLAN ID must >=0 and <=4094")
@@ -120,7 +126,11 @@ func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf) error {
 	return nil
 }
 
-func (v *Validator) checkRoute(config string) error {
+func (v *Validator) checkRoute(config string, cniType string) error {
+	if cniType == utils.KubeOVNCNI {
+		return nil
+	}
+
 	_, err := utils.NewLayer3NetworkConf(config)
 	return err
 }

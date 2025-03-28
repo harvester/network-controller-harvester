@@ -20,262 +20,63 @@ package v1beta1
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	v1beta1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
-	"github.com/rancher/lasso/pkg/client"
-	"github.com/rancher/lasso/pkg/controller"
-	"github.com/rancher/wrangler/pkg/apply"
-	"github.com/rancher/wrangler/pkg/condition"
-	"github.com/rancher/wrangler/pkg/generic"
-	"github.com/rancher/wrangler/pkg/kv"
+	//"github.com/rancher/lasso/pkg/controller"
+	"github.com/rancher/wrangler/v3/pkg/apply"
+	"github.com/rancher/wrangler/v3/pkg/condition"
+	"github.com/rancher/wrangler/v3/pkg/generic"
+	"github.com/rancher/wrangler/v3/pkg/kv"
+
+	//"github.com/rancher/wrangler/v3/pkg/schemes"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
+
+	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	//"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/tools/cache"
+	//"k8s.io/apimachinery/pkg/types"
+	//"k8s.io/apimachinery/pkg/watch"
+	//"k8s.io/client-go/rest"
 )
 
-type VlanStatusHandler func(string, *v1beta1.VlanStatus) (*v1beta1.VlanStatus, error)
-
+// VlanStatusController interface for managing VlanStatus resources.
 type VlanStatusController interface {
-	generic.ControllerMeta
-	VlanStatusClient
-
-	OnChange(ctx context.Context, name string, sync VlanStatusHandler)
-	OnRemove(ctx context.Context, name string, sync VlanStatusHandler)
-	Enqueue(name string)
-	EnqueueAfter(name string, duration time.Duration)
-
-	Cache() VlanStatusCache
+	generic.NonNamespacedControllerInterface[*v1beta1.VlanStatus, *v1beta1.VlanStatusList]
 }
 
+// VlanStatusClient interface for managing VlanStatus resources in Kubernetes.
 type VlanStatusClient interface {
-	Create(*v1beta1.VlanStatus) (*v1beta1.VlanStatus, error)
-	Update(*v1beta1.VlanStatus) (*v1beta1.VlanStatus, error)
-	UpdateStatus(*v1beta1.VlanStatus) (*v1beta1.VlanStatus, error)
-	Delete(name string, options *metav1.DeleteOptions) error
-	Get(name string, options metav1.GetOptions) (*v1beta1.VlanStatus, error)
-	List(opts metav1.ListOptions) (*v1beta1.VlanStatusList, error)
-	Watch(opts metav1.ListOptions) (watch.Interface, error)
-	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.VlanStatus, err error)
+	generic.NonNamespacedClientInterface[*v1beta1.VlanStatus, *v1beta1.VlanStatusList]
 }
 
+// VlanStatusCache interface for retrieving VlanStatus resources in memory.
 type VlanStatusCache interface {
-	Get(name string) (*v1beta1.VlanStatus, error)
-	List(selector labels.Selector) ([]*v1beta1.VlanStatus, error)
-
-	AddIndexer(indexName string, indexer VlanStatusIndexer)
-	GetByIndex(indexName, key string) ([]*v1beta1.VlanStatus, error)
+	generic.NonNamespacedCacheInterface[*v1beta1.VlanStatus]
 }
 
-type VlanStatusIndexer func(obj *v1beta1.VlanStatus) ([]string, error)
-
-type vlanStatusController struct {
-	controller    controller.SharedController
-	client        *client.Client
-	gvk           schema.GroupVersionKind
-	groupResource schema.GroupResource
-}
-
-func NewVlanStatusController(gvk schema.GroupVersionKind, resource string, namespaced bool, controller controller.SharedControllerFactory) VlanStatusController {
-	c := controller.ForResourceKind(gvk.GroupVersion().WithResource(resource), gvk.Kind, namespaced)
-	return &vlanStatusController{
-		controller: c,
-		client:     c.Client(),
-		gvk:        gvk,
-		groupResource: schema.GroupResource{
-			Group:    gvk.Group,
-			Resource: resource,
-		},
-	}
-}
-
-func FromVlanStatusHandlerToHandler(sync VlanStatusHandler) generic.Handler {
-	return func(key string, obj runtime.Object) (ret runtime.Object, err error) {
-		var v *v1beta1.VlanStatus
-		if obj == nil {
-			v, err = sync(key, nil)
-		} else {
-			v, err = sync(key, obj.(*v1beta1.VlanStatus))
-		}
-		if v == nil {
-			return nil, err
-		}
-		return v, err
-	}
-}
-
-func (c *vlanStatusController) Updater() generic.Updater {
-	return func(obj runtime.Object) (runtime.Object, error) {
-		newObj, err := c.Update(obj.(*v1beta1.VlanStatus))
-		if newObj == nil {
-			return nil, err
-		}
-		return newObj, err
-	}
-}
-
-func UpdateVlanStatusDeepCopyOnChange(client VlanStatusClient, obj *v1beta1.VlanStatus, handler func(obj *v1beta1.VlanStatus) (*v1beta1.VlanStatus, error)) (*v1beta1.VlanStatus, error) {
-	if obj == nil {
-		return obj, nil
-	}
-
-	copyObj := obj.DeepCopy()
-	newObj, err := handler(copyObj)
-	if newObj != nil {
-		copyObj = newObj
-	}
-	if obj.ResourceVersion == copyObj.ResourceVersion && !equality.Semantic.DeepEqual(obj, copyObj) {
-		return client.Update(copyObj)
-	}
-
-	return copyObj, err
-}
-
-func (c *vlanStatusController) AddGenericHandler(ctx context.Context, name string, handler generic.Handler) {
-	c.controller.RegisterHandler(ctx, name, controller.SharedControllerHandlerFunc(handler))
-}
-
-func (c *vlanStatusController) AddGenericRemoveHandler(ctx context.Context, name string, handler generic.Handler) {
-	c.AddGenericHandler(ctx, name, generic.NewRemoveHandler(name, c.Updater(), handler))
-}
-
-func (c *vlanStatusController) OnChange(ctx context.Context, name string, sync VlanStatusHandler) {
-	c.AddGenericHandler(ctx, name, FromVlanStatusHandlerToHandler(sync))
-}
-
-func (c *vlanStatusController) OnRemove(ctx context.Context, name string, sync VlanStatusHandler) {
-	c.AddGenericHandler(ctx, name, generic.NewRemoveHandler(name, c.Updater(), FromVlanStatusHandlerToHandler(sync)))
-}
-
-func (c *vlanStatusController) Enqueue(name string) {
-	c.controller.Enqueue("", name)
-}
-
-func (c *vlanStatusController) EnqueueAfter(name string, duration time.Duration) {
-	c.controller.EnqueueAfter("", name, duration)
-}
-
-func (c *vlanStatusController) Informer() cache.SharedIndexInformer {
-	return c.controller.Informer()
-}
-
-func (c *vlanStatusController) GroupVersionKind() schema.GroupVersionKind {
-	return c.gvk
-}
-
-func (c *vlanStatusController) Cache() VlanStatusCache {
-	return &vlanStatusCache{
-		indexer:  c.Informer().GetIndexer(),
-		resource: c.groupResource,
-	}
-}
-
-func (c *vlanStatusController) Create(obj *v1beta1.VlanStatus) (*v1beta1.VlanStatus, error) {
-	result := &v1beta1.VlanStatus{}
-	return result, c.client.Create(context.TODO(), "", obj, result, metav1.CreateOptions{})
-}
-
-func (c *vlanStatusController) Update(obj *v1beta1.VlanStatus) (*v1beta1.VlanStatus, error) {
-	result := &v1beta1.VlanStatus{}
-	return result, c.client.Update(context.TODO(), "", obj, result, metav1.UpdateOptions{})
-}
-
-func (c *vlanStatusController) UpdateStatus(obj *v1beta1.VlanStatus) (*v1beta1.VlanStatus, error) {
-	result := &v1beta1.VlanStatus{}
-	return result, c.client.UpdateStatus(context.TODO(), "", obj, result, metav1.UpdateOptions{})
-}
-
-func (c *vlanStatusController) Delete(name string, options *metav1.DeleteOptions) error {
-	if options == nil {
-		options = &metav1.DeleteOptions{}
-	}
-	return c.client.Delete(context.TODO(), "", name, *options)
-}
-
-func (c *vlanStatusController) Get(name string, options metav1.GetOptions) (*v1beta1.VlanStatus, error) {
-	result := &v1beta1.VlanStatus{}
-	return result, c.client.Get(context.TODO(), "", name, result, options)
-}
-
-func (c *vlanStatusController) List(opts metav1.ListOptions) (*v1beta1.VlanStatusList, error) {
-	result := &v1beta1.VlanStatusList{}
-	return result, c.client.List(context.TODO(), "", result, opts)
-}
-
-func (c *vlanStatusController) Watch(opts metav1.ListOptions) (watch.Interface, error) {
-	return c.client.Watch(context.TODO(), "", opts)
-}
-
-func (c *vlanStatusController) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (*v1beta1.VlanStatus, error) {
-	result := &v1beta1.VlanStatus{}
-	return result, c.client.Patch(context.TODO(), "", name, pt, data, result, metav1.PatchOptions{}, subresources...)
-}
-
-type vlanStatusCache struct {
-	indexer  cache.Indexer
-	resource schema.GroupResource
-}
-
-func (c *vlanStatusCache) Get(name string) (*v1beta1.VlanStatus, error) {
-	obj, exists, err := c.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(c.resource, name)
-	}
-	return obj.(*v1beta1.VlanStatus), nil
-}
-
-func (c *vlanStatusCache) List(selector labels.Selector) (ret []*v1beta1.VlanStatus, err error) {
-
-	err = cache.ListAll(c.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1beta1.VlanStatus))
-	})
-
-	return ret, err
-}
-
-func (c *vlanStatusCache) AddIndexer(indexName string, indexer VlanStatusIndexer) {
-	utilruntime.Must(c.indexer.AddIndexers(map[string]cache.IndexFunc{
-		indexName: func(obj interface{}) (strings []string, e error) {
-			return indexer(obj.(*v1beta1.VlanStatus))
-		},
-	}))
-}
-
-func (c *vlanStatusCache) GetByIndex(indexName, key string) (result []*v1beta1.VlanStatus, err error) {
-	objs, err := c.indexer.ByIndex(indexName, key)
-	if err != nil {
-		return nil, err
-	}
-	result = make([]*v1beta1.VlanStatus, 0, len(objs))
-	for _, obj := range objs {
-		result = append(result, obj.(*v1beta1.VlanStatus))
-	}
-	return result, nil
-}
-
+// VlanStatusStatusHandler is executed for every added or modified VlanStatus. Should return the new status to be updated
 type VlanStatusStatusHandler func(obj *v1beta1.VlanStatus, status v1beta1.VlStatus) (v1beta1.VlStatus, error)
 
+// VlanStatusGeneratingHandler is the top-level handler that is executed for every VlanStatus event. It extends VlanStatusStatusHandler by a returning a slice of child objects to be passed to apply.Apply
 type VlanStatusGeneratingHandler func(obj *v1beta1.VlanStatus, status v1beta1.VlStatus) ([]runtime.Object, v1beta1.VlStatus, error)
 
+// RegisterVlanStatusStatusHandler configures a VlanStatusController to execute a VlanStatusStatusHandler for every events observed.
+// If a non-empty condition is provided, it will be updated in the status conditions for every handler execution
 func RegisterVlanStatusStatusHandler(ctx context.Context, controller VlanStatusController, condition condition.Cond, name string, handler VlanStatusStatusHandler) {
 	statusHandler := &vlanStatusStatusHandler{
 		client:    controller,
 		condition: condition,
 		handler:   handler,
 	}
-	controller.AddGenericHandler(ctx, name, FromVlanStatusHandlerToHandler(statusHandler.sync))
+	controller.AddGenericHandler(ctx, name, generic.FromObjectHandlerToHandler(statusHandler.sync))
 }
 
+// RegisterVlanStatusGeneratingHandler configures a VlanStatusController to execute a VlanStatusGeneratingHandler for every events observed, passing the returned objects to the provided apply.Apply.
+// If a non-empty condition is provided, it will be updated in the status conditions for every handler execution
 func RegisterVlanStatusGeneratingHandler(ctx context.Context, controller VlanStatusController, apply apply.Apply,
 	condition condition.Cond, name string, handler VlanStatusGeneratingHandler, opts *generic.GeneratingHandlerOptions) {
 	statusHandler := &vlanStatusGeneratingHandler{
@@ -297,6 +98,7 @@ type vlanStatusStatusHandler struct {
 	handler   VlanStatusStatusHandler
 }
 
+// sync is executed on every resource addition or modification. Executes the configured handlers and sends the updated status to the Kubernetes API
 func (a *vlanStatusStatusHandler) sync(key string, obj *v1beta1.VlanStatus) (*v1beta1.VlanStatus, error) {
 	if obj == nil {
 		return obj, nil
@@ -342,8 +144,10 @@ type vlanStatusGeneratingHandler struct {
 	opts  generic.GeneratingHandlerOptions
 	gvk   schema.GroupVersionKind
 	name  string
+	seen  sync.Map
 }
 
+// Remove handles the observed deletion of a resource, cascade deleting every associated resource previously applied
 func (a *vlanStatusGeneratingHandler) Remove(key string, obj *v1beta1.VlanStatus) (*v1beta1.VlanStatus, error) {
 	if obj != nil {
 		return obj, nil
@@ -353,12 +157,17 @@ func (a *vlanStatusGeneratingHandler) Remove(key string, obj *v1beta1.VlanStatus
 	obj.Namespace, obj.Name = kv.RSplit(key, "/")
 	obj.SetGroupVersionKind(a.gvk)
 
+	if a.opts.UniqueApplyForResourceVersion {
+		a.seen.Delete(key)
+	}
+
 	return nil, generic.ConfigureApplyForObject(a.apply, obj, &a.opts).
 		WithOwner(obj).
 		WithSetID(a.name).
 		ApplyObjects()
 }
 
+// Handle executes the configured VlanStatusGeneratingHandler and pass the resulting objects to apply.Apply, finally returning the new status of the resource
 func (a *vlanStatusGeneratingHandler) Handle(obj *v1beta1.VlanStatus, status v1beta1.VlStatus) (v1beta1.VlStatus, error) {
 	if !obj.DeletionTimestamp.IsZero() {
 		return status, nil
@@ -368,9 +177,41 @@ func (a *vlanStatusGeneratingHandler) Handle(obj *v1beta1.VlanStatus, status v1b
 	if err != nil {
 		return newStatus, err
 	}
+	if !a.isNewResourceVersion(obj) {
+		return newStatus, nil
+	}
 
-	return newStatus, generic.ConfigureApplyForObject(a.apply, obj, &a.opts).
+	err = generic.ConfigureApplyForObject(a.apply, obj, &a.opts).
 		WithOwner(obj).
 		WithSetID(a.name).
 		ApplyObjects(objs...)
+	if err != nil {
+		return newStatus, err
+	}
+	a.storeResourceVersion(obj)
+	return newStatus, nil
+}
+
+// isNewResourceVersion detects if a specific resource version was already successfully processed.
+// Only used if UniqueApplyForResourceVersion is set in generic.GeneratingHandlerOptions
+func (a *vlanStatusGeneratingHandler) isNewResourceVersion(obj *v1beta1.VlanStatus) bool {
+	if !a.opts.UniqueApplyForResourceVersion {
+		return true
+	}
+
+	// Apply once per resource version
+	key := obj.Namespace + "/" + obj.Name
+	previous, ok := a.seen.Load(key)
+	return !ok || previous != obj.ResourceVersion
+}
+
+// storeResourceVersion keeps track of the latest resource version of an object for which Apply was executed
+// Only used if UniqueApplyForResourceVersion is set in generic.GeneratingHandlerOptions
+func (a *vlanStatusGeneratingHandler) storeResourceVersion(obj *v1beta1.VlanStatus) {
+	if !a.opts.UniqueApplyForResourceVersion {
+		return
+	}
+
+	key := obj.Namespace + "/" + obj.Name
+	a.seen.Store(key, obj.ResourceVersion)
 }
