@@ -9,24 +9,28 @@ import (
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	ctlkubevirt "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io"
 	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
-	"github.com/harvester/harvester/pkg/indexeres"
 	"github.com/harvester/webhook/pkg/config"
 	"github.com/harvester/webhook/pkg/server"
-	ctlcore "github.com/rancher/wrangler/pkg/generated/controllers/core"
-	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
-	"github.com/rancher/wrangler/pkg/kubeconfig"
-	"github.com/rancher/wrangler/pkg/signals"
-	"github.com/rancher/wrangler/pkg/start"
+	ctlcore "github.com/rancher/wrangler/v3/pkg/generated/controllers/core"
+	ctlcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
+	"github.com/rancher/wrangler/v3/pkg/kubeconfig"
+	"github.com/rancher/wrangler/v3/pkg/signals"
+	"github.com/rancher/wrangler/v3/pkg/start"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 	"k8s.io/client-go/rest"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
+	kubeovnnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io"
+	kubeovnnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io/v1"
 	ctlnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/harvester/harvester-network-controller/pkg/webhook/clusternetwork"
 	"github.com/harvester/harvester-network-controller/pkg/webhook/nad"
+	"github.com/harvester/harvester-network-controller/pkg/webhook/subnet"
 	"github.com/harvester/harvester-network-controller/pkg/webhook/vlanconfig"
+	"github.com/harvester/harvester-network-controller/pkg/webhook/vpc"
 )
 
 const name = "harvester-network-webhook"
@@ -120,6 +124,8 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 		clusternetwork.NewCnValidator(c.vcCache),
 		nad.NewNadValidator(c.vmiCache),
 		vlanconfig.NewVlanConfigValidator(c.nadCache, c.vcCache, c.vsCache, c.vmiCache),
+		subnet.NewSubnetValidator(c.nadCache, c.kubeovnvpcCache),
+		vpc.NewVpcValidator(c.kubeovnsubnetCache),
 	); err != nil {
 		return fmt.Errorf("failed to register validators: %v", err)
 	}
@@ -134,12 +140,14 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 }
 
 type caches struct {
-	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
-	vmiCache  ctlkubevirtv1.VirtualMachineInstanceCache
-	vcCache   ctlnetworkv1.VlanConfigCache
-	vsCache   ctlnetworkv1.VlanStatusCache
-	cnCache   ctlnetworkv1.ClusterNetworkCache
-	nodeCache ctlcorev1.NodeCache
+	nadCache           ctlcniv1.NetworkAttachmentDefinitionCache
+	vmiCache           ctlkubevirtv1.VirtualMachineInstanceCache
+	vcCache            ctlnetworkv1.VlanConfigCache
+	vsCache            ctlnetworkv1.VlanStatusCache
+	cnCache            ctlnetworkv1.ClusterNetworkCache
+	nodeCache          ctlcorev1.NodeCache
+	kubeovnsubnetCache kubeovnnetworkv1.SubnetCache
+	kubeovnvpcCache    kubeovnnetworkv1.VpcCache
 }
 
 func newCaches(ctx context.Context, cfg *rest.Config, threadiness int) (*caches, error) {
@@ -153,17 +161,21 @@ func newCaches(ctx context.Context, cfg *rest.Config, threadiness int) (*caches,
 	starters = append(starters, harvesterNetworkFactory)
 	coreFactory := ctlcore.NewFactoryFromConfigOrDie(cfg)
 	starters = append(starters, coreFactory)
+	kubeovnFactory := kubeovnnetwork.NewFactoryFromConfigOrDie(cfg)
+	starters = append(starters, kubeovnFactory)
 	// must declare cache before starting informers
 	c := &caches{
-		vmiCache:  kubevirtFactory.Kubevirt().V1().VirtualMachineInstance().Cache(),
-		nadCache:  cniFactory.K8s().V1().NetworkAttachmentDefinition().Cache(),
-		vcCache:   harvesterNetworkFactory.Network().V1beta1().VlanConfig().Cache(),
-		vsCache:   harvesterNetworkFactory.Network().V1beta1().VlanStatus().Cache(),
-		cnCache:   harvesterNetworkFactory.Network().V1beta1().ClusterNetwork().Cache(),
-		nodeCache: coreFactory.Core().V1().Node().Cache(),
+		vmiCache:           kubevirtFactory.Kubevirt().V1().VirtualMachineInstance().Cache(),
+		nadCache:           cniFactory.K8s().V1().NetworkAttachmentDefinition().Cache(),
+		vcCache:            harvesterNetworkFactory.Network().V1beta1().VlanConfig().Cache(),
+		vsCache:            harvesterNetworkFactory.Network().V1beta1().VlanStatus().Cache(),
+		cnCache:            harvesterNetworkFactory.Network().V1beta1().ClusterNetwork().Cache(),
+		nodeCache:          coreFactory.Core().V1().Node().Cache(),
+		kubeovnsubnetCache: kubeovnFactory.Kubeovn().V1().Subnet().Cache(),
+		kubeovnvpcCache:    kubeovnFactory.Kubeovn().V1().Vpc().Cache(),
 	}
 	// Indexer must be added before starting the informer, otherwise panic `cannot add indexers to running index` happens
-	c.vmiCache.AddIndexer(indexeres.VMByNetworkIndex, vmiByNetwork)
+	c.vmiCache.AddIndexer(utils.VMByNetworkIndex, vmiByNetwork)
 
 	if err := start.All(ctx, threadiness, starters...); err != nil {
 		return nil, err

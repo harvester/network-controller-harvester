@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rancher/wrangler/pkg/apply"
-	"github.com/rancher/wrangler/pkg/crd"
-	"github.com/rancher/wrangler/pkg/name"
+	"github.com/rancher/wrangler/v3/pkg/apply"
+	"github.com/rancher/wrangler/v3/pkg/crd"
+	"github.com/rancher/wrangler/v3/pkg/name"
 	"github.com/sirupsen/logrus"
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -139,7 +139,7 @@ func (f *Factory) CreateCRDs(ctx context.Context, updateIfExisted bool, crds ...
 	return crdStatus, nil
 }
 
-func (f *Factory) createCRD(ctx context.Context, crdDef crd.CRD, ready map[string]*apiext.CustomResourceDefinition) (*apiext.CustomResourceDefinition, error) {
+func (f *Factory) createCRD(ctx context.Context, crdDef crd.CRD, _ map[string]*apiext.CustomResourceDefinition) (*apiext.CustomResourceDefinition, error) {
 	crd, err := crdDef.ToCustomResourceDefinition()
 	if err != nil {
 		return nil, err
