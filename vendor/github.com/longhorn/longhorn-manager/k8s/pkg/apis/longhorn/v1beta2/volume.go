@@ -1,6 +1,8 @@
 package v1beta2
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 type VolumeState string
 
@@ -22,12 +24,13 @@ const (
 	VolumeRobustnessUnknown  = VolumeRobustness("unknown")
 )
 
-// +kubebuilder:validation:Enum=blockdev;iscsi;""
+// +kubebuilder:validation:Enum=blockdev;iscsi;nvmf;""
 type VolumeFrontend string
 
 const (
 	VolumeFrontendBlockDev = VolumeFrontend("blockdev")
 	VolumeFrontendISCSI    = VolumeFrontend("iscsi")
+	VolumeFrontendNvmf     = VolumeFrontend("nvmf")
 	VolumeFrontendEmpty    = VolumeFrontend("")
 )
 
@@ -41,12 +44,13 @@ const (
 	VolumeDataSourceTypeVolume   = VolumeDataSourceType("volume")
 )
 
-// +kubebuilder:validation:Enum=disabled;best-effort
+// +kubebuilder:validation:Enum=disabled;best-effort;strict-local
 type DataLocality string
 
 const (
-	DataLocalityDisabled   = DataLocality("disabled")
-	DataLocalityBestEffort = DataLocality("best-effort")
+	DataLocalityDisabled    = DataLocality("disabled")
+	DataLocalityBestEffort  = DataLocality("best-effort")
+	DataLocalityStrictLocal = DataLocality("strict-local")
 )
 
 // +kubebuilder:validation:Enum=rwo;rwx
@@ -67,6 +71,15 @@ const (
 	ReplicaAutoBalanceBestEffort  = ReplicaAutoBalance("best-effort")
 )
 
+// +kubebuilder:validation:Enum=ignored;disabled;enabled
+type UnmapMarkSnapChainRemoved string
+
+const (
+	UnmapMarkSnapChainRemovedIgnored  = UnmapMarkSnapChainRemoved("ignored")
+	UnmapMarkSnapChainRemovedDisabled = UnmapMarkSnapChainRemoved("disabled")
+	UnmapMarkSnapChainRemovedEnabled  = UnmapMarkSnapChainRemoved("enabled")
+)
+
 type VolumeCloneState string
 
 const (
@@ -83,12 +96,17 @@ type VolumeCloneStatus struct {
 	Snapshot string `json:"snapshot"`
 	// +optional
 	State VolumeCloneState `json:"state"`
+	// +optional
+	AttemptCount int `json:"attemptCount"`
+	// +optional
+	NextAllowedAttemptAt string `json:"nextAllowedAttemptAt"`
 }
 
 const (
-	VolumeConditionTypeScheduled        = "scheduled"
-	VolumeConditionTypeRestore          = "restore"
-	VolumeConditionTypeTooManySnapshots = "toomanysnapshots"
+	VolumeConditionTypeScheduled           = "Scheduled"
+	VolumeConditionTypeRestore             = "Restore"
+	VolumeConditionTypeTooManySnapshots    = "TooManySnapshots"
+	VolumeConditionTypeWaitForBackingImage = "WaitForBackingImage"
 )
 
 const (
@@ -97,27 +115,80 @@ const (
 	VolumeConditionReasonRestoreInProgress             = "RestoreInProgress"
 	VolumeConditionReasonRestoreFailure                = "RestoreFailure"
 	VolumeConditionReasonTooManySnapshots              = "TooManySnapshots"
+	VolumeConditionReasonWaitForBackingImageFailed     = "GetBackingImageFailed"
+	VolumeConditionReasonWaitForBackingImageWaiting    = "Waiting"
 )
 
-// VolumeRecurringJobSpec is a deprecated struct.
-// TODO: Should be removed when recurringJobs gets removed from the volume
-//       spec.
-type VolumeRecurringJobSpec struct {
-	// +optional
-	Name string `json:"name"`
-	// +optional
-	Groups []string `json:"groups,omitempty"`
-	// +optional
-	Task RecurringJobType `json:"task"`
-	// +optional
-	Cron string `json:"cron"`
-	// +optional
-	Retain int `json:"retain"`
-	// +optional
-	Concurrency int `json:"concurrency"`
-	// +optional
-	Labels map[string]string `json:"labels,omitempty"`
-}
+type SnapshotDataIntegrity string
+
+const (
+	SnapshotDataIntegrityIgnored   = SnapshotDataIntegrity("ignored")
+	SnapshotDataIntegrityDisabled  = SnapshotDataIntegrity("disabled")
+	SnapshotDataIntegrityEnabled   = SnapshotDataIntegrity("enabled")
+	SnapshotDataIntegrityFastCheck = SnapshotDataIntegrity("fast-check")
+)
+
+// +kubebuilder:validation:Enum=ignored;enabled;disabled
+type RestoreVolumeRecurringJobType string
+
+const (
+	RestoreVolumeRecurringJobDefault  = RestoreVolumeRecurringJobType("ignored")
+	RestoreVolumeRecurringJobEnabled  = RestoreVolumeRecurringJobType("enabled")
+	RestoreVolumeRecurringJobDisabled = RestoreVolumeRecurringJobType("disabled")
+)
+
+// +kubebuilder:validation:Enum=ignored;enabled;disabled
+type ReplicaSoftAntiAffinity string
+
+const (
+	ReplicaSoftAntiAffinityDefault  = ReplicaSoftAntiAffinity("ignored")
+	ReplicaSoftAntiAffinityEnabled  = ReplicaSoftAntiAffinity("enabled")
+	ReplicaSoftAntiAffinityDisabled = ReplicaSoftAntiAffinity("disabled")
+)
+
+// +kubebuilder:validation:Enum=ignored;enabled;disabled
+type ReplicaZoneSoftAntiAffinity string
+
+const (
+	ReplicaZoneSoftAntiAffinityDefault  = ReplicaZoneSoftAntiAffinity("ignored")
+	ReplicaZoneSoftAntiAffinityEnabled  = ReplicaZoneSoftAntiAffinity("enabled")
+	ReplicaZoneSoftAntiAffinityDisabled = ReplicaZoneSoftAntiAffinity("disabled")
+)
+
+// +kubebuilder:validation:Enum=ignored;enabled;disabled
+type ReplicaDiskSoftAntiAffinity string
+
+const (
+	ReplicaDiskSoftAntiAffinityDefault  = ReplicaDiskSoftAntiAffinity("ignored")
+	ReplicaDiskSoftAntiAffinityEnabled  = ReplicaDiskSoftAntiAffinity("enabled")
+	ReplicaDiskSoftAntiAffinityDisabled = ReplicaDiskSoftAntiAffinity("disabled")
+)
+
+// +kubebuilder:validation:Enum=ignored;enabled;disabled
+type FreezeFilesystemForSnapshot string
+
+const (
+	FreezeFilesystemForSnapshotDefault  = FreezeFilesystemForSnapshot("ignored")
+	FreezeFilesystemForSnapshotEnabled  = FreezeFilesystemForSnapshot("enabled")
+	FreezeFilesystemForSnapshotDisabled = FreezeFilesystemForSnapshot("disabled")
+)
+
+// Deprecated.
+type BackendStoreDriverType string
+
+const (
+	BackendStoreDriverTypeV1  = BackendStoreDriverType("v1")
+	BackendStoreDriverTypeV2  = BackendStoreDriverType("v2")
+	BackendStoreDriverTypeAll = BackendStoreDriverType("all")
+)
+
+type DataEngineType string
+
+const (
+	DataEngineTypeV1  = DataEngineType("v1")
+	DataEngineTypeV2  = DataEngineType("v2")
+	DataEngineTypeAll = DataEngineType("all")
+)
 
 type KubernetesStatus struct {
 	// +optional
@@ -160,6 +231,8 @@ type VolumeSpec struct {
 	// +optional
 	FromBackup string `json:"fromBackup"`
 	// +optional
+	RestoreVolumeRecurringJob RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob"`
+	// +optional
 	DataSource VolumeDataSource `json:"dataSource"`
 	// +optional
 	DataLocality DataLocality `json:"dataLocality"`
@@ -169,8 +242,11 @@ type VolumeSpec struct {
 	NodeID string `json:"nodeID"`
 	// +optional
 	MigrationNodeID string `json:"migrationNodeID"`
+	// Deprecated: Replaced by field `image`.
 	// +optional
 	EngineImage string `json:"engineImage"`
+	// +optional
+	Image string `json:"image"`
 	// +optional
 	BackingImage string `json:"backingImage"`
 	// +optional
@@ -184,6 +260,17 @@ type VolumeSpec struct {
 	// +optional
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
 	// +optional
+	UnmapMarkSnapChainRemoved UnmapMarkSnapChainRemoved `json:"unmapMarkSnapChainRemoved"`
+	// Replica soft anti affinity of the volume. Set enabled to allow replicas to be scheduled on the same node.
+	// +optional
+	ReplicaSoftAntiAffinity ReplicaSoftAntiAffinity `json:"replicaSoftAntiAffinity"`
+	// Replica zone soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same zone.
+	// +optional
+	ReplicaZoneSoftAntiAffinity ReplicaZoneSoftAntiAffinity `json:"replicaZoneSoftAntiAffinity"`
+	// Replica disk soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same disk.
+	// +optional
+	ReplicaDiskSoftAntiAffinity ReplicaDiskSoftAntiAffinity `json:"replicaDiskSoftAntiAffinity"`
+	// +optional
 	LastAttachedBy string `json:"lastAttachedBy"`
 	// +optional
 	AccessMode AccessMode `json:"accessMode"`
@@ -195,12 +282,26 @@ type VolumeSpec struct {
 	NumberOfReplicas int `json:"numberOfReplicas"`
 	// +optional
 	ReplicaAutoBalance ReplicaAutoBalance `json:"replicaAutoBalance"`
-	// Deprecated. Rename to BackingImage
+	// +kubebuilder:validation:Enum=ignored;disabled;enabled;fast-check
 	// +optional
-	BaseImage string `json:"baseImage"`
-	// Deprecated. Replaced by a separate resource named "RecurringJob"
+	SnapshotDataIntegrity SnapshotDataIntegrity `json:"snapshotDataIntegrity"`
+	// +kubebuilder:validation:Enum=none;lz4;gzip
 	// +optional
-	RecurringJobs []VolumeRecurringJobSpec `json:"recurringJobs,omitempty"`
+	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
+	// Deprecated:Replaced by field `dataEngine`.'
+	// +optional
+	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
+	// +kubebuilder:validation:Enum=v1;v2
+	// +optional
+	DataEngine DataEngineType `json:"dataEngine"`
+	// +optional
+	SnapshotMaxCount int `json:"snapshotMaxCount"`
+	// +kubebuilder:validation:Type=string
+	// +optional
+	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
+	// Setting that freezes the filesystem on the root partition before a snapshot is created.
+	// +optional
+	FreezeFilesystemForSnapshot FreezeFilesystemForSnapshot `json:"freezeFilesystemForSnapshot"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
@@ -224,8 +325,12 @@ type VolumeStatus struct {
 	LastBackup string `json:"lastBackup"`
 	// +optional
 	LastBackupAt string `json:"lastBackupAt"`
+	// Deprecated.
 	// +optional
 	PendingNodeID string `json:"pendingNodeID"`
+	// the node that this volume is currently migrating to
+	// +optional
+	CurrentMigrationNodeID string `json:"currentMigrationNodeID"`
 	// +optional
 	FrontendDisabled bool `json:"frontendDisabled"`
 	// +optional
@@ -255,6 +360,7 @@ type VolumeStatus struct {
 // +kubebuilder:resource:shortName=lhv
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
+// +kubebuilder:printcolumn:name="Data Engine",type=string,JSONPath=`.spec.dataEngine`,description="The data engine of the volume"
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="The state of the volume"
 // +kubebuilder:printcolumn:name="Robustness",type=string,JSONPath=`.status.robustness`,description="The robustness of the volume"
 // +kubebuilder:printcolumn:name="Scheduled",type=string,JSONPath=`.status.conditions[?(@.type=='Schedulable')].status`,description="The scheduled condition of the volume"

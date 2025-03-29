@@ -5,12 +5,31 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type BackupState string
 
 const (
+	// non-final state
 	BackupStateNew        = BackupState("")
 	BackupStatePending    = BackupState("Pending")
 	BackupStateInProgress = BackupState("InProgress")
-	BackupStateCompleted  = BackupState("Completed")
-	BackupStateError      = BackupState("Error")
-	BackupStateUnknown    = BackupState("Unknown")
+	// final state
+	BackupStateCompleted = BackupState("Completed")
+	BackupStateError     = BackupState("Error")
+	BackupStateUnknown   = BackupState("Unknown")
+)
+
+type BackupCompressionMethod string
+
+const (
+	BackupCompressionMethodNone = BackupCompressionMethod("none")
+	BackupCompressionMethodLz4  = BackupCompressionMethod("lz4")
+	BackupCompressionMethodGzip = BackupCompressionMethod("gzip")
+)
+
+// +kubebuilder:validation:Enum=full;incremental;""
+type BackupMode string
+
+const (
+	BackupModeFull            = BackupMode("full")
+	BackupModeIncremental     = BackupMode("incremental")
+	BackupModeIncrementalNone = BackupMode("")
 )
 
 // BackupSpec defines the desired state of the Longhorn backup
@@ -25,6 +44,10 @@ type BackupSpec struct {
 	// The labels of snapshot backup.
 	// +optional
 	Labels map[string]string `json:"labels"`
+	// The backup mode of this backup.
+	// Can be "full" or "incremental"
+	// +optional
+	BackupMode BackupMode `json:"backupMode"`
 }
 
 // BackupStatus defines the observed state of the Longhorn backup
@@ -84,6 +107,15 @@ type BackupStatus struct {
 	// +optional
 	// +nullable
 	LastSyncedAt metav1.Time `json:"lastSyncedAt"`
+	// Compression method
+	// +optional
+	CompressionMethod BackupCompressionMethod `json:"compressionMethod"`
+	// Size in bytes of newly uploaded data
+	// +optional
+	NewlyUploadedDataSize string `json:"newlyUploadDataSize"`
+	// Size in bytes of reuploaded data
+	// +optional
+	ReUploadedDataSize string `json:"reUploadedDataSize"`
 }
 
 // +genclient

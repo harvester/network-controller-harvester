@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2024 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,5 +18,4 @@ limitations under the License.
 
 // +k8s:deepcopy-gen=package
 // +groupName=harvesterhci.io
-// +k8s:openapi-gen=true
 package v1beta1
