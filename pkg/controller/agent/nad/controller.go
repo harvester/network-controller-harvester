@@ -141,8 +141,11 @@ func (h Handler) removeLocalArea(clusternetwork string, localArea *vlan.LocalAre
 }
 
 func (h Handler) removeOutdatedLocalArea(nad *nadv1.NetworkAttachmentDefinition) (*nadv1.NetworkAttachmentDefinition, error) {
-	if nad.Labels[utils.KeyLastNetworkType] != string(utils.L2VlanNetwork) ||
-		nad.Labels[utils.KeyLastClusterNetworkLabel] == "" && nad.Labels[utils.KeyLastVlanLabel] == "" {
+	//Skip removelocalArea only
+	//when LastNetworkType=untagged
+	//when LastNetworkType="" and there is no change in vlan id
+	if nad.Labels[utils.KeyLastNetworkType] == string(utils.UntaggedNetwork) ||
+		nad.Labels[utils.KeyLastNetworkType] == "" && nad.Labels[utils.KeyLastVlanLabel] == "" {
 		return nil, nil
 	}
 
