@@ -19,8 +19,26 @@ limitations under the License.
 package network
 
 import (
+	//"context"
+	//"sync"
+	//"time"
+
 	v1beta1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/rancher/lasso/pkg/controller"
+	//"github.com/rancher/wrangler/v3/pkg/apply"
+	//"github.com/rancher/wrangler/v3/pkg/condition"
+	//"github.com/rancher/wrangler/v3/pkg/generic"
+	//"github.com/rancher/wrangler/v3/pkg/kv"
+	//"github.com/rancher/wrangler/v3/pkg/schemes"
+	//"k8s.io/apimachinery/pkg/api/equality"
+	//"k8s.io/apimachinery/pkg/api/errors"
+	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	//"k8s.io/apimachinery/pkg/labels"
+	//"k8s.io/apimachinery/pkg/runtime"
+	//"k8s.io/apimachinery/pkg/runtime/schema"
+	//"k8s.io/apimachinery/pkg/types"
+	//"k8s.io/apimachinery/pkg/watch"
+	//"k8s.io/client-go/rest"
 )
 
 type Interface interface {

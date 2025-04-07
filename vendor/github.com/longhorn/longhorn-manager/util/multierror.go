@@ -1,6 +1,7 @@
 package util
 
 import (
+	"sort"
 	"strings"
 )
 
@@ -27,5 +28,13 @@ func (me MultiError) Join() string {
 		keys = append(keys, err)
 	}
 
+	sort.Strings(keys)
+
 	return strings.Join(keys, ";")
+}
+
+func (me MultiError) Reset() {
+	for k := range me {
+		delete(me, k)
+	}
 }

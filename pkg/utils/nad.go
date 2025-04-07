@@ -9,6 +9,8 @@ import (
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 )
 
+const KubeOVNCNI = "kube-ovn"
+
 type Connectivity string
 
 const (
@@ -62,7 +64,7 @@ func NewLayer3NetworkConf(conf string) (*Layer3NetworkConf, error) {
 	// validate cidr and gateway when the mode is manual
 	if networkConf.Mode == Manual {
 		_, ipnet, err := net.ParseCIDR(networkConf.CIDR)
-		if err != nil || (ipnet != nil && isMaskZero(ipnet)) {
+		if err != nil || (ipnet != nil && IsMaskZero(ipnet)) {
 			return nil, fmt.Errorf("the CIDR %s is invalid", networkConf.CIDR)
 		}
 
@@ -123,7 +125,7 @@ func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
 	return true
 }
 
-func isMaskZero(ipnet *net.IPNet) bool {
+func IsMaskZero(ipnet *net.IPNet) bool {
 	for _, b := range ipnet.Mask {
 		if b != 0 {
 			return false
