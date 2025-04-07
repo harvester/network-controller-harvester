@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-ping/ping"
-	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	ctlbatchv1 "github.com/rancher/wrangler/pkg/generated/controllers/batch/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -22,6 +21,7 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
+	ctlcniv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
