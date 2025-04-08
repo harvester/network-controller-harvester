@@ -7,7 +7,6 @@ import (
 	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
-	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 type Vlan struct {
@@ -104,10 +103,8 @@ func (v *Vlan) AddLocalArea(la *LocalArea) error {
 		return fmt.Errorf("bridge %s hasn't attached an uplink", v.bridge.Name)
 	}
 
-	if v.name != utils.ManagementClusterNetworkName {
-		if err := v.uplink.AddBridgeVlan(la.Vid); err != nil {
-			return fmt.Errorf("add bridge vlanconfig %d failed, error: %w", la.Vid, err)
-		}
+	if err := v.uplink.AddBridgeVlan(la.Vid); err != nil {
+		return fmt.Errorf("add bridge vlanconfig %d failed, error: %w", la.Vid, err)
 	}
 
 	if err := iface.EnsureRouteViaGateway(la.Cidr); err != nil {
@@ -122,10 +119,8 @@ func (v *Vlan) RemoveLocalArea(la *LocalArea) error {
 		return fmt.Errorf("bridge %s hasn't attached an uplink", v.bridge.Name)
 	}
 
-	if v.name != utils.ManagementClusterNetworkName {
-		if err := v.uplink.DelBridgeVlan(la.Vid); err != nil {
-			return fmt.Errorf("remove bridge vlanconfig %d failed, error: %w", la.Vid, err)
-		}
+	if err := v.uplink.DelBridgeVlan(la.Vid); err != nil {
+		return fmt.Errorf("remove bridge vlanconfig %d failed, error: %w", la.Vid, err)
 	}
 
 	if err := iface.DeleteRouteViaGateway(la.Cidr); err != nil {
