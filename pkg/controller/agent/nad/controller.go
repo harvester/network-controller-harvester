@@ -13,6 +13,7 @@ import (
 	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/config"
+	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/network/vlan"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
@@ -22,6 +23,7 @@ const ControllerName = "harvester-network-nad-controller"
 type Handler struct {
 	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
 	nadClient ctlcniv1.NetworkAttachmentDefinitionClient
+	mgmtVlan  int
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -31,6 +33,12 @@ func Register(ctx context.Context, management *config.Management) error {
 		nadCache:  nad.Cache(),
 		nadClient: nad,
 	}
+
+	vlanID, err := GetMgmtVlan()
+	if err != nil {
+		return fmt.Errorf("failed to get mgmt vlan err:%v", err)
+	}
+	handler.mgmtVlan = vlanID
 
 	nad.OnChange(ctx, ControllerName, handler.OnChange)
 	nad.OnRemove(ctx, ControllerName, handler.OnRemove)
@@ -123,6 +131,11 @@ func (h Handler) existDuplicateNad(vlanIDStr, cn string) (bool, error) {
 }
 
 func (h Handler) removeLocalArea(clusternetwork string, localArea *vlan.LocalArea) error {
+	//do not delete vlan id configured for mgmt-br from any user operations
+	if clusternetwork == utils.ManagementClusterNetworkName && localArea.Vid == uint16(h.mgmtVlan) {
+		return nil
+	}
+
 	// Skip the case that there are nads with the same cluster network and VLAN id.
 	if ok, err := h.existDuplicateNad(strconv.Itoa(int(localArea.Vid)), clusternetwork); err != nil {
 		return err
@@ -191,4 +204,13 @@ func GetLocalArea(vlanIDStr, routeConf string) (*vlan.LocalArea, error) {
 		Vid:  uint16(vlanID),
 		Cidr: layer3NetworkConf.CIDR,
 	}, nil
+}
+
+func GetMgmtVlan() (vlanID int, err error) {
+	vlanID, err = iface.GetMgmtVlan()
+	if err != nil {
+		return vlanID, fmt.Errorf("failed to get vlan id from mgmt-br %d", vlanID)
+	}
+
+	return vlanID, nil
 }
