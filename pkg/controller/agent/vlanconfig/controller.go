@@ -184,7 +184,7 @@ func (h Handler) setupVLAN(vc *networkv1.VlanConfig) error {
 	var localAreas []*vlan.LocalArea
 	var uplink *iface.Link
 	// get VIDs
-	localAreas, setupErr = h.getLocalAreas()
+	localAreas, setupErr = h.getLocalAreas(vc)
 	if setupErr != nil {
 		goto updateStatus
 	}
@@ -281,8 +281,10 @@ func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 	return &iface.Link{Link: b}, nil
 }
 
-func (h Handler) getLocalAreas() ([]*vlan.LocalArea, error) {
-	nads, err := h.nadCache.List("", labels.Everything())
+func (h Handler) getLocalAreas(vc *networkv1.VlanConfig) ([]*vlan.LocalArea, error) {
+	nads, err := h.nadCache.List("", labels.Set(map[string]string{
+		utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork,
+	}).AsSelector())
 	if err != nil {
 		return nil, fmt.Errorf("list nad failed, error: %v", err)
 	}
