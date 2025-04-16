@@ -15,6 +15,8 @@ const (
 	KeyLastNetworkType         = network.GroupName + "/last-type"
 	KeyNetworkReady            = network.GroupName + "/ready"
 	KeyNetworkRoute            = network.GroupName + "/route"
+	KeyMTUSourceVlanConfig     = network.GroupName + "/mtu-source-vc" // the VC which syncs MTU to CN
+	KeyUplinkMTU               = network.GroupName + "/uplink-mtu"    // configured MTU on the VC'uplink
 
 	KeyMatchedNodes = network.GroupName + "/matched-nodes"
 
@@ -22,4 +24,9 @@ const (
 	ValueFalse = "false"
 
 	HarvesterWitnessNodeLabelKey = "node-role.harvesterhci.io/witness"
+
+	// defined in Harvester pkg/controller/master/storagenetwork/storage_network.go
+	// to avoid loop references, needs to wait until Harvester move this to its const and then refers to
+	StorageNetworkAnnotation         = "storage-network.settings.harvesterhci.io"
+	StorageNetworkNetAttachDefPrefix = "storagenetwork-"
 )
