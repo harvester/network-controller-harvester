@@ -1,7 +1,7 @@
 package v1beta1
 
 import (
-	"github.com/rancher/wrangler/pkg/condition"
+	"github.com/rancher/wrangler/v3/pkg/condition"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -12,7 +12,7 @@ var (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=sb;sbs,scope=Namespaced
-// +kubebuilder:printcolumn:name="ISSUE_URL",type=string,JSONPath=`.status.issueURL`
+// +kubebuilder:printcolumn:name="ISSUE_URL",type=string,JSONPath=`.spec.issueURL`
 // +kubebuilder:printcolumn:name="DESCRIPTION",type="string",JSONPath=`.spec.description`
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=`.metadata.creationTimestamp`
 
