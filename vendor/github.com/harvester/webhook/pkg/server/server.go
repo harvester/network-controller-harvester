@@ -10,7 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rancher/dynamiclistener"
 	dls "github.com/rancher/dynamiclistener/server"
-	"github.com/rancher/wrangler/pkg/webhook"
+	"github.com/rancher/wrangler/v3/pkg/webhook"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"

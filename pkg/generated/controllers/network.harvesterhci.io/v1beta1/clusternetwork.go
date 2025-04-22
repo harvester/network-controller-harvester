@@ -20,262 +20,63 @@ package v1beta1
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	v1beta1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
-	"github.com/rancher/lasso/pkg/client"
-	"github.com/rancher/lasso/pkg/controller"
-	"github.com/rancher/wrangler/pkg/apply"
-	"github.com/rancher/wrangler/pkg/condition"
-	"github.com/rancher/wrangler/pkg/generic"
-	"github.com/rancher/wrangler/pkg/kv"
+	//"github.com/rancher/lasso/pkg/controller"
+	"github.com/rancher/wrangler/v3/pkg/apply"
+	"github.com/rancher/wrangler/v3/pkg/condition"
+	"github.com/rancher/wrangler/v3/pkg/generic"
+	"github.com/rancher/wrangler/v3/pkg/kv"
+
+	//"github.com/rancher/wrangler/v3/pkg/schemes"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
+
+	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	//"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/tools/cache"
+	//"k8s.io/apimachinery/pkg/types"
+	//"k8s.io/apimachinery/pkg/watch"
+	//"k8s.io/client-go/rest"
 )
 
-type ClusterNetworkHandler func(string, *v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error)
-
+// ClusterNetworkController interface for managing ClusterNetwork resources.
 type ClusterNetworkController interface {
-	generic.ControllerMeta
-	ClusterNetworkClient
-
-	OnChange(ctx context.Context, name string, sync ClusterNetworkHandler)
-	OnRemove(ctx context.Context, name string, sync ClusterNetworkHandler)
-	Enqueue(name string)
-	EnqueueAfter(name string, duration time.Duration)
-
-	Cache() ClusterNetworkCache
+	generic.NonNamespacedControllerInterface[*v1beta1.ClusterNetwork, *v1beta1.ClusterNetworkList]
 }
 
+// ClusterNetworkClient interface for managing ClusterNetwork resources in Kubernetes.
 type ClusterNetworkClient interface {
-	Create(*v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error)
-	Update(*v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error)
-	UpdateStatus(*v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error)
-	Delete(name string, options *metav1.DeleteOptions) error
-	Get(name string, options metav1.GetOptions) (*v1beta1.ClusterNetwork, error)
-	List(opts metav1.ListOptions) (*v1beta1.ClusterNetworkList, error)
-	Watch(opts metav1.ListOptions) (watch.Interface, error)
-	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.ClusterNetwork, err error)
+	generic.NonNamespacedClientInterface[*v1beta1.ClusterNetwork, *v1beta1.ClusterNetworkList]
 }
 
+// ClusterNetworkCache interface for retrieving ClusterNetwork resources in memory.
 type ClusterNetworkCache interface {
-	Get(name string) (*v1beta1.ClusterNetwork, error)
-	List(selector labels.Selector) ([]*v1beta1.ClusterNetwork, error)
-
-	AddIndexer(indexName string, indexer ClusterNetworkIndexer)
-	GetByIndex(indexName, key string) ([]*v1beta1.ClusterNetwork, error)
+	generic.NonNamespacedCacheInterface[*v1beta1.ClusterNetwork]
 }
 
-type ClusterNetworkIndexer func(obj *v1beta1.ClusterNetwork) ([]string, error)
-
-type clusterNetworkController struct {
-	controller    controller.SharedController
-	client        *client.Client
-	gvk           schema.GroupVersionKind
-	groupResource schema.GroupResource
-}
-
-func NewClusterNetworkController(gvk schema.GroupVersionKind, resource string, namespaced bool, controller controller.SharedControllerFactory) ClusterNetworkController {
-	c := controller.ForResourceKind(gvk.GroupVersion().WithResource(resource), gvk.Kind, namespaced)
-	return &clusterNetworkController{
-		controller: c,
-		client:     c.Client(),
-		gvk:        gvk,
-		groupResource: schema.GroupResource{
-			Group:    gvk.Group,
-			Resource: resource,
-		},
-	}
-}
-
-func FromClusterNetworkHandlerToHandler(sync ClusterNetworkHandler) generic.Handler {
-	return func(key string, obj runtime.Object) (ret runtime.Object, err error) {
-		var v *v1beta1.ClusterNetwork
-		if obj == nil {
-			v, err = sync(key, nil)
-		} else {
-			v, err = sync(key, obj.(*v1beta1.ClusterNetwork))
-		}
-		if v == nil {
-			return nil, err
-		}
-		return v, err
-	}
-}
-
-func (c *clusterNetworkController) Updater() generic.Updater {
-	return func(obj runtime.Object) (runtime.Object, error) {
-		newObj, err := c.Update(obj.(*v1beta1.ClusterNetwork))
-		if newObj == nil {
-			return nil, err
-		}
-		return newObj, err
-	}
-}
-
-func UpdateClusterNetworkDeepCopyOnChange(client ClusterNetworkClient, obj *v1beta1.ClusterNetwork, handler func(obj *v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error)) (*v1beta1.ClusterNetwork, error) {
-	if obj == nil {
-		return obj, nil
-	}
-
-	copyObj := obj.DeepCopy()
-	newObj, err := handler(copyObj)
-	if newObj != nil {
-		copyObj = newObj
-	}
-	if obj.ResourceVersion == copyObj.ResourceVersion && !equality.Semantic.DeepEqual(obj, copyObj) {
-		return client.Update(copyObj)
-	}
-
-	return copyObj, err
-}
-
-func (c *clusterNetworkController) AddGenericHandler(ctx context.Context, name string, handler generic.Handler) {
-	c.controller.RegisterHandler(ctx, name, controller.SharedControllerHandlerFunc(handler))
-}
-
-func (c *clusterNetworkController) AddGenericRemoveHandler(ctx context.Context, name string, handler generic.Handler) {
-	c.AddGenericHandler(ctx, name, generic.NewRemoveHandler(name, c.Updater(), handler))
-}
-
-func (c *clusterNetworkController) OnChange(ctx context.Context, name string, sync ClusterNetworkHandler) {
-	c.AddGenericHandler(ctx, name, FromClusterNetworkHandlerToHandler(sync))
-}
-
-func (c *clusterNetworkController) OnRemove(ctx context.Context, name string, sync ClusterNetworkHandler) {
-	c.AddGenericHandler(ctx, name, generic.NewRemoveHandler(name, c.Updater(), FromClusterNetworkHandlerToHandler(sync)))
-}
-
-func (c *clusterNetworkController) Enqueue(name string) {
-	c.controller.Enqueue("", name)
-}
-
-func (c *clusterNetworkController) EnqueueAfter(name string, duration time.Duration) {
-	c.controller.EnqueueAfter("", name, duration)
-}
-
-func (c *clusterNetworkController) Informer() cache.SharedIndexInformer {
-	return c.controller.Informer()
-}
-
-func (c *clusterNetworkController) GroupVersionKind() schema.GroupVersionKind {
-	return c.gvk
-}
-
-func (c *clusterNetworkController) Cache() ClusterNetworkCache {
-	return &clusterNetworkCache{
-		indexer:  c.Informer().GetIndexer(),
-		resource: c.groupResource,
-	}
-}
-
-func (c *clusterNetworkController) Create(obj *v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error) {
-	result := &v1beta1.ClusterNetwork{}
-	return result, c.client.Create(context.TODO(), "", obj, result, metav1.CreateOptions{})
-}
-
-func (c *clusterNetworkController) Update(obj *v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error) {
-	result := &v1beta1.ClusterNetwork{}
-	return result, c.client.Update(context.TODO(), "", obj, result, metav1.UpdateOptions{})
-}
-
-func (c *clusterNetworkController) UpdateStatus(obj *v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error) {
-	result := &v1beta1.ClusterNetwork{}
-	return result, c.client.UpdateStatus(context.TODO(), "", obj, result, metav1.UpdateOptions{})
-}
-
-func (c *clusterNetworkController) Delete(name string, options *metav1.DeleteOptions) error {
-	if options == nil {
-		options = &metav1.DeleteOptions{}
-	}
-	return c.client.Delete(context.TODO(), "", name, *options)
-}
-
-func (c *clusterNetworkController) Get(name string, options metav1.GetOptions) (*v1beta1.ClusterNetwork, error) {
-	result := &v1beta1.ClusterNetwork{}
-	return result, c.client.Get(context.TODO(), "", name, result, options)
-}
-
-func (c *clusterNetworkController) List(opts metav1.ListOptions) (*v1beta1.ClusterNetworkList, error) {
-	result := &v1beta1.ClusterNetworkList{}
-	return result, c.client.List(context.TODO(), "", result, opts)
-}
-
-func (c *clusterNetworkController) Watch(opts metav1.ListOptions) (watch.Interface, error) {
-	return c.client.Watch(context.TODO(), "", opts)
-}
-
-func (c *clusterNetworkController) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (*v1beta1.ClusterNetwork, error) {
-	result := &v1beta1.ClusterNetwork{}
-	return result, c.client.Patch(context.TODO(), "", name, pt, data, result, metav1.PatchOptions{}, subresources...)
-}
-
-type clusterNetworkCache struct {
-	indexer  cache.Indexer
-	resource schema.GroupResource
-}
-
-func (c *clusterNetworkCache) Get(name string) (*v1beta1.ClusterNetwork, error) {
-	obj, exists, err := c.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(c.resource, name)
-	}
-	return obj.(*v1beta1.ClusterNetwork), nil
-}
-
-func (c *clusterNetworkCache) List(selector labels.Selector) (ret []*v1beta1.ClusterNetwork, err error) {
-
-	err = cache.ListAll(c.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1beta1.ClusterNetwork))
-	})
-
-	return ret, err
-}
-
-func (c *clusterNetworkCache) AddIndexer(indexName string, indexer ClusterNetworkIndexer) {
-	utilruntime.Must(c.indexer.AddIndexers(map[string]cache.IndexFunc{
-		indexName: func(obj interface{}) (strings []string, e error) {
-			return indexer(obj.(*v1beta1.ClusterNetwork))
-		},
-	}))
-}
-
-func (c *clusterNetworkCache) GetByIndex(indexName, key string) (result []*v1beta1.ClusterNetwork, err error) {
-	objs, err := c.indexer.ByIndex(indexName, key)
-	if err != nil {
-		return nil, err
-	}
-	result = make([]*v1beta1.ClusterNetwork, 0, len(objs))
-	for _, obj := range objs {
-		result = append(result, obj.(*v1beta1.ClusterNetwork))
-	}
-	return result, nil
-}
-
+// ClusterNetworkStatusHandler is executed for every added or modified ClusterNetwork. Should return the new status to be updated
 type ClusterNetworkStatusHandler func(obj *v1beta1.ClusterNetwork, status v1beta1.ClusterNetworkStatus) (v1beta1.ClusterNetworkStatus, error)
 
+// ClusterNetworkGeneratingHandler is the top-level handler that is executed for every ClusterNetwork event. It extends ClusterNetworkStatusHandler by a returning a slice of child objects to be passed to apply.Apply
 type ClusterNetworkGeneratingHandler func(obj *v1beta1.ClusterNetwork, status v1beta1.ClusterNetworkStatus) ([]runtime.Object, v1beta1.ClusterNetworkStatus, error)
 
+// RegisterClusterNetworkStatusHandler configures a ClusterNetworkController to execute a ClusterNetworkStatusHandler for every events observed.
+// If a non-empty condition is provided, it will be updated in the status conditions for every handler execution
 func RegisterClusterNetworkStatusHandler(ctx context.Context, controller ClusterNetworkController, condition condition.Cond, name string, handler ClusterNetworkStatusHandler) {
 	statusHandler := &clusterNetworkStatusHandler{
 		client:    controller,
 		condition: condition,
 		handler:   handler,
 	}
-	controller.AddGenericHandler(ctx, name, FromClusterNetworkHandlerToHandler(statusHandler.sync))
+	controller.AddGenericHandler(ctx, name, generic.FromObjectHandlerToHandler(statusHandler.sync))
 }
 
+// RegisterClusterNetworkGeneratingHandler configures a ClusterNetworkController to execute a ClusterNetworkGeneratingHandler for every events observed, passing the returned objects to the provided apply.Apply.
+// If a non-empty condition is provided, it will be updated in the status conditions for every handler execution
 func RegisterClusterNetworkGeneratingHandler(ctx context.Context, controller ClusterNetworkController, apply apply.Apply,
 	condition condition.Cond, name string, handler ClusterNetworkGeneratingHandler, opts *generic.GeneratingHandlerOptions) {
 	statusHandler := &clusterNetworkGeneratingHandler{
@@ -297,6 +98,7 @@ type clusterNetworkStatusHandler struct {
 	handler   ClusterNetworkStatusHandler
 }
 
+// sync is executed on every resource addition or modification. Executes the configured handlers and sends the updated status to the Kubernetes API
 func (a *clusterNetworkStatusHandler) sync(key string, obj *v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error) {
 	if obj == nil {
 		return obj, nil
@@ -342,8 +144,10 @@ type clusterNetworkGeneratingHandler struct {
 	opts  generic.GeneratingHandlerOptions
 	gvk   schema.GroupVersionKind
 	name  string
+	seen  sync.Map
 }
 
+// Remove handles the observed deletion of a resource, cascade deleting every associated resource previously applied
 func (a *clusterNetworkGeneratingHandler) Remove(key string, obj *v1beta1.ClusterNetwork) (*v1beta1.ClusterNetwork, error) {
 	if obj != nil {
 		return obj, nil
@@ -353,12 +157,17 @@ func (a *clusterNetworkGeneratingHandler) Remove(key string, obj *v1beta1.Cluste
 	obj.Namespace, obj.Name = kv.RSplit(key, "/")
 	obj.SetGroupVersionKind(a.gvk)
 
+	if a.opts.UniqueApplyForResourceVersion {
+		a.seen.Delete(key)
+	}
+
 	return nil, generic.ConfigureApplyForObject(a.apply, obj, &a.opts).
 		WithOwner(obj).
 		WithSetID(a.name).
 		ApplyObjects()
 }
 
+// Handle executes the configured ClusterNetworkGeneratingHandler and pass the resulting objects to apply.Apply, finally returning the new status of the resource
 func (a *clusterNetworkGeneratingHandler) Handle(obj *v1beta1.ClusterNetwork, status v1beta1.ClusterNetworkStatus) (v1beta1.ClusterNetworkStatus, error) {
 	if !obj.DeletionTimestamp.IsZero() {
 		return status, nil
@@ -368,9 +177,41 @@ func (a *clusterNetworkGeneratingHandler) Handle(obj *v1beta1.ClusterNetwork, st
 	if err != nil {
 		return newStatus, err
 	}
+	if !a.isNewResourceVersion(obj) {
+		return newStatus, nil
+	}
 
-	return newStatus, generic.ConfigureApplyForObject(a.apply, obj, &a.opts).
+	err = generic.ConfigureApplyForObject(a.apply, obj, &a.opts).
 		WithOwner(obj).
 		WithSetID(a.name).
 		ApplyObjects(objs...)
+	if err != nil {
+		return newStatus, err
+	}
+	a.storeResourceVersion(obj)
+	return newStatus, nil
+}
+
+// isNewResourceVersion detects if a specific resource version was already successfully processed.
+// Only used if UniqueApplyForResourceVersion is set in generic.GeneratingHandlerOptions
+func (a *clusterNetworkGeneratingHandler) isNewResourceVersion(obj *v1beta1.ClusterNetwork) bool {
+	if !a.opts.UniqueApplyForResourceVersion {
+		return true
+	}
+
+	// Apply once per resource version
+	key := obj.Namespace + "/" + obj.Name
+	previous, ok := a.seen.Load(key)
+	return !ok || previous != obj.ResourceVersion
+}
+
+// storeResourceVersion keeps track of the latest resource version of an object for which Apply was executed
+// Only used if UniqueApplyForResourceVersion is set in generic.GeneratingHandlerOptions
+func (a *clusterNetworkGeneratingHandler) storeResourceVersion(obj *v1beta1.ClusterNetwork) {
+	if !a.opts.UniqueApplyForResourceVersion {
+		return
+	}
+
+	key := obj.Namespace + "/" + obj.Name
+	a.seen.Store(key, obj.ResourceVersion)
 }

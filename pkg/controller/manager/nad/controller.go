@@ -11,7 +11,7 @@ import (
 	"github.com/go-ping/ping"
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	ctlbatchv1 "github.com/rancher/wrangler/pkg/generated/controllers/batch/v1"
+	ctlbatchv1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/batch/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -138,6 +138,29 @@ func (h Handler) OnRemove(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 	return nad, nil
 }
 
+func (h Handler) updateKubeOVNLabels(nad *cniv1.NetworkAttachmentDefinition) error {
+	if nad.Labels != nil {
+		return nil
+	}
+
+	labels := nad.Labels
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+
+	labels[utils.KeyKubeOVNType] = utils.KubeOVNCNI
+	labels[utils.KeyNetworkReady] = utils.ValueTrue
+	labels[utils.KeyClusterNetworkLabel] = utils.ManagementClusterNetworkName
+
+	nadCopy := nad.DeepCopy()
+	nadCopy.Labels = labels
+	if _, err := h.nadClient.Update(nadCopy); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
 	if nad.Labels != nil && nad.Labels[utils.KeyNetworkType] != "" && nad.Labels[utils.KeyClusterNetworkLabel] != "" {
 		return nil
@@ -151,6 +174,10 @@ func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
 	netconf := &utils.NetConf{}
 	if err := json.Unmarshal([]byte(nad.Spec.Config), netconf); err != nil {
 		return err
+	}
+
+	if netconf.Type == utils.KubeOVNCNI {
+		return h.updateKubeOVNLabels(nad)
 	}
 
 	if netconf.Vlan != 0 {
