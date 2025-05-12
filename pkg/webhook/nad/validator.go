@@ -25,13 +25,16 @@ const (
 type Validator struct {
 	admission.DefaultValidator
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
+	vmCache  ctlkubevirtv1.VirtualMachineCache
 }
 
 var _ admission.Validator = &Validator{}
 
-func NewNadValidator(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Validator {
+func NewNadValidator(vmiCache ctlkubevirtv1.VirtualMachineInstanceCache,
+	vmCache ctlkubevirtv1.VirtualMachineCache) *Validator {
 	return &Validator{
 		vmiCache: vmiCache,
+		vmCache:  vmCache,
 	}
 }
 
@@ -96,6 +99,10 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 		return fmt.Errorf(deleteErr, nad.Namespace, nad.Name, err)
 	}
 
+	if err := v.checkVM(nad); err != nil {
+		return fmt.Errorf(deleteErr, nad.Namespace, nad.Name, err)
+	}
+
 	return nil
 }
 
@@ -123,6 +130,24 @@ func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf) error {
 func (v *Validator) checkRoute(config string) error {
 	_, err := utils.NewLayer3NetworkConf(config)
 	return err
+}
+
+func (v *Validator) checkVM(nad *cniv1.NetworkAttachmentDefinition) error {
+	vmGetter := utils.VMGetter{VMCache: v.vmCache}
+	vms, err := vmGetter.VMUseNad(nad)
+	if err != nil {
+		return err
+	}
+
+	if len(vms) > 0 {
+		vmNameList := make([]string, 0, len(vms))
+		for _, vm := range vms {
+			vmNameList = append(vmNameList, vm.Namespace+"/"+vm.Name)
+		}
+		return fmt.Errorf("VM(s) %s still attached which must be removed first", strings.Join(vmNameList, ", "))
+	}
+
+	return nil
 }
 
 func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
