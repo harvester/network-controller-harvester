@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	ocpconfigv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	sdkapi "kubevirt.io/controller-lifecycle-operator-sdk/api"
@@ -28,6 +29,7 @@ import (
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:resource:shortName=dv;dvs,categories=all
+// +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="The phase the data volume is in"
 // +kubebuilder:printcolumn:name="Progress",type="string",JSONPath=".status.progress",description="Transfer progress in percentage if known, N/A otherwise"
 // +kubebuilder:printcolumn:name="Restarts",type="integer",JSONPath=".status.restartCount",description="The number of times the transfer has been restarted."
@@ -36,7 +38,8 @@ type DataVolume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   DataVolumeSpec   `json:"spec"`
+	Spec DataVolumeSpec `json:"spec"`
+	// +optional
 	Status DataVolumeStatus `json:"status,omitempty"`
 }
 
@@ -90,8 +93,17 @@ type StorageSpec struct {
 	// +optional
 	VolumeMode *corev1.PersistentVolumeMode `json:"volumeMode,omitempty"`
 	// This field can be used to specify either: * An existing VolumeSnapshot object (snapshot.storage.k8s.io/VolumeSnapshot) * An existing PVC (PersistentVolumeClaim) * An existing custom resource that implements data population (Alpha) In order to use custom resource types that implement data population, the AnyVolumeDataSource feature gate must be enabled. If the provisioner or an external controller can support the specified data source, it will create a new volume based on the contents of the specified data source.
+	// If the AnyVolumeDataSource feature gate is enabled, this field will always have the same contents as the DataSourceRef field.
 	// +optional
 	DataSource *corev1.TypedLocalObjectReference `json:"dataSource,omitempty"`
+	// Specifies the object from which to populate the volume with data, if a non-empty volume is desired. This may be any local object from a non-empty API group (non core object) or a PersistentVolumeClaim object. When this field is specified, volume binding will only succeed if the type of the specified object matches some installed volume populator or dynamic provisioner.
+	// This field will replace the functionality of the DataSource field and as such if both fields are non-empty, they must have the same value. For backwards compatibility, both fields (DataSource and DataSourceRef) will be set to the same value automatically if one of them is empty and the other is non-empty.
+	// There are two important differences between DataSource and DataSourceRef:
+	// * While DataSource only allows two specific types of objects, DataSourceRef allows any non-core object, as well as PersistentVolumeClaim objects.
+	// * While DataSource ignores disallowed values (dropping them), DataSourceRef preserves all values, and generates an error if a disallowed value is specified.
+	// (Beta) Using this field requires the AnyVolumeDataSource feature gate to be enabled.
+	// +optional
+	DataSourceRef *corev1.TypedObjectReference `json:"dataSourceRef,omitempty"`
 }
 
 // DataVolumeCheckpoint defines a stage in a warm migration.
@@ -112,16 +124,18 @@ const (
 	DataVolumeArchive DataVolumeContentType = "archive"
 )
 
-// DataVolumeSource represents the source for our Data Volume, this can be HTTP, Imageio, S3, Registry or an existing PVC
+// DataVolumeSource represents the source for our Data Volume, this can be HTTP, Imageio, S3, GCS, Registry or an existing PVC
 type DataVolumeSource struct {
 	HTTP     *DataVolumeSourceHTTP     `json:"http,omitempty"`
 	S3       *DataVolumeSourceS3       `json:"s3,omitempty"`
+	GCS      *DataVolumeSourceGCS      `json:"gcs,omitempty"`
 	Registry *DataVolumeSourceRegistry `json:"registry,omitempty"`
 	PVC      *DataVolumeSourcePVC      `json:"pvc,omitempty"`
 	Upload   *DataVolumeSourceUpload   `json:"upload,omitempty"`
 	Blank    *DataVolumeBlankImage     `json:"blank,omitempty"`
 	Imageio  *DataVolumeSourceImageIO  `json:"imageio,omitempty"`
 	VDDK     *DataVolumeSourceVDDK     `json:"vddk,omitempty"`
+	Snapshot *DataVolumeSourceSnapshot `json:"snapshot,omitempty"`
 }
 
 // DataVolumeSourcePVC provides the parameters to create a Data Volume from an existing PVC
@@ -129,6 +143,14 @@ type DataVolumeSourcePVC struct {
 	// The namespace of the source PVC
 	Namespace string `json:"namespace"`
 	// The name of the source PVC
+	Name string `json:"name"`
+}
+
+// DataVolumeSourceSnapshot provides the parameters to create a Data Volume from an existing VolumeSnapshot
+type DataVolumeSourceSnapshot struct {
+	// The namespace of the source VolumeSnapshot
+	Namespace string `json:"namespace"`
+	// The name of the source VolumeSnapshot
 	Name string `json:"name"`
 }
 
@@ -148,6 +170,14 @@ type DataVolumeSourceS3 struct {
 	// CertConfigMap is a configmap reference, containing a Certificate Authority(CA) public key, and a base64 encoded pem certificate
 	// +optional
 	CertConfigMap string `json:"certConfigMap,omitempty"`
+}
+
+// DataVolumeSourceGCS provides the parameters to create a Data Volume from an GCS source
+type DataVolumeSourceGCS struct {
+	//URL is the url of the GCS source
+	URL string `json:"url"`
+	//SecretRef provides the secret reference needed to access the GCS source
+	SecretRef string `json:"secretRef,omitempty"`
 }
 
 // DataVolumeSourceRegistry provides the parameters to create a Data Volume from an registry source
@@ -260,7 +290,7 @@ type DataVolumeStatus struct {
 	Conditions   []DataVolumeCondition `json:"conditions,omitempty" optional:"true"`
 }
 
-//DataVolumeList provides the needed parameters to do request a list of Data Volumes from the system
+// DataVolumeList provides the needed parameters to do request a list of Data Volumes from the system
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type DataVolumeList struct {
 	metav1.TypeMeta `json:",inline"`
@@ -313,6 +343,9 @@ const (
 	// SnapshotForSmartCloneInProgress represents a data volume with a current phase of SnapshotForSmartCloneInProgress
 	SnapshotForSmartCloneInProgress DataVolumePhase = "SnapshotForSmartCloneInProgress"
 
+	// CloneFromSnapshotSourceInProgress represents a data volume with a current phase of CloneFromSnapshotSourceInProgress
+	CloneFromSnapshotSourceInProgress DataVolumePhase = "CloneFromSnapshotSourceInProgress"
+
 	// SmartClonePVCInProgress represents a data volume with a current phase of SmartClonePVCInProgress
 	SmartClonePVCInProgress DataVolumePhase = "SmartClonePVCInProgress"
 
@@ -333,6 +366,9 @@ const (
 
 	// WaitForFirstConsumer represents a data volume with a current phase of WaitForFirstConsumer
 	WaitForFirstConsumer DataVolumePhase = "WaitForFirstConsumer"
+	// PendingPopulation represents a data volume which should be populated by
+	// the CDI populators but haven't created the pvc' yet
+	PendingPopulation DataVolumePhase = "PendingPopulation"
 
 	// Succeeded represents a DataVolumePhase of Succeeded
 	Succeeded DataVolumePhase = "Succeeded"
@@ -342,6 +378,11 @@ const (
 	Unknown DataVolumePhase = "Unknown"
 	// Paused represents a DataVolumePhase of Paused
 	Paused DataVolumePhase = "Paused"
+
+	// PrepClaimInProgress represents a data volume with a current phase of PrepClaimInProgress
+	PrepClaimInProgress DataVolumePhase = "PrepClaimInProgress"
+	// RebindInProgress represents a data volume with a current phase of RebindInProgress
+	RebindInProgress DataVolumePhase = "RebindInProgress"
 
 	// DataVolumeReady is the condition that indicates if the data volume is ready to be consumed.
 	DataVolumeReady DataVolumeConditionType = "Ready"
@@ -358,7 +399,7 @@ const DataVolumeCloneSourceSubresource = "source"
 // see https://github.com/kubernetes/code-generator/issues/59
 // +genclient:nonNamespaced
 
-//StorageProfile provides a CDI specific recommendation for storage parameters
+// StorageProfile provides a CDI specific recommendation for storage parameters
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
@@ -372,15 +413,19 @@ type StorageProfile struct {
 	Status StorageProfileStatus `json:"status,omitempty"`
 }
 
-//StorageProfileSpec defines specification for StorageProfile
+// StorageProfileSpec defines specification for StorageProfile
 type StorageProfileSpec struct {
 	// CloneStrategy defines the preferred method for performing a CDI clone
 	CloneStrategy *CDICloneStrategy `json:"cloneStrategy,omitempty"`
 	// ClaimPropertySets is a provided set of properties applicable to PVC
 	ClaimPropertySets []ClaimPropertySet `json:"claimPropertySets,omitempty"`
+	// DataImportCronSourceFormat defines the format of the DataImportCron-created disk image sources
+	DataImportCronSourceFormat *DataImportCronSourceFormat `json:"dataImportCronSourceFormat,omitempty"`
+	// SnapshotClass is optional specific VolumeSnapshotClass for CloneStrategySnapshot. If not set, a VolumeSnapshotClass is chosen according to the provisioner.
+	SnapshotClass *string `json:"snapshotClass,omitempty"`
 }
 
-//StorageProfileStatus provides the most recently observed status of the StorageProfile
+// StorageProfileStatus provides the most recently observed status of the StorageProfile
 type StorageProfileStatus struct {
 	// The StorageClass name for which capabilities are defined
 	StorageClass *string `json:"storageClass,omitempty"`
@@ -390,6 +435,10 @@ type StorageProfileStatus struct {
 	CloneStrategy *CDICloneStrategy `json:"cloneStrategy,omitempty"`
 	// ClaimPropertySets computed from the spec and detected in the system
 	ClaimPropertySets []ClaimPropertySet `json:"claimPropertySets,omitempty"`
+	// DataImportCronSourceFormat defines the format of the DataImportCron-created disk image sources
+	DataImportCronSourceFormat *DataImportCronSourceFormat `json:"dataImportCronSourceFormat,omitempty"`
+	// SnapshotClass is optional specific VolumeSnapshotClass for CloneStrategySnapshot. If not set, a VolumeSnapshotClass is chosen according to the provisioner.
+	SnapshotClass *string `json:"snapshotClass,omitempty"`
 }
 
 // ClaimPropertySet is a set of properties applicable to PVC
@@ -404,7 +453,7 @@ type ClaimPropertySet struct {
 	VolumeMode *corev1.PersistentVolumeMode `json:"volumeMode,omitempty" protobuf:"bytes,6,opt,name=volumeMode,casttype=PersistentVolumeMode"`
 }
 
-//StorageProfileList provides the needed parameters to request a list of StorageProfile from the system
+// StorageProfileList provides the needed parameters to request a list of StorageProfile from the system
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type StorageProfileList struct {
 	metav1.TypeMeta `json:",inline"`
@@ -438,10 +487,14 @@ type DataSourceSpec struct {
 type DataSourceSource struct {
 	// +optional
 	PVC *DataVolumeSourcePVC `json:"pvc,omitempty"`
+	// +optional
+	Snapshot *DataVolumeSourceSnapshot `json:"snapshot,omitempty"`
 }
 
 // DataSourceStatus provides the most recently observed status of the DataSource
 type DataSourceStatus struct {
+	// Source is the current source of the data referenced by the DataSource
+	Source     DataSourceSource      `json:"source,omitempty"`
 	Conditions []DataSourceCondition `json:"conditions,omitempty" optional:"true"`
 }
 
@@ -484,6 +537,7 @@ type DataSourceList struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:resource:shortName=dic;dics,categories=all
+// +kubebuilder:printcolumn:name="Format",type="string",JSONPath=".status.sourceFormat",description="The format in which created sources are saved"
 type DataImportCron struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -542,8 +596,10 @@ type DataImportCronStatus struct {
 	// LastExecutionTimestamp is the time of the last polling
 	LastExecutionTimestamp *metav1.Time `json:"lastExecutionTimestamp,omitempty"`
 	// LastImportTimestamp is the time of the last import
-	LastImportTimestamp *metav1.Time              `json:"lastImportTimestamp,omitempty"`
-	Conditions          []DataImportCronCondition `json:"conditions,omitempty" optional:"true"`
+	LastImportTimestamp *metav1.Time `json:"lastImportTimestamp,omitempty"`
+	// SourceFormat defines the format of the DataImportCron-created disk image sources
+	SourceFormat *DataImportCronSourceFormat `json:"sourceFormat,omitempty"`
+	Conditions   []DataImportCronCondition   `json:"conditions,omitempty" optional:"true"`
 }
 
 // ImportStatus of a currently in progress import
@@ -579,6 +635,143 @@ type DataImportCronList struct {
 
 	// Items provides a list of DataImportCrons
 	Items []DataImportCron `json:"items"`
+}
+
+// VolumeImportSource works as a specification to populate PersistentVolumeClaims with data
+// imported from an HTTP/S3/Registry/Blank/ImageIO/VDDK source
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:storageversion
+type VolumeImportSource struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec VolumeImportSourceSpec `json:"spec"`
+	// +optional
+	Status VolumeImportSourceStatus `json:"status"`
+}
+
+// VolumeImportSourceSpec defines the Spec field for VolumeImportSource
+type VolumeImportSourceSpec struct {
+	//Source is the src of the data to be imported in the target PVC
+	Source *ImportSourceType `json:"source,omitempty"`
+	// Preallocation controls whether storage for the target PVC should be allocated in advance.
+	Preallocation *bool `json:"preallocation,omitempty"`
+	// ContentType represents the type of the imported data (Kubevirt or archive)
+	ContentType DataVolumeContentType `json:"contentType,omitempty"`
+	// TargetClaim the name of the specific claim to be populated with a multistage import.
+	TargetClaim *string `json:"targetClaim,omitempty"`
+	// Checkpoints is a list of DataVolumeCheckpoints, representing stages in a multistage import.
+	Checkpoints []DataVolumeCheckpoint `json:"checkpoints,omitempty"`
+	// FinalCheckpoint indicates whether the current DataVolumeCheckpoint is the final checkpoint.
+	FinalCheckpoint *bool `json:"finalCheckpoint,omitempty"`
+}
+
+// ImportSourceType contains each one of the source types allowed in a VolumeImportSource
+type ImportSourceType struct {
+	HTTP     *DataVolumeSourceHTTP     `json:"http,omitempty"`
+	S3       *DataVolumeSourceS3       `json:"s3,omitempty"`
+	Registry *DataVolumeSourceRegistry `json:"registry,omitempty"`
+	GCS      *DataVolumeSourceGCS      `json:"gcs,omitempty"`
+	Blank    *DataVolumeBlankImage     `json:"blank,omitempty"`
+	Imageio  *DataVolumeSourceImageIO  `json:"imageio,omitempty"`
+	VDDK     *DataVolumeSourceVDDK     `json:"vddk,omitempty"`
+}
+
+// VolumeImportSourceStatus provides the most recently observed status of the VolumeImportSource
+type VolumeImportSourceStatus struct {
+}
+
+// VolumeImportSourceList provides the needed parameters to do request a list of Import Sources from the system
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type VolumeImportSourceList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	// Items provides a list of DataSources
+	Items []VolumeImportSource `json:"items"`
+}
+
+// VolumeUploadSource is a specification to populate PersistentVolumeClaims with upload data
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:storageversion
+type VolumeUploadSource struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec VolumeUploadSourceSpec `json:"spec"`
+	// +optional
+	Status VolumeUploadSourceStatus `json:"status,omitempty"`
+}
+
+// VolumeUploadSourceSpec defines specification for VolumeUploadSource
+type VolumeUploadSourceSpec struct {
+	// ContentType represents the type of the upload data (Kubevirt or archive)
+	ContentType DataVolumeContentType `json:"contentType,omitempty"`
+	// Preallocation controls whether storage for the target PVC should be allocated in advance.
+	Preallocation *bool `json:"preallocation,omitempty"`
+}
+
+// VolumeUploadSourceStatus provides the most recently observed status of the VolumeUploadSource
+type VolumeUploadSourceStatus struct {
+}
+
+// VolumeUploadSourceList provides the needed parameters to do request a list of Upload Sources from the system
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type VolumeUploadSourceList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	// Items provides a list of DataSources
+	Items []VolumeImportSource `json:"items"`
+}
+
+const (
+	// VolumeImportSourceRef is import source for DataSourceRef for PVC
+	VolumeImportSourceRef = "VolumeImportSource"
+	// VolumeUploadSourceRef is upload source for DataSourceRef for PVC
+	VolumeUploadSourceRef = "VolumeUploadSource"
+	// VolumeCloneSourceRef is smart clone source for DataSourceRef for PVC
+	VolumeCloneSourceRef = "VolumeCloneSource"
+)
+
+// VolumeCloneSource refers to a PVC/VolumeSnapshot of any storageclass/volumemode
+// to be used as the source of a new PVC
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:storageversion
+type VolumeCloneSource struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec VolumeCloneSourceSpec `json:"spec"`
+}
+
+// VolumeCloneSourceSpec defines the Spec field for VolumeCloneSource
+type VolumeCloneSourceSpec struct {
+	// Source is the src of the data to be cloned to the target PVC
+	Source corev1.TypedLocalObjectReference `json:"source"`
+
+	// Preallocation controls whether storage for the target PVC should be allocated in advance.
+	// +optional
+	Preallocation *bool `json:"preallocation,omitempty"`
+
+	// PriorityClassName is the priorityclass for the claim
+	// +optional
+	PriorityClassName *string `json:"priorityClassName,omitempty"`
+}
+
+// VolumeCloneSourceList provides the needed parameters to do request a list of VolumeCloneSources from the system
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type VolumeCloneSourceList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+	// Items provides a list of DataSources
+	Items []VolumeCloneSource `json:"items"`
 }
 
 // this has to be here otherwise informer-gen doesn't recognize it
@@ -636,7 +829,7 @@ type CDISpec struct {
 	// Restrict on which nodes CDI workload pods will be scheduled
 	Workloads sdkapi.NodePlacement `json:"workload,omitempty"`
 	// Clone strategy override: should we use a host-assisted copy even if snapshots are available?
-	// +kubebuilder:validation:Enum="copy";"snapshot"
+	// +kubebuilder:validation:Enum="copy";"snapshot";"csi-clone"
 	CloneStrategyOverride *CDICloneStrategy `json:"cloneStrategyOverride,omitempty"`
 	// CDIConfig at CDI level
 	Config *CDIConfigSpec `json:"config,omitempty"`
@@ -654,13 +847,24 @@ type CDICloneStrategy string
 
 const (
 	// CloneStrategyHostAssisted specifies slower, host-assisted copy
-	CloneStrategyHostAssisted = "copy"
+	CloneStrategyHostAssisted CDICloneStrategy = "copy"
 
 	// CloneStrategySnapshot specifies snapshot-based copying
-	CloneStrategySnapshot = "snapshot"
+	CloneStrategySnapshot CDICloneStrategy = "snapshot"
 
 	// CloneStrategyCsiClone specifies csi volume clone based cloning
-	CloneStrategyCsiClone = "csi-clone"
+	CloneStrategyCsiClone CDICloneStrategy = "csi-clone"
+)
+
+// DataImportCronSourceFormat defines the format of the DataImportCron-created disk image sources
+type DataImportCronSourceFormat string
+
+const (
+	// DataImportCronSourceFormatSnapshot implies using a VolumeSnapshot as the resulting DataImportCron disk image source
+	DataImportCronSourceFormatSnapshot DataImportCronSourceFormat = "snapshot"
+
+	// DataImportCronSourceFormatPvc implies using a PVC as the resulting DataImportCron disk image source
+	DataImportCronSourceFormatPvc DataImportCronSourceFormat = "pvc"
 )
 
 // CDIUninstallStrategy defines the state to leave CDI on uninstall
@@ -682,7 +886,7 @@ type CDIStatus struct {
 	sdkapi.Status `json:",inline"`
 }
 
-//CDIList provides the needed parameters to do request a list of CDIs from the system
+// CDIList provides the needed parameters to do request a list of CDIs from the system
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type CDIList struct {
 	metav1.TypeMeta `json:",inline"`
@@ -710,12 +914,12 @@ type CDIConfig struct {
 	Status CDIConfigStatus `json:"status,omitempty"`
 }
 
-//Percent is a string that can only be a value between [0,1)
+// Percent is a string that can only be a value between [0,1)
 // (Note: we actually rely on reconcile to reject invalid values)
 // +kubebuilder:validation:Pattern=`^(0(?:\.\d{1,3})?|1)$`
 type Percent string
 
-//FilesystemOverhead defines the reserved size for PVCs with VolumeMode: Filesystem
+// FilesystemOverhead defines the reserved size for PVCs with VolumeMode: Filesystem
 type FilesystemOverhead struct {
 	// Global is how much space of a Filesystem volume should be reserved for overhead. This value is used unless overridden by a more specific value (per storageClass)
 	Global Percent `json:"global,omitempty"`
@@ -723,7 +927,7 @@ type FilesystemOverhead struct {
 	StorageClass map[string]Percent `json:"storageClass,omitempty"`
 }
 
-//CDIConfigSpec defines specification for user configuration
+// CDIConfigSpec defines specification for user configuration
 type CDIConfigSpec struct {
 	// Override the URL used when uploading to a DataVolume
 	UploadProxyURLOverride *string `json:"uploadProxyURLOverride,omitempty"`
@@ -742,9 +946,19 @@ type CDIConfigSpec struct {
 	Preallocation *bool `json:"preallocation,omitempty"`
 	// InsecureRegistries is a list of TLS disabled registries
 	InsecureRegistries []string `json:"insecureRegistries,omitempty"`
+	// DataVolumeTTLSeconds is the time in seconds after DataVolume completion it can be garbage collected. Disabled by default.
+	// +optional
+	DataVolumeTTLSeconds *int32 `json:"dataVolumeTTLSeconds,omitempty"`
+	// TLSSecurityProfile is used by operators to apply cluster-wide TLS security settings to operands.
+	TLSSecurityProfile *ocpconfigv1.TLSSecurityProfile `json:"tlsSecurityProfile,omitempty"`
+	// The imagePullSecrets used to pull the container images
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+	// LogVerbosity overrides the default verbosity level used to initialize loggers
+	// +optional
+	LogVerbosity *int32 `json:"logVerbosity,omitempty"`
 }
 
-//CDIConfigStatus provides the most recently observed status of the CDI Config resource
+// CDIConfigStatus provides the most recently observed status of the CDI Config resource
 type CDIConfigStatus struct {
 	// The calculated upload proxy URL
 	UploadProxyURL *string `json:"uploadProxyURL,omitempty"`
@@ -759,9 +973,11 @@ type CDIConfigStatus struct {
 	FilesystemOverhead *FilesystemOverhead `json:"filesystemOverhead,omitempty"`
 	// Preallocation controls whether storage for DataVolumes should be allocated in advance.
 	Preallocation bool `json:"preallocation,omitempty"`
+	// The imagePullSecrets used to pull the container images
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 }
 
-//CDIConfigList provides the needed parameters to do request a list of CDIConfigs from the system
+// CDIConfigList provides the needed parameters to do request a list of CDIConfigs from the system
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type CDIConfigList struct {
 	metav1.TypeMeta `json:",inline"`
@@ -771,7 +987,7 @@ type CDIConfigList struct {
 	Items []CDIConfig `json:"items"`
 }
 
-//ImportProxy provides the information on how to configure the importer pod proxy.
+// ImportProxy provides the information on how to configure the importer pod proxy.
 type ImportProxy struct {
 	// HTTPProxy is the URL http://<username>:<pswd>@<ip>:<port> of the import proxy for HTTP requests.  Empty means unset and will not result in the import pod env var.
 	// +optional
@@ -783,13 +999,13 @@ type ImportProxy struct {
 	// +optional
 	NoProxy *string `json:"noProxy,omitempty"`
 	// TrustedCAProxy is the name of a ConfigMap in the cdi namespace that contains a user-provided trusted certificate authority (CA) bundle.
-	// The TrustedCAProxy field is consumed by the import controller that is resposible for coping it to a config map named trusted-ca-proxy-bundle-cm in the cdi namespace.
+	// The TrustedCAProxy ConfigMap is consumed by the DataImportCron controller for creating cronjobs, and by the import controller referring a copy of the ConfigMap in the import namespace.
 	// Here is an example of the ConfigMap (in yaml):
 	//
 	// apiVersion: v1
 	// kind: ConfigMap
 	// metadata:
-	//   name: trusted-ca-proxy-bundle-cm
+	//   name: my-ca-proxy-cm
 	//   namespace: cdi
 	// data:
 	//   ca.pem: |

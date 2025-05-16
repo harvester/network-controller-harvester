@@ -55,6 +55,17 @@ type PurgeStatus struct {
 	State string `json:"state"`
 }
 
+type HashStatus struct {
+	// +optional
+	State string `json:"state"`
+	// +optional
+	Checksum string `json:"checksum"`
+	// +optional
+	Error string `json:"error"`
+	// +optional
+	SilentlyCorrupted bool `json:"silentlyCorrupted"`
+}
+
 type RebuildStatus struct {
 	// +optional
 	Error string `json:"error"`
@@ -124,7 +135,14 @@ type EngineSpec struct {
 	// +optional
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
 	// +optional
+	UnmapMarkSnapChainRemovedEnabled bool `json:"unmapMarkSnapChainRemovedEnabled"`
+	// +optional
 	Active bool `json:"active"`
+	// +optional
+	SnapshotMaxCount int `json:"snapshotMaxCount"`
+	// +kubebuilder:validation:Type=string
+	// +optional
+	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
 }
 
 // EngineStatus defines the observed state of the Longhorn engine
@@ -139,6 +157,11 @@ type EngineStatus struct {
 	// +optional
 	// +nullable
 	ReplicaModeMap map[string]ReplicaMode `json:"replicaModeMap"`
+	// +optional
+	// ReplicaTransitionTimeMap records the time a replica in ReplicaModeMap transitions from one mode to another (or
+	// from not being in the ReplicaModeMap to being in it). This information is sometimes required by other controllers
+	// (e.g. the volume controller uses it to determine the correct value for replica.Spec.lastHealthyAt).
+	ReplicaTransitionTimeMap map[string]string `json:"replicaTransitionTimeMap"`
 	// +optional
 	Endpoint string `json:"endpoint"`
 	// +optional
@@ -169,6 +192,13 @@ type EngineStatus struct {
 	LastExpansionError string `json:"lastExpansionError"`
 	// +optional
 	LastExpansionFailedAt string `json:"lastExpansionFailedAt"`
+	// +optional
+	UnmapMarkSnapChainRemovedEnabled bool `json:"unmapMarkSnapChainRemovedEnabled"`
+	// +optional
+	SnapshotMaxCount int `json:"snapshotMaxCount"`
+	// +kubebuilder:validation:Type=string
+	// +optional
+	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
 }
 
 // +genclient
@@ -176,6 +206,7 @@ type EngineStatus struct {
 // +kubebuilder:resource:shortName=lhe
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
+// +kubebuilder:printcolumn:name="Data Engine",type=string,JSONPath=`.spec.dataEngine`,description="The data engine of the engine"
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.currentState`,description="The current state of the engine"
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.spec.nodeID`,description="The node that the engine is on"
 // +kubebuilder:printcolumn:name="InstanceManager",type=string,JSONPath=`.status.instanceManagerName`,description="The instance manager of the engine"
