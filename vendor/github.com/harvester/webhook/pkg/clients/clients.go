@@ -1,8 +1,8 @@
 package clients
 
 import (
-	"github.com/rancher/wrangler/pkg/clients"
-	"github.com/rancher/wrangler/pkg/schemes"
+	"github.com/rancher/wrangler/v3/pkg/clients"
+	"github.com/rancher/wrangler/v3/pkg/schemes"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/client-go/rest"

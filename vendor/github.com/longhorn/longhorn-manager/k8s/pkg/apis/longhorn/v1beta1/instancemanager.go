@@ -79,13 +79,14 @@ type InstanceProcessStatus struct {
 	ResourceVersion int64         `json:"resourceVersion"`
 }
 
-// InstanceManagerSpec defines the desired state of the Longhorn instancer manager
+// InstanceManagerSpec defines the desired state of the Longhorn instance manager
 type InstanceManagerSpec struct {
 	Image  string              `json:"image"`
 	NodeID string              `json:"nodeID"`
 	Type   InstanceManagerType `json:"type"`
 
-	// TODO: deprecate this field
+	// Deprecated: This field is useless.
+	// +optional
 	EngineImage string `json:"engineImage"`
 }
 
