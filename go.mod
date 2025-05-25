@@ -72,11 +72,19 @@ require (
 	github.com/harvester/harvester v1.4.0
 	github.com/harvester/webhook v0.1.5
 	github.com/insomniacslk/dhcp v0.0.0-20240710054256-ddd8a41251c9
+<<<<<<< HEAD
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.3.0
 	github.com/rancher/lasso v0.0.0-20240705194423-b2a060d103c1
 	github.com/rancher/wrangler v1.1.2
 	github.com/rancher/wrangler/v3 v3.0.0
 	github.com/sirupsen/logrus v1.9.3
+=======
+	github.com/k8snetworkplumbingwg/network-attachment-definition-client v0.0.0-20200331171230-d50e42f2b669
+	github.com/rancher/lasso v0.0.0-20221227210133-6ea88ca2fbcc
+	github.com/rancher/wrangler v1.1.1
+	github.com/sirupsen/logrus v1.9.0
+	github.com/stretchr/testify v1.8.3
+>>>>>>> f8b923f (Add vlanconfig validator test code)
 	github.com/tidwall/sjson v1.2.5
 	github.com/urfave/cli v1.22.16
 	github.com/vishvananda/netlink v1.2.1-beta.2
@@ -145,6 +153,7 @@ require (
 	github.com/openshift/custom-resource-status v1.1.2 // indirect
 	github.com/pierrec/lz4/v4 v4.1.21 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+<<<<<<< HEAD
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.68.0 // indirect
 	github.com/prometheus/client_golang v1.19.1 // indirect
@@ -153,6 +162,28 @@ require (
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rancher/dynamiclistener v0.6.0 // indirect
 	github.com/robfig/cron v1.2.0 // indirect
+=======
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.62.0 // indirect
+	github.com/prometheus/client_golang v1.12.2 // indirect
+	github.com/prometheus/client_model v0.3.0 // indirect
+	github.com/prometheus/common v0.32.1 // indirect
+	github.com/prometheus/procfs v0.7.3 // indirect
+	github.com/rancher/aks-operator v1.0.7 // indirect
+	github.com/rancher/apiserver v0.0.0-20230120214941-e88c32739dc7 // indirect
+	github.com/rancher/dynamiclistener v0.3.5 // indirect
+	github.com/rancher/eks-operator v1.1.5 // indirect
+	github.com/rancher/fleet/pkg/apis v0.0.0-20230123175930-d296259590be // indirect
+	github.com/rancher/gke-operator v1.1.4 // indirect
+	github.com/rancher/kubernetes-provider-detector v0.1.5 // indirect
+	github.com/rancher/norman v0.0.0-20221205184727-32ef2e185b99 // indirect
+	github.com/rancher/rancher v0.0.0-20230124173128-2207cfed1803 // indirect
+	github.com/rancher/rancher/pkg/apis v0.0.0 // indirect
+	github.com/rancher/remotedialer v0.2.6-0.20220624190122-ea57207bf2b8 // indirect
+	github.com/rancher/rke v1.3.18 // indirect
+	github.com/rancher/steve v0.0.0-20221209194631-acf9d31ce0dd // indirect
+	github.com/rancher/system-upgrade-controller/pkg/apis v0.0.0-20210727200656-10b094e30007 // indirect
+>>>>>>> f8b923f (Add vlanconfig validator test code)
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect
