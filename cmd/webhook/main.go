@@ -9,14 +9,13 @@ import (
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	ctlkubevirt "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io"
 	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
-	"github.com/harvester/harvester/pkg/indexeres"
 	"github.com/harvester/webhook/pkg/config"
 	"github.com/harvester/webhook/pkg/server"
-	ctlcore "github.com/rancher/wrangler/pkg/generated/controllers/core"
-	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
-	"github.com/rancher/wrangler/pkg/kubeconfig"
-	"github.com/rancher/wrangler/pkg/signals"
-	"github.com/rancher/wrangler/pkg/start"
+	ctlcore "github.com/rancher/wrangler/v3/pkg/generated/controllers/core"
+	ctlcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
+	"github.com/rancher/wrangler/v3/pkg/kubeconfig"
+	"github.com/rancher/wrangler/v3/pkg/signals"
+	"github.com/rancher/wrangler/v3/pkg/start"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 	"k8s.io/client-go/rest"
@@ -24,6 +23,7 @@ import (
 
 	ctlnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/harvester/harvester-network-controller/pkg/webhook/clusternetwork"
 	"github.com/harvester/harvester-network-controller/pkg/webhook/nad"
 	"github.com/harvester/harvester-network-controller/pkg/webhook/vlanconfig"
@@ -163,7 +163,7 @@ func newCaches(ctx context.Context, cfg *rest.Config, threadiness int) (*caches,
 		nodeCache: coreFactory.Core().V1().Node().Cache(),
 	}
 	// Indexer must be added before starting the informer, otherwise panic `cannot add indexers to running index` happens
-	c.vmiCache.AddIndexer(indexeres.VMByNetworkIndex, vmiByNetwork)
+	c.vmiCache.AddIndexer(utils.VMByNetworkIndex, vmiByNetwork)
 
 	if err := start.All(ctx, threadiness, starters...); err != nil {
 		return nil, err

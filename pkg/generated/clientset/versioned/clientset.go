@@ -21,7 +21,8 @@ package versioned
 import (
 	"fmt"
 	"net/http"
-
+	
+	kubeovnv1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/kubeovn.io/v1"
 	networkv1beta1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
@@ -30,14 +31,20 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
+	KubeovnV1() kubeovnv1.KubeovnV1Interface
 	NetworkV1beta1() networkv1beta1.NetworkV1beta1Interface
 }
 
-// Clientset contains the clients for groups. Each group has exactly one
-// version included in a Clientset.
+// Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
+	kubeovnV1      *kubeovnv1.KubeovnV1Client
 	networkV1beta1 *networkv1beta1.NetworkV1beta1Client
+}
+
+// KubeovnV1 retrieves the KubeovnV1Client
+func (c *Clientset) KubeovnV1() kubeovnv1.KubeovnV1Interface {
+	return c.kubeovnV1
 }
 
 // NetworkV1beta1 retrieves the NetworkV1beta1Client
@@ -89,6 +96,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 
 	var cs Clientset
 	var err error
+	cs.kubeovnV1, err = kubeovnv1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 	cs.networkV1beta1, err = networkv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
@@ -114,6 +125,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
+	cs.kubeovnV1 = kubeovnv1.New(c)
 	cs.networkV1beta1 = networkv1beta1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)

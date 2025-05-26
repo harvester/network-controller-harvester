@@ -88,7 +88,7 @@ type BackingImageList struct {
 	Items           []BackingImage `json:"items"`
 }
 
-// ConvertTo converts from spoke verion (v1beta1) to hub version (v1beta2)
+// ConvertTo converts from spoke version (v1beta1) to hub version (v1beta2)
 func (bi *BackingImage) ConvertTo(dst conversion.Hub) error {
 	switch t := dst.(type) {
 	case *v1beta2.BackingImage:
@@ -105,6 +105,7 @@ func (bi *BackingImage) ConvertTo(dst conversion.Hub) error {
 		biV1beta2.Spec.Disks = make(map[string]string)
 		for name := range bi.Spec.Disks {
 			biV1beta2.Spec.Disks[name] = ""
+			biV1beta2.Spec.DiskFileSpecMap[name] = &v1beta2.BackingImageDiskFileSpec{}
 		}
 		return nil
 	default:
