@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import (
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -36,28 +35,30 @@ type FakeRkeK8sSystemImages struct {
 	ns   string
 }
 
-var rkek8ssystemimagesResource = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "rkek8ssystemimages"}
+var rkek8ssystemimagesResource = v3.SchemeGroupVersion.WithResource("rkek8ssystemimages")
 
-var rkek8ssystemimagesKind = schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "RkeK8sSystemImage"}
+var rkek8ssystemimagesKind = v3.SchemeGroupVersion.WithKind("RkeK8sSystemImage")
 
 // Get takes name of the rkeK8sSystemImage, and returns the corresponding rkeK8sSystemImage object, and an error if there is any.
 func (c *FakeRkeK8sSystemImages) Get(ctx context.Context, name string, options v1.GetOptions) (result *v3.RkeK8sSystemImage, err error) {
+	emptyResult := &v3.RkeK8sSystemImage{}
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(rkek8ssystemimagesResource, c.ns, name), &v3.RkeK8sSystemImage{})
+		Invokes(testing.NewGetActionWithOptions(rkek8ssystemimagesResource, c.ns, name, options), emptyResult)
 
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.RkeK8sSystemImage), err
 }
 
 // List takes label and field selectors, and returns the list of RkeK8sSystemImages that match those selectors.
 func (c *FakeRkeK8sSystemImages) List(ctx context.Context, opts v1.ListOptions) (result *v3.RkeK8sSystemImageList, err error) {
+	emptyResult := &v3.RkeK8sSystemImageList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(rkek8ssystemimagesResource, rkek8ssystemimagesKind, c.ns, opts), &v3.RkeK8sSystemImageList{})
+		Invokes(testing.NewListActionWithOptions(rkek8ssystemimagesResource, rkek8ssystemimagesKind, c.ns, opts), emptyResult)
 
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -76,28 +77,30 @@ func (c *FakeRkeK8sSystemImages) List(ctx context.Context, opts v1.ListOptions) 
 // Watch returns a watch.Interface that watches the requested rkeK8sSystemImages.
 func (c *FakeRkeK8sSystemImages) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewWatchAction(rkek8ssystemimagesResource, c.ns, opts))
+		InvokesWatch(testing.NewWatchActionWithOptions(rkek8ssystemimagesResource, c.ns, opts))
 
 }
 
 // Create takes the representation of a rkeK8sSystemImage and creates it.  Returns the server's representation of the rkeK8sSystemImage, and an error, if there is any.
 func (c *FakeRkeK8sSystemImages) Create(ctx context.Context, rkeK8sSystemImage *v3.RkeK8sSystemImage, opts v1.CreateOptions) (result *v3.RkeK8sSystemImage, err error) {
+	emptyResult := &v3.RkeK8sSystemImage{}
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(rkek8ssystemimagesResource, c.ns, rkeK8sSystemImage), &v3.RkeK8sSystemImage{})
+		Invokes(testing.NewCreateActionWithOptions(rkek8ssystemimagesResource, c.ns, rkeK8sSystemImage, opts), emptyResult)
 
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.RkeK8sSystemImage), err
 }
 
 // Update takes the representation of a rkeK8sSystemImage and updates it. Returns the server's representation of the rkeK8sSystemImage, and an error, if there is any.
 func (c *FakeRkeK8sSystemImages) Update(ctx context.Context, rkeK8sSystemImage *v3.RkeK8sSystemImage, opts v1.UpdateOptions) (result *v3.RkeK8sSystemImage, err error) {
+	emptyResult := &v3.RkeK8sSystemImage{}
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(rkek8ssystemimagesResource, c.ns, rkeK8sSystemImage), &v3.RkeK8sSystemImage{})
+		Invokes(testing.NewUpdateActionWithOptions(rkek8ssystemimagesResource, c.ns, rkeK8sSystemImage, opts), emptyResult)
 
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.RkeK8sSystemImage), err
 }
@@ -112,7 +115,7 @@ func (c *FakeRkeK8sSystemImages) Delete(ctx context.Context, name string, opts v
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeRkeK8sSystemImages) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(rkek8ssystemimagesResource, c.ns, listOpts)
+	action := testing.NewDeleteCollectionActionWithOptions(rkek8ssystemimagesResource, c.ns, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v3.RkeK8sSystemImageList{})
 	return err
@@ -120,11 +123,12 @@ func (c *FakeRkeK8sSystemImages) DeleteCollection(ctx context.Context, opts v1.D
 
 // Patch applies the patch and returns the patched rkeK8sSystemImage.
 func (c *FakeRkeK8sSystemImages) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v3.RkeK8sSystemImage, err error) {
+	emptyResult := &v3.RkeK8sSystemImage{}
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(rkek8ssystemimagesResource, c.ns, name, pt, data, subresources...), &v3.RkeK8sSystemImage{})
+		Invokes(testing.NewPatchSubresourceActionWithOptions(rkek8ssystemimagesResource, c.ns, name, pt, data, opts, subresources...), emptyResult)
 
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.RkeK8sSystemImage), err
 }

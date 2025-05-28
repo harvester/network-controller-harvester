@@ -161,7 +161,7 @@ func getSlaves(index int) ([]netlink.Link, error) {
 	return links, nil
 }
 
-func compareBond(old, new *netlink.Bond) bool {
+func compareBond(old, new *netlink.Bond) bool { //nolint
 	if old.Name != new.Name {
 		return false
 	}

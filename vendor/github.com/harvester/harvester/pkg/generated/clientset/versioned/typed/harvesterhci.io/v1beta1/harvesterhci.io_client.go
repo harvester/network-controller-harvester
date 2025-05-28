@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,6 +31,8 @@ type HarvesterhciV1beta1Interface interface {
 	AddonsGetter
 	KeyPairsGetter
 	PreferencesGetter
+	ResourceQuotasGetter
+	ScheduleVMBackupsGetter
 	SettingsGetter
 	SupportBundlesGetter
 	UpgradesGetter
@@ -38,6 +40,7 @@ type HarvesterhciV1beta1Interface interface {
 	VersionsGetter
 	VirtualMachineBackupsGetter
 	VirtualMachineImagesGetter
+	VirtualMachineImageDownloadersGetter
 	VirtualMachineRestoresGetter
 	VirtualMachineTemplatesGetter
 	VirtualMachineTemplateVersionsGetter
@@ -58,6 +61,14 @@ func (c *HarvesterhciV1beta1Client) KeyPairs(namespace string) KeyPairInterface 
 
 func (c *HarvesterhciV1beta1Client) Preferences(namespace string) PreferenceInterface {
 	return newPreferences(c, namespace)
+}
+
+func (c *HarvesterhciV1beta1Client) ResourceQuotas(namespace string) ResourceQuotaInterface {
+	return newResourceQuotas(c, namespace)
+}
+
+func (c *HarvesterhciV1beta1Client) ScheduleVMBackups(namespace string) ScheduleVMBackupInterface {
+	return newScheduleVMBackups(c, namespace)
 }
 
 func (c *HarvesterhciV1beta1Client) Settings() SettingInterface {
@@ -86,6 +97,10 @@ func (c *HarvesterhciV1beta1Client) VirtualMachineBackups(namespace string) Virt
 
 func (c *HarvesterhciV1beta1Client) VirtualMachineImages(namespace string) VirtualMachineImageInterface {
 	return newVirtualMachineImages(c, namespace)
+}
+
+func (c *HarvesterhciV1beta1Client) VirtualMachineImageDownloaders(namespace string) VirtualMachineImageDownloaderInterface {
+	return newVirtualMachineImageDownloaders(c, namespace)
 }
 
 func (c *HarvesterhciV1beta1Client) VirtualMachineRestores(namespace string) VirtualMachineRestoreInterface {

@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,10 +21,9 @@ package fake
 import (
 	"context"
 
-	v1beta1 "github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
+	v1beta1 "github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,26 +34,28 @@ type FakeClusterFlows struct {
 	Fake *FakeLoggingV1beta1
 }
 
-var clusterflowsResource = schema.GroupVersionResource{Group: "logging.banzaicloud.io", Version: "v1beta1", Resource: "clusterflows"}
+var clusterflowsResource = v1beta1.GroupVersion.WithResource("clusterflows")
 
-var clusterflowsKind = schema.GroupVersionKind{Group: "logging.banzaicloud.io", Version: "v1beta1", Kind: "ClusterFlow"}
+var clusterflowsKind = v1beta1.GroupVersion.WithKind("ClusterFlow")
 
 // Get takes name of the clusterFlow, and returns the corresponding clusterFlow object, and an error if there is any.
 func (c *FakeClusterFlows) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.ClusterFlow, err error) {
+	emptyResult := &v1beta1.ClusterFlow{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(clusterflowsResource, name), &v1beta1.ClusterFlow{})
+		Invokes(testing.NewRootGetActionWithOptions(clusterflowsResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1beta1.ClusterFlow), err
 }
 
 // List takes label and field selectors, and returns the list of ClusterFlows that match those selectors.
 func (c *FakeClusterFlows) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.ClusterFlowList, err error) {
+	emptyResult := &v1beta1.ClusterFlowList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(clusterflowsResource, clusterflowsKind, opts), &v1beta1.ClusterFlowList{})
+		Invokes(testing.NewRootListActionWithOptions(clusterflowsResource, clusterflowsKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -73,36 +74,39 @@ func (c *FakeClusterFlows) List(ctx context.Context, opts v1.ListOptions) (resul
 // Watch returns a watch.Interface that watches the requested clusterFlows.
 func (c *FakeClusterFlows) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(clusterflowsResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(clusterflowsResource, opts))
 }
 
 // Create takes the representation of a clusterFlow and creates it.  Returns the server's representation of the clusterFlow, and an error, if there is any.
 func (c *FakeClusterFlows) Create(ctx context.Context, clusterFlow *v1beta1.ClusterFlow, opts v1.CreateOptions) (result *v1beta1.ClusterFlow, err error) {
+	emptyResult := &v1beta1.ClusterFlow{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(clusterflowsResource, clusterFlow), &v1beta1.ClusterFlow{})
+		Invokes(testing.NewRootCreateActionWithOptions(clusterflowsResource, clusterFlow, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1beta1.ClusterFlow), err
 }
 
 // Update takes the representation of a clusterFlow and updates it. Returns the server's representation of the clusterFlow, and an error, if there is any.
 func (c *FakeClusterFlows) Update(ctx context.Context, clusterFlow *v1beta1.ClusterFlow, opts v1.UpdateOptions) (result *v1beta1.ClusterFlow, err error) {
+	emptyResult := &v1beta1.ClusterFlow{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(clusterflowsResource, clusterFlow), &v1beta1.ClusterFlow{})
+		Invokes(testing.NewRootUpdateActionWithOptions(clusterflowsResource, clusterFlow, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1beta1.ClusterFlow), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeClusterFlows) UpdateStatus(ctx context.Context, clusterFlow *v1beta1.ClusterFlow, opts v1.UpdateOptions) (*v1beta1.ClusterFlow, error) {
+func (c *FakeClusterFlows) UpdateStatus(ctx context.Context, clusterFlow *v1beta1.ClusterFlow, opts v1.UpdateOptions) (result *v1beta1.ClusterFlow, err error) {
+	emptyResult := &v1beta1.ClusterFlow{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(clusterflowsResource, "status", clusterFlow), &v1beta1.ClusterFlow{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(clusterflowsResource, "status", clusterFlow, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1beta1.ClusterFlow), err
 }
@@ -116,7 +120,7 @@ func (c *FakeClusterFlows) Delete(ctx context.Context, name string, opts v1.Dele
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeClusterFlows) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(clusterflowsResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(clusterflowsResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1beta1.ClusterFlowList{})
 	return err
@@ -124,10 +128,11 @@ func (c *FakeClusterFlows) DeleteCollection(ctx context.Context, opts v1.DeleteO
 
 // Patch applies the patch and returns the patched clusterFlow.
 func (c *FakeClusterFlows) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.ClusterFlow, err error) {
+	emptyResult := &v1beta1.ClusterFlow{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(clusterflowsResource, name, pt, data, subresources...), &v1beta1.ClusterFlow{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(clusterflowsResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1beta1.ClusterFlow), err
 }

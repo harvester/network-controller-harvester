@@ -3,14 +3,15 @@ package fakeclients
 import (
 	"context"
 
+	"github.com/rancher/wrangler/v3/pkg/generic"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/rest"
 
 	harvesterv1beta1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
 	harvestertype "github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/harvesterhci.io/v1beta1"
-	harvesterv1ctl "github.com/harvester/harvester/pkg/generated/controllers/harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester/pkg/indexeres"
 	"github.com/harvester/harvester/pkg/ref"
 )
@@ -25,7 +26,7 @@ func (c VMBackupClient) Update(volume *harvesterv1beta1.VirtualMachineBackup) (*
 	return c(volume.Namespace).Update(context.TODO(), volume, metav1.UpdateOptions{})
 }
 
-func (c VMBackupClient) UpdateStatus(volume *harvesterv1beta1.VirtualMachineBackup) (*harvesterv1beta1.VirtualMachineBackup, error) {
+func (c VMBackupClient) UpdateStatus(_ *harvesterv1beta1.VirtualMachineBackup) (*harvesterv1beta1.VirtualMachineBackup, error) {
 	panic("implement me")
 }
 
@@ -49,6 +50,10 @@ func (c VMBackupClient) Patch(namespace, name string, pt types.PatchType, data [
 	return c(namespace).Patch(context.TODO(), name, pt, data, metav1.PatchOptions{}, subresources...)
 }
 
+func (c VMBackupClient) WithImpersonation(_ rest.ImpersonationConfig) (generic.ClientInterface[*harvesterv1beta1.VirtualMachineBackup, *harvesterv1beta1.VirtualMachineBackupList], error) {
+	panic("implement me")
+}
+
 type VMBackupCache func(string) harvestertype.VirtualMachineBackupInterface
 
 func (c VMBackupCache) Get(namespace, name string) (*harvesterv1beta1.VirtualMachineBackup, error) {
@@ -56,10 +61,18 @@ func (c VMBackupCache) Get(namespace, name string) (*harvesterv1beta1.VirtualMac
 }
 
 func (c VMBackupCache) List(namespace string, selector labels.Selector) ([]*harvesterv1beta1.VirtualMachineBackup, error) {
-	panic("implement me")
+	list, err := c(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: selector.String()})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*harvesterv1beta1.VirtualMachineBackup, 0, len(list.Items))
+	for i := range list.Items {
+		result = append(result, &list.Items[i])
+	}
+	return result, err
 }
 
-func (c VMBackupCache) AddIndexer(indexName string, indexer harvesterv1ctl.VirtualMachineBackupIndexer) {
+func (c VMBackupCache) AddIndexer(_ string, _ generic.Indexer[*harvesterv1beta1.VirtualMachineBackup]) {
 	panic("implement me")
 }
 
@@ -72,7 +85,8 @@ func (c VMBackupCache) GetByIndex(indexName, key string) ([]*harvesterv1beta1.Vi
 			return nil, err
 		}
 		var backups []*harvesterv1beta1.VirtualMachineBackup
-		for _, b := range backupList.Items {
+		for i := range backupList.Items {
+			b := backupList.Items[i]
 			if b.Spec.Source.Name == key {
 				backups = append(backups, &b)
 			}

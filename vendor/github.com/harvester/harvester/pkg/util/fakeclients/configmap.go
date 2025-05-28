@@ -3,8 +3,9 @@ package fakeclients
 import (
 	"context"
 
-	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
+	"github.com/rancher/wrangler/v3/pkg/generic"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/rest"
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
@@ -24,7 +25,12 @@ func (c ConfigmapClient) Update(configMap *v1.ConfigMap) (*v1.ConfigMap, error) 
 	return c(configMap.Namespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
 }
 
-func (c ConfigmapClient) Delete(namespace, name string, options *metav1.DeleteOptions) error {
+func (c ConfigmapClient) UpdateStatus(_ *v1.ConfigMap) (*v1.ConfigMap, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c ConfigmapClient) Delete(_, _ string, _ *metav1.DeleteOptions) error {
 	panic("implement me")
 }
 
@@ -36,11 +42,15 @@ func (c ConfigmapClient) List(namespace string, opts metav1.ListOptions) (*v1.Co
 	return c(namespace).List(context.TODO(), opts)
 }
 
-func (c ConfigmapClient) Watch(namespace string, opts metav1.ListOptions) (watch.Interface, error) {
+func (c ConfigmapClient) Watch(_ string, _ metav1.ListOptions) (watch.Interface, error) {
 	panic("implement me")
 }
 
-func (c ConfigmapClient) Patch(namespace, name string, pt types.PatchType, data []byte, subresources ...string) (result *v1.ConfigMap, err error) {
+func (c ConfigmapClient) Patch(_, _ string, _ types.PatchType, _ []byte, _ ...string) (result *v1.ConfigMap, err error) {
+	panic("implement me")
+}
+
+func (c ConfigmapClient) WithImpersonation(_ rest.ImpersonationConfig) (generic.ClientInterface[*v1.ConfigMap, *v1.ConfigMapList], error) {
 	panic("implement me")
 }
 
@@ -51,13 +61,23 @@ func (c ConfigmapCache) Get(namespace, name string) (*v1.ConfigMap, error) {
 }
 
 func (c ConfigmapCache) List(namespace string, selector labels.Selector) ([]*v1.ConfigMap, error) {
+	list, err := c(namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*v1.ConfigMap, 0, len(list.Items))
+	for i := range list.Items {
+		result = append(result, &list.Items[i])
+	}
+	return result, err
+}
+
+func (c ConfigmapCache) AddIndexer(_ string, _ generic.Indexer[*v1.ConfigMap]) {
 	panic("implement me")
 }
 
-func (c ConfigmapCache) AddIndexer(indexName string, indexer ctlcorev1.ConfigMapIndexer) {
-	panic("implement me")
-}
-
-func (c ConfigmapCache) GetByIndex(indexName, key string) ([]*v1.ConfigMap, error) {
+func (c ConfigmapCache) GetByIndex(_, _ string) ([]*v1.ConfigMap, error) {
 	panic("implement me")
 }

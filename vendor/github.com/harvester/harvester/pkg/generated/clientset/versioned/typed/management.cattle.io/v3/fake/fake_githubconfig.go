@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import (
 
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -34,26 +33,28 @@ type FakeGithubConfigs struct {
 	Fake *FakeManagementV3
 }
 
-var githubconfigsResource = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "githubconfigs"}
+var githubconfigsResource = v3.SchemeGroupVersion.WithResource("githubconfigs")
 
-var githubconfigsKind = schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "GithubConfig"}
+var githubconfigsKind = v3.SchemeGroupVersion.WithKind("GithubConfig")
 
 // Get takes name of the githubConfig, and returns the corresponding githubConfig object, and an error if there is any.
 func (c *FakeGithubConfigs) Get(ctx context.Context, name string, options v1.GetOptions) (result *v3.GithubConfig, err error) {
+	emptyResult := &v3.GithubConfig{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(githubconfigsResource, name), &v3.GithubConfig{})
+		Invokes(testing.NewRootGetActionWithOptions(githubconfigsResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.GithubConfig), err
 }
 
 // List takes label and field selectors, and returns the list of GithubConfigs that match those selectors.
 func (c *FakeGithubConfigs) List(ctx context.Context, opts v1.ListOptions) (result *v3.GithubConfigList, err error) {
+	emptyResult := &v3.GithubConfigList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(githubconfigsResource, githubconfigsKind, opts), &v3.GithubConfigList{})
+		Invokes(testing.NewRootListActionWithOptions(githubconfigsResource, githubconfigsKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.GithubConfigList), err
 }
@@ -61,25 +62,27 @@ func (c *FakeGithubConfigs) List(ctx context.Context, opts v1.ListOptions) (resu
 // Watch returns a watch.Interface that watches the requested githubConfigs.
 func (c *FakeGithubConfigs) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(githubconfigsResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(githubconfigsResource, opts))
 }
 
 // Create takes the representation of a githubConfig and creates it.  Returns the server's representation of the githubConfig, and an error, if there is any.
 func (c *FakeGithubConfigs) Create(ctx context.Context, githubConfig *v3.GithubConfig, opts v1.CreateOptions) (result *v3.GithubConfig, err error) {
+	emptyResult := &v3.GithubConfig{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(githubconfigsResource, githubConfig), &v3.GithubConfig{})
+		Invokes(testing.NewRootCreateActionWithOptions(githubconfigsResource, githubConfig, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.GithubConfig), err
 }
 
 // Update takes the representation of a githubConfig and updates it. Returns the server's representation of the githubConfig, and an error, if there is any.
 func (c *FakeGithubConfigs) Update(ctx context.Context, githubConfig *v3.GithubConfig, opts v1.UpdateOptions) (result *v3.GithubConfig, err error) {
+	emptyResult := &v3.GithubConfig{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(githubconfigsResource, githubConfig), &v3.GithubConfig{})
+		Invokes(testing.NewRootUpdateActionWithOptions(githubconfigsResource, githubConfig, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.GithubConfig), err
 }
@@ -93,7 +96,7 @@ func (c *FakeGithubConfigs) Delete(ctx context.Context, name string, opts v1.Del
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeGithubConfigs) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(githubconfigsResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(githubconfigsResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v3.GithubConfigList{})
 	return err
@@ -101,10 +104,11 @@ func (c *FakeGithubConfigs) DeleteCollection(ctx context.Context, opts v1.Delete
 
 // Patch applies the patch and returns the patched githubConfig.
 func (c *FakeGithubConfigs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v3.GithubConfig, err error) {
+	emptyResult := &v3.GithubConfig{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(githubconfigsResource, name, pt, data, subresources...), &v3.GithubConfig{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(githubconfigsResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.GithubConfig), err
 }

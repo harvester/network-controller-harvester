@@ -3,13 +3,18 @@ package fakeclients
 import (
 	"context"
 
-	ctlstoragev1 "github.com/rancher/wrangler/pkg/generated/controllers/storage/v1"
+	"github.com/rancher/wrangler/v3/pkg/generic"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	storagev1type "k8s.io/client-go/kubernetes/typed/storage/v1"
+	"k8s.io/client-go/rest"
+
+	"github.com/harvester/harvester/pkg/ref"
+	"github.com/harvester/harvester/pkg/util"
+	indexeresutil "github.com/harvester/harvester/pkg/util/indexeres"
 )
 
 type StorageClassClient func() storagev1type.StorageClassInterface
@@ -22,7 +27,7 @@ func (c StorageClassClient) Update(s *storagev1.StorageClass) (*storagev1.Storag
 	return c().Update(context.TODO(), s, metav1.UpdateOptions{})
 }
 
-func (c StorageClassClient) UpdateStatus(s *storagev1.StorageClass) (*storagev1.StorageClass, error) {
+func (c StorageClassClient) UpdateStatus(_ *storagev1.StorageClass) (*storagev1.StorageClass, error) {
 	panic("implement me")
 }
 
@@ -64,10 +69,32 @@ func (c StorageClassCache) List(selector labels.Selector) ([]*storagev1.StorageC
 	return result, err
 }
 
-func (c StorageClassCache) AddIndexer(indexName string, indexer ctlstoragev1.StorageClassIndexer) {
+func (c StorageClassClient) WithImpersonation(_ rest.ImpersonationConfig) (generic.NonNamespacedClientInterface[*storagev1.StorageClass, *storagev1.StorageClassList], error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c StorageClassCache) AddIndexer(_ string, _ generic.Indexer[*storagev1.StorageClass]) {
 	panic("implement me")
 }
 
 func (c StorageClassCache) GetByIndex(indexName, key string) ([]*storagev1.StorageClass, error) {
-	panic("implement me")
+	switch indexName {
+	case indexeresutil.StorageClassBySecretIndex:
+		secretNS, secretName := ref.Parse(key)
+		scList, err := c().List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			return nil, err
+		}
+		var scs []*storagev1.StorageClass
+		for _, sc := range scList.Items {
+			sc := sc
+			if secretName == sc.Parameters[util.CSINodePublishSecretNameKey] && secretNS == sc.Parameters[util.CSINodePublishSecretNamespaceKey] {
+				scs = append(scs, &sc)
+			}
+		}
+		return scs, nil
+	default:
+		return nil, nil
+	}
 }

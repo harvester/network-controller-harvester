@@ -4,9 +4,25 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
+
+// RemoveCondition deletes the condition with the given conditionType from the conditions list
+func RemoveCondition(conditions []longhorn.Condition, conditionType string) []longhorn.Condition {
+	if conditions == nil {
+		return nil
+	}
+
+	result := []longhorn.Condition{}
+	for _, condition := range conditions {
+		if condition.Type != conditionType {
+			result = append(result, condition)
+		}
+	}
+	return result
+}
 
 // GetCondition returns a copy of conditions[conditionType], and automatically fill the unknown condition
 func GetCondition(conditions []longhorn.Condition, conditionType string) longhorn.Condition {

@@ -1,15 +1,31 @@
 package v1beta1
 
 import (
+	"github.com/rancher/wrangler/v3/pkg/condition"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type AddonState string
 
 const (
-	AddonEnabled  AddonState = "AddonEnabled"
-	AddonDeployed AddonState = "AddonDeploySuccessful"
-	AddonFailed   AddonState = "AddonDeployFailed"
+	AddonEnabling  AddonState = "AddonEnabling"
+	AddonDeployed  AddonState = "AddonDeploySuccessful"
+	AddonDisabled  AddonState = "AddonDisabled"
+	AddonDisabling AddonState = "AddonDisabling"
+
+	// after successfully updating, addon will be AddonInitState when !Spec.Enabled; AddonDeployed when Spec.Enabled
+	AddonUpdating AddonState = "AddonUpdating"
+
+	AddonInitState AddonState = "" // init status, when an addon is not enabled, or disabled successfully
+)
+
+type AddonOperation string
+
+var (
+	AddonOperationInProgress condition.Cond = "InProgress"
+	AddonOperationCompleted  condition.Cond = "Completed"
+	AddonOperationFailed     condition.Cond = "OperationFailed"
+	DefaultJobBackOffLimit                  = int32(5)
 )
 
 // +genclient
@@ -36,4 +52,6 @@ type AddonSpec struct {
 
 type AddonStatus struct {
 	Status AddonState `json:"status,omitempty"`
+	// +optional
+	Conditions []Condition `json:"conditions,omitempty"`
 }

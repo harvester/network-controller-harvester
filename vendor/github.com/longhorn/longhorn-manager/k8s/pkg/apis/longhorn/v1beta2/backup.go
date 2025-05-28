@@ -5,12 +5,34 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type BackupState string
 
 const (
+	// Non-final state
 	BackupStateNew        = BackupState("")
 	BackupStatePending    = BackupState("Pending")
 	BackupStateInProgress = BackupState("InProgress")
-	BackupStateCompleted  = BackupState("Completed")
-	BackupStateError      = BackupState("Error")
-	BackupStateUnknown    = BackupState("Unknown")
+	// Final state
+	BackupStateCompleted = BackupState("Completed")
+	BackupStateError     = BackupState("Error")
+	BackupStateUnknown   = BackupState("Unknown")
+	// Deleting is also considered as final state
+	// as it only happens when the backup is being deleting and has deletion timestamp
+	BackupStateDeleting = BackupState("Deleting")
+)
+
+type BackupCompressionMethod string
+
+const (
+	BackupCompressionMethodNone = BackupCompressionMethod("none")
+	BackupCompressionMethodLz4  = BackupCompressionMethod("lz4")
+	BackupCompressionMethodGzip = BackupCompressionMethod("gzip")
+)
+
+// +kubebuilder:validation:Enum=full;incremental;""
+type BackupMode string
+
+const (
+	BackupModeFull            = BackupMode("full")
+	BackupModeIncremental     = BackupMode("incremental")
+	BackupModeIncrementalNone = BackupMode("")
 )
 
 // BackupSpec defines the desired state of the Longhorn backup
@@ -25,6 +47,10 @@ type BackupSpec struct {
 	// The labels of snapshot backup.
 	// +optional
 	Labels map[string]string `json:"labels"`
+	// The backup mode of this backup.
+	// Can be "full" or "incremental"
+	// +optional
+	BackupMode BackupMode `json:"backupMode"`
 }
 
 // BackupStatus defines the observed state of the Longhorn backup
@@ -84,6 +110,18 @@ type BackupStatus struct {
 	// +optional
 	// +nullable
 	LastSyncedAt metav1.Time `json:"lastSyncedAt"`
+	// Compression method
+	// +optional
+	CompressionMethod BackupCompressionMethod `json:"compressionMethod"`
+	// Size in bytes of newly uploaded data
+	// +optional
+	NewlyUploadedDataSize string `json:"newlyUploadDataSize"`
+	// Size in bytes of reuploaded data
+	// +optional
+	ReUploadedDataSize string `json:"reUploadedDataSize"`
+	// The backup target name.
+	// +optional
+	BackupTargetName string `json:"backupTargetName"`
 }
 
 // +genclient
@@ -94,6 +132,7 @@ type BackupStatus struct {
 // +kubebuilder:printcolumn:name="SnapshotName",type=string,JSONPath=`.status.snapshotName`,description="The snapshot name"
 // +kubebuilder:printcolumn:name="SnapshotSize",type=string,JSONPath=`.status.size`,description="The snapshot size"
 // +kubebuilder:printcolumn:name="SnapshotCreatedAt",type=string,JSONPath=`.status.snapshotCreatedAt`,description="The snapshot creation time"
+// +kubebuilder:printcolumn:name="BackupTarget",type=string,JSONPath=`.status.backupTargetName`,description="The backup target name"
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="The backup state"
 // +kubebuilder:printcolumn:name="LastSyncedAt",type=string,JSONPath=`.status.lastSyncedAt`,description="The backup last synced time"
 

@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import (
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,26 +34,28 @@ type FakeSamlTokens struct {
 	Fake *FakeManagementV3
 }
 
-var samltokensResource = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "samltokens"}
+var samltokensResource = v3.SchemeGroupVersion.WithResource("samltokens")
 
-var samltokensKind = schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "SamlToken"}
+var samltokensKind = v3.SchemeGroupVersion.WithKind("SamlToken")
 
 // Get takes name of the samlToken, and returns the corresponding samlToken object, and an error if there is any.
 func (c *FakeSamlTokens) Get(ctx context.Context, name string, options v1.GetOptions) (result *v3.SamlToken, err error) {
+	emptyResult := &v3.SamlToken{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(samltokensResource, name), &v3.SamlToken{})
+		Invokes(testing.NewRootGetActionWithOptions(samltokensResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.SamlToken), err
 }
 
 // List takes label and field selectors, and returns the list of SamlTokens that match those selectors.
 func (c *FakeSamlTokens) List(ctx context.Context, opts v1.ListOptions) (result *v3.SamlTokenList, err error) {
+	emptyResult := &v3.SamlTokenList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(samltokensResource, samltokensKind, opts), &v3.SamlTokenList{})
+		Invokes(testing.NewRootListActionWithOptions(samltokensResource, samltokensKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -73,25 +74,27 @@ func (c *FakeSamlTokens) List(ctx context.Context, opts v1.ListOptions) (result 
 // Watch returns a watch.Interface that watches the requested samlTokens.
 func (c *FakeSamlTokens) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(samltokensResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(samltokensResource, opts))
 }
 
 // Create takes the representation of a samlToken and creates it.  Returns the server's representation of the samlToken, and an error, if there is any.
 func (c *FakeSamlTokens) Create(ctx context.Context, samlToken *v3.SamlToken, opts v1.CreateOptions) (result *v3.SamlToken, err error) {
+	emptyResult := &v3.SamlToken{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(samltokensResource, samlToken), &v3.SamlToken{})
+		Invokes(testing.NewRootCreateActionWithOptions(samltokensResource, samlToken, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.SamlToken), err
 }
 
 // Update takes the representation of a samlToken and updates it. Returns the server's representation of the samlToken, and an error, if there is any.
 func (c *FakeSamlTokens) Update(ctx context.Context, samlToken *v3.SamlToken, opts v1.UpdateOptions) (result *v3.SamlToken, err error) {
+	emptyResult := &v3.SamlToken{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(samltokensResource, samlToken), &v3.SamlToken{})
+		Invokes(testing.NewRootUpdateActionWithOptions(samltokensResource, samlToken, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.SamlToken), err
 }
@@ -105,7 +108,7 @@ func (c *FakeSamlTokens) Delete(ctx context.Context, name string, opts v1.Delete
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeSamlTokens) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(samltokensResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(samltokensResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v3.SamlTokenList{})
 	return err
@@ -113,10 +116,11 @@ func (c *FakeSamlTokens) DeleteCollection(ctx context.Context, opts v1.DeleteOpt
 
 // Patch applies the patch and returns the patched samlToken.
 func (c *FakeSamlTokens) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v3.SamlToken, err error) {
+	emptyResult := &v3.SamlToken{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(samltokensResource, name, pt, data, subresources...), &v3.SamlToken{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(samltokensResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.SamlToken), err
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,9 +19,10 @@ limitations under the License.
 package v1beta1
 
 import (
-	v1beta1 "github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
+	v1beta1 "github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 	"github.com/rancher/lasso/pkg/controller"
-	"github.com/rancher/wrangler/pkg/schemes"
+	"github.com/rancher/wrangler/v3/pkg/generic"
+	"github.com/rancher/wrangler/v3/pkg/schemes"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -32,7 +33,10 @@ func init() {
 type Interface interface {
 	ClusterFlow() ClusterFlowController
 	ClusterOutput() ClusterOutputController
+	Flow() FlowController
+	FluentbitAgent() FluentbitAgentController
 	Logging() LoggingController
+	Output() OutputController
 }
 
 func New(controllerFactory controller.SharedControllerFactory) Interface {
@@ -45,12 +49,26 @@ type version struct {
 	controllerFactory controller.SharedControllerFactory
 }
 
-func (c *version) ClusterFlow() ClusterFlowController {
-	return NewClusterFlowController(schema.GroupVersionKind{Group: "logging.banzaicloud.io", Version: "v1beta1", Kind: "ClusterFlow"}, "clusterflows", true, c.controllerFactory)
+func (v *version) ClusterFlow() ClusterFlowController {
+	return generic.NewController[*v1beta1.ClusterFlow, *v1beta1.ClusterFlowList](schema.GroupVersionKind{Group: "logging.banzaicloud.io", Version: "v1beta1", Kind: "ClusterFlow"}, "clusterflows", true, v.controllerFactory)
 }
-func (c *version) ClusterOutput() ClusterOutputController {
-	return NewClusterOutputController(schema.GroupVersionKind{Group: "logging.banzaicloud.io", Version: "v1beta1", Kind: "ClusterOutput"}, "clusteroutputs", true, c.controllerFactory)
+
+func (v *version) ClusterOutput() ClusterOutputController {
+	return generic.NewController[*v1beta1.ClusterOutput, *v1beta1.ClusterOutputList](schema.GroupVersionKind{Group: "logging.banzaicloud.io", Version: "v1beta1", Kind: "ClusterOutput"}, "clusteroutputs", true, v.controllerFactory)
 }
-func (c *version) Logging() LoggingController {
-	return NewLoggingController(schema.GroupVersionKind{Group: "logging.banzaicloud.io", Version: "v1beta1", Kind: "Logging"}, "loggings", false, c.controllerFactory)
+
+func (v *version) Flow() FlowController {
+	return generic.NewController[*v1beta1.Flow, *v1beta1.FlowList](schema.GroupVersionKind{Group: "logging.banzaicloud.io", Version: "v1beta1", Kind: "Flow"}, "flows", true, v.controllerFactory)
+}
+
+func (v *version) FluentbitAgent() FluentbitAgentController {
+	return generic.NewNonNamespacedController[*v1beta1.FluentbitAgent, *v1beta1.FluentbitAgentList](schema.GroupVersionKind{Group: "logging.banzaicloud.io", Version: "v1beta1", Kind: "FluentbitAgent"}, "fluentbitagents", v.controllerFactory)
+}
+
+func (v *version) Logging() LoggingController {
+	return generic.NewNonNamespacedController[*v1beta1.Logging, *v1beta1.LoggingList](schema.GroupVersionKind{Group: "logging.banzaicloud.io", Version: "v1beta1", Kind: "Logging"}, "loggings", v.controllerFactory)
+}
+
+func (v *version) Output() OutputController {
+	return generic.NewController[*v1beta1.Output, *v1beta1.OutputList](schema.GroupVersionKind{Group: "logging.banzaicloud.io", Version: "v1beta1", Kind: "Output"}, "outputs", true, v.controllerFactory)
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,10 +21,9 @@ package fake
 import (
 	"context"
 
-	v1beta1 "github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
+	v1beta1 "github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,26 +34,28 @@ type FakeClusterOutputs struct {
 	Fake *FakeLoggingV1beta1
 }
 
-var clusteroutputsResource = schema.GroupVersionResource{Group: "logging.banzaicloud.io", Version: "v1beta1", Resource: "clusteroutputs"}
+var clusteroutputsResource = v1beta1.GroupVersion.WithResource("clusteroutputs")
 
-var clusteroutputsKind = schema.GroupVersionKind{Group: "logging.banzaicloud.io", Version: "v1beta1", Kind: "ClusterOutput"}
+var clusteroutputsKind = v1beta1.GroupVersion.WithKind("ClusterOutput")
 
 // Get takes name of the clusterOutput, and returns the corresponding clusterOutput object, and an error if there is any.
 func (c *FakeClusterOutputs) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.ClusterOutput, err error) {
+	emptyResult := &v1beta1.ClusterOutput{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(clusteroutputsResource, name), &v1beta1.ClusterOutput{})
+		Invokes(testing.NewRootGetActionWithOptions(clusteroutputsResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1beta1.ClusterOutput), err
 }
 
 // List takes label and field selectors, and returns the list of ClusterOutputs that match those selectors.
 func (c *FakeClusterOutputs) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.ClusterOutputList, err error) {
+	emptyResult := &v1beta1.ClusterOutputList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(clusteroutputsResource, clusteroutputsKind, opts), &v1beta1.ClusterOutputList{})
+		Invokes(testing.NewRootListActionWithOptions(clusteroutputsResource, clusteroutputsKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -73,36 +74,39 @@ func (c *FakeClusterOutputs) List(ctx context.Context, opts v1.ListOptions) (res
 // Watch returns a watch.Interface that watches the requested clusterOutputs.
 func (c *FakeClusterOutputs) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(clusteroutputsResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(clusteroutputsResource, opts))
 }
 
 // Create takes the representation of a clusterOutput and creates it.  Returns the server's representation of the clusterOutput, and an error, if there is any.
 func (c *FakeClusterOutputs) Create(ctx context.Context, clusterOutput *v1beta1.ClusterOutput, opts v1.CreateOptions) (result *v1beta1.ClusterOutput, err error) {
+	emptyResult := &v1beta1.ClusterOutput{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(clusteroutputsResource, clusterOutput), &v1beta1.ClusterOutput{})
+		Invokes(testing.NewRootCreateActionWithOptions(clusteroutputsResource, clusterOutput, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1beta1.ClusterOutput), err
 }
 
 // Update takes the representation of a clusterOutput and updates it. Returns the server's representation of the clusterOutput, and an error, if there is any.
 func (c *FakeClusterOutputs) Update(ctx context.Context, clusterOutput *v1beta1.ClusterOutput, opts v1.UpdateOptions) (result *v1beta1.ClusterOutput, err error) {
+	emptyResult := &v1beta1.ClusterOutput{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(clusteroutputsResource, clusterOutput), &v1beta1.ClusterOutput{})
+		Invokes(testing.NewRootUpdateActionWithOptions(clusteroutputsResource, clusterOutput, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1beta1.ClusterOutput), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeClusterOutputs) UpdateStatus(ctx context.Context, clusterOutput *v1beta1.ClusterOutput, opts v1.UpdateOptions) (*v1beta1.ClusterOutput, error) {
+func (c *FakeClusterOutputs) UpdateStatus(ctx context.Context, clusterOutput *v1beta1.ClusterOutput, opts v1.UpdateOptions) (result *v1beta1.ClusterOutput, err error) {
+	emptyResult := &v1beta1.ClusterOutput{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(clusteroutputsResource, "status", clusterOutput), &v1beta1.ClusterOutput{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(clusteroutputsResource, "status", clusterOutput, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1beta1.ClusterOutput), err
 }
@@ -116,7 +120,7 @@ func (c *FakeClusterOutputs) Delete(ctx context.Context, name string, opts v1.De
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeClusterOutputs) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(clusteroutputsResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(clusteroutputsResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1beta1.ClusterOutputList{})
 	return err
@@ -124,10 +128,11 @@ func (c *FakeClusterOutputs) DeleteCollection(ctx context.Context, opts v1.Delet
 
 // Patch applies the patch and returns the patched clusterOutput.
 func (c *FakeClusterOutputs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.ClusterOutput, err error) {
+	emptyResult := &v1beta1.ClusterOutput{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(clusteroutputsResource, name, pt, data, subresources...), &v1beta1.ClusterOutput{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(clusteroutputsResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v1beta1.ClusterOutput), err
 }
