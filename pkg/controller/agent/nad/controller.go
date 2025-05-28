@@ -132,7 +132,7 @@ func (h Handler) existDuplicateNad(vlanIDStr, cn string) (bool, error) {
 
 func (h Handler) removeLocalArea(clusternetwork string, localArea *vlan.LocalArea) error {
 	//do not delete vlan id configured for mgmt-br from any user operations
-	if clusternetwork == utils.ManagementClusterNetworkName && localArea.Vid == uint16(h.mgmtVlan) {
+	if clusternetwork == utils.ManagementClusterNetworkName && localArea.Vid == uint16(h.mgmtVlan) { //nolint:gosec
 		return nil
 	}
 
@@ -201,7 +201,7 @@ func GetLocalArea(vlanIDStr, routeConf string) (*vlan.LocalArea, error) {
 	}
 
 	return &vlan.LocalArea{
-		Vid:  uint16(vlanID),
+		Vid:  uint16(vlanID), //nolint:gosec
 		Cidr: layer3NetworkConf.CIDR,
 	}, nil
 }

@@ -21,7 +21,8 @@ package v1beta1
 import (
 	v1beta1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/rancher/lasso/pkg/controller"
-	"github.com/rancher/wrangler/pkg/schemes"
+	"github.com/rancher/wrangler/v3/pkg/generic"
+	"github.com/rancher/wrangler/v3/pkg/schemes"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -46,15 +47,18 @@ type version struct {
 	controllerFactory controller.SharedControllerFactory
 }
 
-func (c *version) ClusterNetwork() ClusterNetworkController {
-	return NewClusterNetworkController(schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "ClusterNetwork"}, "clusternetworks", false, c.controllerFactory)
+func (v *version) ClusterNetwork() ClusterNetworkController {
+	return generic.NewNonNamespacedController[*v1beta1.ClusterNetwork, *v1beta1.ClusterNetworkList](schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "ClusterNetwork"}, "clusternetworks", v.controllerFactory)
 }
-func (c *version) LinkMonitor() LinkMonitorController {
-	return NewLinkMonitorController(schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "LinkMonitor"}, "linkmonitors", false, c.controllerFactory)
+
+func (v *version) LinkMonitor() LinkMonitorController {
+	return generic.NewNonNamespacedController[*v1beta1.LinkMonitor, *v1beta1.LinkMonitorList](schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "LinkMonitor"}, "linkmonitors", v.controllerFactory)
 }
-func (c *version) VlanConfig() VlanConfigController {
-	return NewVlanConfigController(schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "VlanConfig"}, "vlanconfigs", false, c.controllerFactory)
+
+func (v *version) VlanConfig() VlanConfigController {
+	return generic.NewNonNamespacedController[*v1beta1.VlanConfig, *v1beta1.VlanConfigList](schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "VlanConfig"}, "vlanconfigs", v.controllerFactory)
 }
-func (c *version) VlanStatus() VlanStatusController {
-	return NewVlanStatusController(schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "VlanStatus"}, "vlanstatuses", false, c.controllerFactory)
+
+func (v *version) VlanStatus() VlanStatusController {
+	return generic.NewNonNamespacedController[*v1beta1.VlanStatus, *v1beta1.VlanStatusList](schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "VlanStatus"}, "vlanstatuses", v.controllerFactory)
 }

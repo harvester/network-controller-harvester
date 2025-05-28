@@ -5,7 +5,6 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
-	"github.com/harvester/harvester/pkg/indexeres"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 )
@@ -31,12 +30,12 @@ func (v *VmiGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition, filterFlag
 	}
 
 	networkName := fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)
-	vmis, err := v.VmiCache.GetByIndex(indexeres.VMByNetworkIndex, networkName)
+	vmis, err := v.VmiCache.GetByIndex(VMByNetworkIndex, networkName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vmi via VMByNetworkIndex %v, error %w", networkName, err)
 	}
 
-	vmisTmp, err := v.VmiCache.GetByIndex(indexeres.VMByNetworkIndex, nad.Name)
+	vmisTmp, err := v.VmiCache.GetByIndex(VMByNetworkIndex, nad.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vmi via VMByNetworkIndex %v, error %w", nad.Name, err)
 	}

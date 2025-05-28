@@ -3,6 +3,7 @@ package fakeclients
 import (
 	"context"
 
+	"github.com/rancher/wrangler/v3/pkg/generic"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	networktype "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1"
-	networkctl "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 )
 
 type VlanConfigClient func() networktype.VlanConfigInterface
@@ -65,7 +65,7 @@ func (c VlanConfigCache) List(selector labels.Selector) ([]*v1beta1.VlanConfig, 
 	return result, err
 }
 
-func (c VlanConfigCache) AddIndexer(_ string, _ networkctl.VlanConfigIndexer) {
+func (c VlanConfigCache) AddIndexer(_ string, _ generic.Indexer[*v1beta1.VlanConfig]) {
 	panic("implement me")
 }
 

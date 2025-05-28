@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import (
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,26 +34,28 @@ type FakeCatalogs struct {
 	Fake *FakeManagementV3
 }
 
-var catalogsResource = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "catalogs"}
+var catalogsResource = v3.SchemeGroupVersion.WithResource("catalogs")
 
-var catalogsKind = schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "Catalog"}
+var catalogsKind = v3.SchemeGroupVersion.WithKind("Catalog")
 
 // Get takes name of the catalog, and returns the corresponding catalog object, and an error if there is any.
 func (c *FakeCatalogs) Get(ctx context.Context, name string, options v1.GetOptions) (result *v3.Catalog, err error) {
+	emptyResult := &v3.Catalog{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(catalogsResource, name), &v3.Catalog{})
+		Invokes(testing.NewRootGetActionWithOptions(catalogsResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.Catalog), err
 }
 
 // List takes label and field selectors, and returns the list of Catalogs that match those selectors.
 func (c *FakeCatalogs) List(ctx context.Context, opts v1.ListOptions) (result *v3.CatalogList, err error) {
+	emptyResult := &v3.CatalogList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(catalogsResource, catalogsKind, opts), &v3.CatalogList{})
+		Invokes(testing.NewRootListActionWithOptions(catalogsResource, catalogsKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -73,36 +74,39 @@ func (c *FakeCatalogs) List(ctx context.Context, opts v1.ListOptions) (result *v
 // Watch returns a watch.Interface that watches the requested catalogs.
 func (c *FakeCatalogs) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(catalogsResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(catalogsResource, opts))
 }
 
 // Create takes the representation of a catalog and creates it.  Returns the server's representation of the catalog, and an error, if there is any.
 func (c *FakeCatalogs) Create(ctx context.Context, catalog *v3.Catalog, opts v1.CreateOptions) (result *v3.Catalog, err error) {
+	emptyResult := &v3.Catalog{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(catalogsResource, catalog), &v3.Catalog{})
+		Invokes(testing.NewRootCreateActionWithOptions(catalogsResource, catalog, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.Catalog), err
 }
 
 // Update takes the representation of a catalog and updates it. Returns the server's representation of the catalog, and an error, if there is any.
 func (c *FakeCatalogs) Update(ctx context.Context, catalog *v3.Catalog, opts v1.UpdateOptions) (result *v3.Catalog, err error) {
+	emptyResult := &v3.Catalog{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(catalogsResource, catalog), &v3.Catalog{})
+		Invokes(testing.NewRootUpdateActionWithOptions(catalogsResource, catalog, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.Catalog), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeCatalogs) UpdateStatus(ctx context.Context, catalog *v3.Catalog, opts v1.UpdateOptions) (*v3.Catalog, error) {
+func (c *FakeCatalogs) UpdateStatus(ctx context.Context, catalog *v3.Catalog, opts v1.UpdateOptions) (result *v3.Catalog, err error) {
+	emptyResult := &v3.Catalog{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(catalogsResource, "status", catalog), &v3.Catalog{})
+		Invokes(testing.NewRootUpdateSubresourceActionWithOptions(catalogsResource, "status", catalog, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.Catalog), err
 }
@@ -116,7 +120,7 @@ func (c *FakeCatalogs) Delete(ctx context.Context, name string, opts v1.DeleteOp
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeCatalogs) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(catalogsResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(catalogsResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v3.CatalogList{})
 	return err
@@ -124,10 +128,11 @@ func (c *FakeCatalogs) DeleteCollection(ctx context.Context, opts v1.DeleteOptio
 
 // Patch applies the patch and returns the patched catalog.
 func (c *FakeCatalogs) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v3.Catalog, err error) {
+	emptyResult := &v3.Catalog{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(catalogsResource, name, pt, data, subresources...), &v3.Catalog{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(catalogsResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.Catalog), err
 }

@@ -5,9 +5,12 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
-	"github.com/harvester/harvester/pkg/indexeres"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+)
+
+const (
+	VMByNetworkIndex = "vm.harvesterhci.io/vm-by-network"
 )
 
 type VMGetter struct {
@@ -24,12 +27,12 @@ func (v *VMGetter) WhoUseNad(nad *nadv1.NetworkAttachmentDefinition) ([]*kubevir
 	// ref: https://github.com/kubevirt/client-go/blob/148fa0d1c7e83b7a56606a7ca92394ba6768c9ac/api/v1/schema.go#L1436-L1439
 
 	networkName := fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)
-	vms, err := v.vmCache.GetByIndex(indexeres.VMByNetworkIndex, networkName)
+	vms, err := v.vmCache.GetByIndex(VMByNetworkIndex, networkName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vm via VMByNetworkIndex %v, error %w", networkName, err)
 	}
 
-	vmsTmp, err := v.vmCache.GetByIndex(indexeres.VMByNetworkIndex, nad.Name)
+	vmsTmp, err := v.vmCache.GetByIndex(VMByNetworkIndex, nad.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get vm via VMByNetworkIndex %v, error %w", nad.Name, err)
 	}

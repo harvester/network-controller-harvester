@@ -3,17 +3,16 @@ package fakeclients
 import (
 	"context"
 
+	kubevirtv1 "github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/kubevirt.io/v1"
+	"github.com/rancher/wrangler/v3/pkg/generic"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
-
-	kubevirtv1 "github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/kubevirt.io/v1"
-	kubevirtctl "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
 	kubevirtv1api "kubevirt.io/api/core/v1"
 
-	"github.com/harvester/harvester/pkg/indexeres"
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 type VirtualMachineInstanceClient func(string) kubevirtv1.VirtualMachineInstanceInterface
@@ -71,15 +70,15 @@ func (c VirtualMachineInstanceCache) List(namespace string, selector labels.Sele
 }
 
 // support VMByNetworkIndex for test
-func (c VirtualMachineInstanceCache) AddIndexer(index string, _ kubevirtctl.VirtualMachineInstanceIndexer) {
-	if index != indexeres.VMByNetworkIndex {
+func (c VirtualMachineInstanceCache) AddIndexer(index string, _ generic.Indexer[*kubevirtv1api.VirtualMachineInstance]) {
+	if index != utils.VMByNetworkIndex {
 		panic("implement me")
 	}
 }
 
 // support VMByNetworkIndex for test
 func (c VirtualMachineInstanceCache) GetByIndex(index, key string) ([]*kubevirtv1api.VirtualMachineInstance, error) {
-	if index != indexeres.VMByNetworkIndex {
+	if index != utils.VMByNetworkIndex {
 		panic("implement me")
 	}
 

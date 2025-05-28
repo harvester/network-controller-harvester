@@ -20,7 +20,6 @@ package v1beta1
 
 import (
 	"net/http"
-
 	v1beta1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"

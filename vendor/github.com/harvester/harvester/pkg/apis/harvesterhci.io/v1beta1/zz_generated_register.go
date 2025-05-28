@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,6 +31,8 @@ var (
 	AddonResourceName                         = "addons"
 	KeyPairResourceName                       = "keypairs"
 	PreferenceResourceName                    = "preferences"
+	ResourceQuotaResourceName                 = "resourcequotas"
+	ScheduleVMBackupResourceName              = "schedulevmbackups"
 	SettingResourceName                       = "settings"
 	SupportBundleResourceName                 = "supportbundles"
 	UpgradeResourceName                       = "upgrades"
@@ -38,6 +40,7 @@ var (
 	VersionResourceName                       = "versions"
 	VirtualMachineBackupResourceName          = "virtualmachinebackups"
 	VirtualMachineImageResourceName           = "virtualmachineimages"
+	VirtualMachineImageDownloaderResourceName = "virtualmachineimagedownloaders"
 	VirtualMachineRestoreResourceName         = "virtualmachinerestores"
 	VirtualMachineTemplateResourceName        = "virtualmachinetemplates"
 	VirtualMachineTemplateVersionResourceName = "virtualmachinetemplateversions"
@@ -70,6 +73,10 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&KeyPairList{},
 		&Preference{},
 		&PreferenceList{},
+		&ResourceQuota{},
+		&ResourceQuotaList{},
+		&ScheduleVMBackup{},
+		&ScheduleVMBackupList{},
 		&Setting{},
 		&SettingList{},
 		&SupportBundle{},
@@ -84,6 +91,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&VirtualMachineBackupList{},
 		&VirtualMachineImage{},
 		&VirtualMachineImageList{},
+		&VirtualMachineImageDownloader{},
+		&VirtualMachineImageDownloaderList{},
 		&VirtualMachineRestore{},
 		&VirtualMachineRestoreList{},
 		&VirtualMachineTemplate{},

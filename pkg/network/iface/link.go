@@ -70,7 +70,7 @@ func (l *Link) ListBridgeVlan() ([]uint16, error) {
 		return nil, err
 	}
 
-	vlanInfo, ok := m[int32(l.Attrs().Index)]
+	vlanInfo, ok := m[int32(l.Attrs().Index)] //nolint:gosec
 	if !ok {
 		return nil, nil
 	}

@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,4 +22,10 @@ type ClusterFlowExpansion interface{}
 
 type ClusterOutputExpansion interface{}
 
+type FlowExpansion interface{}
+
+type FluentbitAgentExpansion interface{}
+
 type LoggingExpansion interface{}
+
+type OutputExpansion interface{}

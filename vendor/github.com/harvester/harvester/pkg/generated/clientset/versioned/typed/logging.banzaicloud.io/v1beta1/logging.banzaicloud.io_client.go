@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@ package v1beta1
 import (
 	"net/http"
 
-	v1beta1 "github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
 	"github.com/harvester/harvester/pkg/generated/clientset/versioned/scheme"
+	v1beta1 "github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 	rest "k8s.io/client-go/rest"
 )
 
@@ -30,7 +30,10 @@ type LoggingV1beta1Interface interface {
 	RESTClient() rest.Interface
 	ClusterFlowsGetter
 	ClusterOutputsGetter
+	FlowsGetter
+	FluentbitAgentsGetter
 	LoggingsGetter
+	OutputsGetter
 }
 
 // LoggingV1beta1Client is used to interact with features provided by the logging.banzaicloud.io group.
@@ -46,8 +49,20 @@ func (c *LoggingV1beta1Client) ClusterOutputs() ClusterOutputInterface {
 	return newClusterOutputs(c)
 }
 
+func (c *LoggingV1beta1Client) Flows() FlowInterface {
+	return newFlows(c)
+}
+
+func (c *LoggingV1beta1Client) FluentbitAgents() FluentbitAgentInterface {
+	return newFluentbitAgents(c)
+}
+
 func (c *LoggingV1beta1Client) Loggings() LoggingInterface {
 	return newLoggings(c)
+}
+
+func (c *LoggingV1beta1Client) Outputs() OutputInterface {
+	return newOutputs(c)
 }
 
 // NewForConfig creates a new LoggingV1beta1Client for the given config.

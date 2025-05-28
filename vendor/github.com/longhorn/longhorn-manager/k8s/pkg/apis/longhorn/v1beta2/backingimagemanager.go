@@ -12,6 +12,25 @@ const (
 	BackingImageManagerStateUnknown  = BackingImageManagerState("unknown")
 )
 
+type BackingImageV2CopyInfo struct {
+	// +optional
+	Name string `json:"name"`
+	// +optional
+	UUID string `json:"uuid"`
+	// +optional
+	DiskUUID string `json:"diskUUID"`
+	// +optional
+	Size int64 `json:"size"`
+	// +optional
+	Progress int `json:"progress"`
+	// +optional
+	State BackingImageState `json:"state"`
+	// +optional
+	CurrentChecksum string `json:"currentChecksum"`
+	// +optional
+	Message string `json:"message"`
+}
+
 type BackingImageFileInfo struct {
 	// +optional
 	Name string `json:"name"`
@@ -19,6 +38,10 @@ type BackingImageFileInfo struct {
 	UUID string `json:"uuid"`
 	// +optional
 	Size int64 `json:"size"`
+	// +optional
+	VirtualSize int64 `json:"virtualSize"`
+	// +optional
+	RealSize int64 `json:"realSize"`
 	// +optional
 	State BackingImageState `json:"state"`
 	// +optional
@@ -31,15 +54,6 @@ type BackingImageFileInfo struct {
 	SenderManagerAddress string `json:"senderManagerAddress"`
 	// +optional
 	Progress int `json:"progress"`
-	// Deprecated: This field is useless now. The manager of backing image files doesn't care if a file is downloaded and how.
-	// +optional
-	URL string `json:"url"`
-	// Deprecated: This field is useless.
-	// +optional
-	Directory string `json:"directory"`
-	// Deprecated: This field is renamed to `Progress`.
-	// +optional
-	DownloadProgress int `json:"downloadProgress"`
 }
 
 // BackingImageManagerSpec defines the desired state of the Longhorn backing image manager

@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import (
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,26 +34,28 @@ type FakeUserAttributes struct {
 	Fake *FakeManagementV3
 }
 
-var userattributesResource = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "userattributes"}
+var userattributesResource = v3.SchemeGroupVersion.WithResource("userattributes")
 
-var userattributesKind = schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "UserAttribute"}
+var userattributesKind = v3.SchemeGroupVersion.WithKind("UserAttribute")
 
 // Get takes name of the userAttribute, and returns the corresponding userAttribute object, and an error if there is any.
 func (c *FakeUserAttributes) Get(ctx context.Context, name string, options v1.GetOptions) (result *v3.UserAttribute, err error) {
+	emptyResult := &v3.UserAttribute{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(userattributesResource, name), &v3.UserAttribute{})
+		Invokes(testing.NewRootGetActionWithOptions(userattributesResource, name, options), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.UserAttribute), err
 }
 
 // List takes label and field selectors, and returns the list of UserAttributes that match those selectors.
 func (c *FakeUserAttributes) List(ctx context.Context, opts v1.ListOptions) (result *v3.UserAttributeList, err error) {
+	emptyResult := &v3.UserAttributeList{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(userattributesResource, userattributesKind, opts), &v3.UserAttributeList{})
+		Invokes(testing.NewRootListActionWithOptions(userattributesResource, userattributesKind, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 
 	label, _, _ := testing.ExtractFromListOptions(opts)
@@ -73,25 +74,27 @@ func (c *FakeUserAttributes) List(ctx context.Context, opts v1.ListOptions) (res
 // Watch returns a watch.Interface that watches the requested userAttributes.
 func (c *FakeUserAttributes) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(userattributesResource, opts))
+		InvokesWatch(testing.NewRootWatchActionWithOptions(userattributesResource, opts))
 }
 
 // Create takes the representation of a userAttribute and creates it.  Returns the server's representation of the userAttribute, and an error, if there is any.
 func (c *FakeUserAttributes) Create(ctx context.Context, userAttribute *v3.UserAttribute, opts v1.CreateOptions) (result *v3.UserAttribute, err error) {
+	emptyResult := &v3.UserAttribute{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(userattributesResource, userAttribute), &v3.UserAttribute{})
+		Invokes(testing.NewRootCreateActionWithOptions(userattributesResource, userAttribute, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.UserAttribute), err
 }
 
 // Update takes the representation of a userAttribute and updates it. Returns the server's representation of the userAttribute, and an error, if there is any.
 func (c *FakeUserAttributes) Update(ctx context.Context, userAttribute *v3.UserAttribute, opts v1.UpdateOptions) (result *v3.UserAttribute, err error) {
+	emptyResult := &v3.UserAttribute{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(userattributesResource, userAttribute), &v3.UserAttribute{})
+		Invokes(testing.NewRootUpdateActionWithOptions(userattributesResource, userAttribute, opts), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.UserAttribute), err
 }
@@ -105,7 +108,7 @@ func (c *FakeUserAttributes) Delete(ctx context.Context, name string, opts v1.De
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeUserAttributes) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(userattributesResource, listOpts)
+	action := testing.NewRootDeleteCollectionActionWithOptions(userattributesResource, opts, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v3.UserAttributeList{})
 	return err
@@ -113,10 +116,11 @@ func (c *FakeUserAttributes) DeleteCollection(ctx context.Context, opts v1.Delet
 
 // Patch applies the patch and returns the patched userAttribute.
 func (c *FakeUserAttributes) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v3.UserAttribute, err error) {
+	emptyResult := &v3.UserAttribute{}
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(userattributesResource, name, pt, data, subresources...), &v3.UserAttribute{})
+		Invokes(testing.NewRootPatchSubresourceActionWithOptions(userattributesResource, name, pt, data, opts, subresources...), emptyResult)
 	if obj == nil {
-		return nil, err
+		return emptyResult, err
 	}
 	return obj.(*v3.UserAttribute), err
 }

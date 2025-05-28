@@ -2,12 +2,17 @@ package v1beta2
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// +kubebuilder:validation:Enum=snapshot;backup
+// +kubebuilder:validation:Enum=snapshot;snapshot-force-create;snapshot-cleanup;snapshot-delete;backup;backup-force-create;filesystem-trim
 type RecurringJobType string
 
 const (
-	RecurringJobTypeSnapshot = RecurringJobType("snapshot")
-	RecurringJobTypeBackup   = RecurringJobType("backup")
+	RecurringJobTypeSnapshot            = RecurringJobType("snapshot")              // periodically create snapshots except for old snapshots cleanup failed before creating new snapshots
+	RecurringJobTypeSnapshotForceCreate = RecurringJobType("snapshot-force-create") // periodically create snapshots even if old snapshots cleanup failed
+	RecurringJobTypeSnapshotCleanup     = RecurringJobType("snapshot-cleanup")      // periodically purge removable snapshots and system snapshots
+	RecurringJobTypeSnapshotDelete      = RecurringJobType("snapshot-delete")       // periodically remove and purge all kinds of snapshots that exceed the retention count
+	RecurringJobTypeBackup              = RecurringJobType("backup")                // periodically create snapshots then do backups
+	RecurringJobTypeBackupForceCreate   = RecurringJobType("backup-force-create")   // periodically create snapshots then do backups even if old snapshots cleanup failed
+	RecurringJobTypeFilesystemTrim      = RecurringJobType("filesystem-trim")       // periodically trim filesystem to reclaim disk space
 
 	RecurringJobGroupDefault = "default"
 )
@@ -15,6 +20,13 @@ const (
 type VolumeRecurringJob struct {
 	Name    string `json:"name"`
 	IsGroup bool   `json:"isGroup"`
+}
+
+// VolumeRecurringJobInfo defines the Longhorn recurring job information stored in the backup volume configuration
+type VolumeRecurringJobInfo struct {
+	JobSpec   RecurringJobSpec `json:"jobSpec"`
+	FromGroup []string         `json:"fromGroup,omitempty"`
+	FromJob   bool             `json:"fromJob"`
 }
 
 // RecurringJobSpec defines the desired state of the Longhorn recurring job
@@ -25,8 +37,8 @@ type RecurringJobSpec struct {
 	// The recurring job group.
 	// +optional
 	Groups []string `json:"groups,omitempty"`
-	// The recurring job type.
-	// Can be "snapshot" or "backup".
+	// The recurring job task.
+	// Can be "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup", "backup-force-create" or "filesystem-trim"
 	// +optional
 	Task RecurringJobType `json:"task"`
 	// The cron setting.
@@ -41,6 +53,10 @@ type RecurringJobSpec struct {
 	// The label of the snapshot/backup.
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
+	// The parameters of the snapshot/backup.
+	// Support parameters: "full-backup-interval".
+	// +optional
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // RecurringJobStatus defines the observed state of the Longhorn recurring job
@@ -48,6 +64,9 @@ type RecurringJobStatus struct {
 	// The owner ID which is responsible to reconcile this recurring job CR.
 	// +optional
 	OwnerID string `json:"ownerID"`
+	// The number of jobs that have been triggered.
+	// +optional
+	ExecutionCount int `json:"executionCount"`
 }
 
 // +genclient
@@ -56,7 +75,7 @@ type RecurringJobStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="Groups",type=string,JSONPath=`.spec.groups`,description="Sets groupings to the jobs. When set to \"default\" group will be added to the volume label when no other job label exist in volume"
-// +kubebuilder:printcolumn:name="Task",type=string,JSONPath=`.spec.task`,description="Should be one of \"backup\" or \"snapshot\""
+// +kubebuilder:printcolumn:name="Task",type=string,JSONPath=`.spec.task`,description="Should be one of \"snapshot\", \"snapshot-force-create\", \"snapshot-cleanup\", \"snapshot-delete\", \"backup\", \"backup-force-create\" or \"filesystem-trim\""
 // +kubebuilder:printcolumn:name="Cron",type=string,JSONPath=`.spec.cron`,description="The cron expression represents recurring job scheduling"
 // +kubebuilder:printcolumn:name="Retain",type=integer,JSONPath=`.spec.retain`,description="The number of snapshots/backups to keep for the volume"
 // +kubebuilder:printcolumn:name="Concurrency",type=integer,JSONPath=`.spec.concurrency`,description="The concurrent job to run by each cron job"

@@ -20,262 +20,54 @@ package v1beta1
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	v1beta1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
-	"github.com/rancher/lasso/pkg/client"
-	"github.com/rancher/lasso/pkg/controller"
-	"github.com/rancher/wrangler/pkg/apply"
-	"github.com/rancher/wrangler/pkg/condition"
-	"github.com/rancher/wrangler/pkg/generic"
-	"github.com/rancher/wrangler/pkg/kv"
+	"github.com/rancher/wrangler/v3/pkg/apply"
+	"github.com/rancher/wrangler/v3/pkg/condition"
+	"github.com/rancher/wrangler/v3/pkg/generic"
+	"github.com/rancher/wrangler/v3/pkg/kv"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/tools/cache"
 )
 
-type LinkMonitorHandler func(string, *v1beta1.LinkMonitor) (*v1beta1.LinkMonitor, error)
-
+// LinkMonitorController interface for managing LinkMonitor resources.
 type LinkMonitorController interface {
-	generic.ControllerMeta
-	LinkMonitorClient
-
-	OnChange(ctx context.Context, name string, sync LinkMonitorHandler)
-	OnRemove(ctx context.Context, name string, sync LinkMonitorHandler)
-	Enqueue(name string)
-	EnqueueAfter(name string, duration time.Duration)
-
-	Cache() LinkMonitorCache
+	generic.NonNamespacedControllerInterface[*v1beta1.LinkMonitor, *v1beta1.LinkMonitorList]
 }
 
+// LinkMonitorClient interface for managing LinkMonitor resources in Kubernetes.
 type LinkMonitorClient interface {
-	Create(*v1beta1.LinkMonitor) (*v1beta1.LinkMonitor, error)
-	Update(*v1beta1.LinkMonitor) (*v1beta1.LinkMonitor, error)
-	UpdateStatus(*v1beta1.LinkMonitor) (*v1beta1.LinkMonitor, error)
-	Delete(name string, options *metav1.DeleteOptions) error
-	Get(name string, options metav1.GetOptions) (*v1beta1.LinkMonitor, error)
-	List(opts metav1.ListOptions) (*v1beta1.LinkMonitorList, error)
-	Watch(opts metav1.ListOptions) (watch.Interface, error)
-	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.LinkMonitor, err error)
+	generic.NonNamespacedClientInterface[*v1beta1.LinkMonitor, *v1beta1.LinkMonitorList]
 }
 
+// LinkMonitorCache interface for retrieving LinkMonitor resources in memory.
 type LinkMonitorCache interface {
-	Get(name string) (*v1beta1.LinkMonitor, error)
-	List(selector labels.Selector) ([]*v1beta1.LinkMonitor, error)
-
-	AddIndexer(indexName string, indexer LinkMonitorIndexer)
-	GetByIndex(indexName, key string) ([]*v1beta1.LinkMonitor, error)
+	generic.NonNamespacedCacheInterface[*v1beta1.LinkMonitor]
 }
 
-type LinkMonitorIndexer func(obj *v1beta1.LinkMonitor) ([]string, error)
-
-type linkMonitorController struct {
-	controller    controller.SharedController
-	client        *client.Client
-	gvk           schema.GroupVersionKind
-	groupResource schema.GroupResource
-}
-
-func NewLinkMonitorController(gvk schema.GroupVersionKind, resource string, namespaced bool, controller controller.SharedControllerFactory) LinkMonitorController {
-	c := controller.ForResourceKind(gvk.GroupVersion().WithResource(resource), gvk.Kind, namespaced)
-	return &linkMonitorController{
-		controller: c,
-		client:     c.Client(),
-		gvk:        gvk,
-		groupResource: schema.GroupResource{
-			Group:    gvk.Group,
-			Resource: resource,
-		},
-	}
-}
-
-func FromLinkMonitorHandlerToHandler(sync LinkMonitorHandler) generic.Handler {
-	return func(key string, obj runtime.Object) (ret runtime.Object, err error) {
-		var v *v1beta1.LinkMonitor
-		if obj == nil {
-			v, err = sync(key, nil)
-		} else {
-			v, err = sync(key, obj.(*v1beta1.LinkMonitor))
-		}
-		if v == nil {
-			return nil, err
-		}
-		return v, err
-	}
-}
-
-func (c *linkMonitorController) Updater() generic.Updater {
-	return func(obj runtime.Object) (runtime.Object, error) {
-		newObj, err := c.Update(obj.(*v1beta1.LinkMonitor))
-		if newObj == nil {
-			return nil, err
-		}
-		return newObj, err
-	}
-}
-
-func UpdateLinkMonitorDeepCopyOnChange(client LinkMonitorClient, obj *v1beta1.LinkMonitor, handler func(obj *v1beta1.LinkMonitor) (*v1beta1.LinkMonitor, error)) (*v1beta1.LinkMonitor, error) {
-	if obj == nil {
-		return obj, nil
-	}
-
-	copyObj := obj.DeepCopy()
-	newObj, err := handler(copyObj)
-	if newObj != nil {
-		copyObj = newObj
-	}
-	if obj.ResourceVersion == copyObj.ResourceVersion && !equality.Semantic.DeepEqual(obj, copyObj) {
-		return client.Update(copyObj)
-	}
-
-	return copyObj, err
-}
-
-func (c *linkMonitorController) AddGenericHandler(ctx context.Context, name string, handler generic.Handler) {
-	c.controller.RegisterHandler(ctx, name, controller.SharedControllerHandlerFunc(handler))
-}
-
-func (c *linkMonitorController) AddGenericRemoveHandler(ctx context.Context, name string, handler generic.Handler) {
-	c.AddGenericHandler(ctx, name, generic.NewRemoveHandler(name, c.Updater(), handler))
-}
-
-func (c *linkMonitorController) OnChange(ctx context.Context, name string, sync LinkMonitorHandler) {
-	c.AddGenericHandler(ctx, name, FromLinkMonitorHandlerToHandler(sync))
-}
-
-func (c *linkMonitorController) OnRemove(ctx context.Context, name string, sync LinkMonitorHandler) {
-	c.AddGenericHandler(ctx, name, generic.NewRemoveHandler(name, c.Updater(), FromLinkMonitorHandlerToHandler(sync)))
-}
-
-func (c *linkMonitorController) Enqueue(name string) {
-	c.controller.Enqueue("", name)
-}
-
-func (c *linkMonitorController) EnqueueAfter(name string, duration time.Duration) {
-	c.controller.EnqueueAfter("", name, duration)
-}
-
-func (c *linkMonitorController) Informer() cache.SharedIndexInformer {
-	return c.controller.Informer()
-}
-
-func (c *linkMonitorController) GroupVersionKind() schema.GroupVersionKind {
-	return c.gvk
-}
-
-func (c *linkMonitorController) Cache() LinkMonitorCache {
-	return &linkMonitorCache{
-		indexer:  c.Informer().GetIndexer(),
-		resource: c.groupResource,
-	}
-}
-
-func (c *linkMonitorController) Create(obj *v1beta1.LinkMonitor) (*v1beta1.LinkMonitor, error) {
-	result := &v1beta1.LinkMonitor{}
-	return result, c.client.Create(context.TODO(), "", obj, result, metav1.CreateOptions{})
-}
-
-func (c *linkMonitorController) Update(obj *v1beta1.LinkMonitor) (*v1beta1.LinkMonitor, error) {
-	result := &v1beta1.LinkMonitor{}
-	return result, c.client.Update(context.TODO(), "", obj, result, metav1.UpdateOptions{})
-}
-
-func (c *linkMonitorController) UpdateStatus(obj *v1beta1.LinkMonitor) (*v1beta1.LinkMonitor, error) {
-	result := &v1beta1.LinkMonitor{}
-	return result, c.client.UpdateStatus(context.TODO(), "", obj, result, metav1.UpdateOptions{})
-}
-
-func (c *linkMonitorController) Delete(name string, options *metav1.DeleteOptions) error {
-	if options == nil {
-		options = &metav1.DeleteOptions{}
-	}
-	return c.client.Delete(context.TODO(), "", name, *options)
-}
-
-func (c *linkMonitorController) Get(name string, options metav1.GetOptions) (*v1beta1.LinkMonitor, error) {
-	result := &v1beta1.LinkMonitor{}
-	return result, c.client.Get(context.TODO(), "", name, result, options)
-}
-
-func (c *linkMonitorController) List(opts metav1.ListOptions) (*v1beta1.LinkMonitorList, error) {
-	result := &v1beta1.LinkMonitorList{}
-	return result, c.client.List(context.TODO(), "", result, opts)
-}
-
-func (c *linkMonitorController) Watch(opts metav1.ListOptions) (watch.Interface, error) {
-	return c.client.Watch(context.TODO(), "", opts)
-}
-
-func (c *linkMonitorController) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (*v1beta1.LinkMonitor, error) {
-	result := &v1beta1.LinkMonitor{}
-	return result, c.client.Patch(context.TODO(), "", name, pt, data, result, metav1.PatchOptions{}, subresources...)
-}
-
-type linkMonitorCache struct {
-	indexer  cache.Indexer
-	resource schema.GroupResource
-}
-
-func (c *linkMonitorCache) Get(name string) (*v1beta1.LinkMonitor, error) {
-	obj, exists, err := c.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(c.resource, name)
-	}
-	return obj.(*v1beta1.LinkMonitor), nil
-}
-
-func (c *linkMonitorCache) List(selector labels.Selector) (ret []*v1beta1.LinkMonitor, err error) {
-
-	err = cache.ListAll(c.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1beta1.LinkMonitor))
-	})
-
-	return ret, err
-}
-
-func (c *linkMonitorCache) AddIndexer(indexName string, indexer LinkMonitorIndexer) {
-	utilruntime.Must(c.indexer.AddIndexers(map[string]cache.IndexFunc{
-		indexName: func(obj interface{}) (strings []string, e error) {
-			return indexer(obj.(*v1beta1.LinkMonitor))
-		},
-	}))
-}
-
-func (c *linkMonitorCache) GetByIndex(indexName, key string) (result []*v1beta1.LinkMonitor, err error) {
-	objs, err := c.indexer.ByIndex(indexName, key)
-	if err != nil {
-		return nil, err
-	}
-	result = make([]*v1beta1.LinkMonitor, 0, len(objs))
-	for _, obj := range objs {
-		result = append(result, obj.(*v1beta1.LinkMonitor))
-	}
-	return result, nil
-}
-
+// LinkMonitorStatusHandler is executed for every added or modified LinkMonitor. Should return the new status to be updated
 type LinkMonitorStatusHandler func(obj *v1beta1.LinkMonitor, status v1beta1.LinkMonitorStatus) (v1beta1.LinkMonitorStatus, error)
 
+// LinkMonitorGeneratingHandler is the top-level handler that is executed for every LinkMonitor event. It extends LinkMonitorStatusHandler by a returning a slice of child objects to be passed to apply.Apply
 type LinkMonitorGeneratingHandler func(obj *v1beta1.LinkMonitor, status v1beta1.LinkMonitorStatus) ([]runtime.Object, v1beta1.LinkMonitorStatus, error)
 
+// RegisterLinkMonitorStatusHandler configures a LinkMonitorController to execute a LinkMonitorStatusHandler for every events observed.
+// If a non-empty condition is provided, it will be updated in the status conditions for every handler execution
 func RegisterLinkMonitorStatusHandler(ctx context.Context, controller LinkMonitorController, condition condition.Cond, name string, handler LinkMonitorStatusHandler) {
 	statusHandler := &linkMonitorStatusHandler{
 		client:    controller,
 		condition: condition,
 		handler:   handler,
 	}
-	controller.AddGenericHandler(ctx, name, FromLinkMonitorHandlerToHandler(statusHandler.sync))
+	controller.AddGenericHandler(ctx, name, generic.FromObjectHandlerToHandler(statusHandler.sync))
 }
 
+// RegisterLinkMonitorGeneratingHandler configures a LinkMonitorController to execute a LinkMonitorGeneratingHandler for every events observed, passing the returned objects to the provided apply.Apply.
+// If a non-empty condition is provided, it will be updated in the status conditions for every handler execution
 func RegisterLinkMonitorGeneratingHandler(ctx context.Context, controller LinkMonitorController, apply apply.Apply,
 	condition condition.Cond, name string, handler LinkMonitorGeneratingHandler, opts *generic.GeneratingHandlerOptions) {
 	statusHandler := &linkMonitorGeneratingHandler{
@@ -297,6 +89,7 @@ type linkMonitorStatusHandler struct {
 	handler   LinkMonitorStatusHandler
 }
 
+// sync is executed on every resource addition or modification. Executes the configured handlers and sends the updated status to the Kubernetes API
 func (a *linkMonitorStatusHandler) sync(key string, obj *v1beta1.LinkMonitor) (*v1beta1.LinkMonitor, error) {
 	if obj == nil {
 		return obj, nil
@@ -342,8 +135,10 @@ type linkMonitorGeneratingHandler struct {
 	opts  generic.GeneratingHandlerOptions
 	gvk   schema.GroupVersionKind
 	name  string
+	seen  sync.Map
 }
 
+// Remove handles the observed deletion of a resource, cascade deleting every associated resource previously applied
 func (a *linkMonitorGeneratingHandler) Remove(key string, obj *v1beta1.LinkMonitor) (*v1beta1.LinkMonitor, error) {
 	if obj != nil {
 		return obj, nil
@@ -353,12 +148,17 @@ func (a *linkMonitorGeneratingHandler) Remove(key string, obj *v1beta1.LinkMonit
 	obj.Namespace, obj.Name = kv.RSplit(key, "/")
 	obj.SetGroupVersionKind(a.gvk)
 
+	if a.opts.UniqueApplyForResourceVersion {
+		a.seen.Delete(key)
+	}
+
 	return nil, generic.ConfigureApplyForObject(a.apply, obj, &a.opts).
 		WithOwner(obj).
 		WithSetID(a.name).
 		ApplyObjects()
 }
 
+// Handle executes the configured LinkMonitorGeneratingHandler and pass the resulting objects to apply.Apply, finally returning the new status of the resource
 func (a *linkMonitorGeneratingHandler) Handle(obj *v1beta1.LinkMonitor, status v1beta1.LinkMonitorStatus) (v1beta1.LinkMonitorStatus, error) {
 	if !obj.DeletionTimestamp.IsZero() {
 		return status, nil
@@ -368,9 +168,41 @@ func (a *linkMonitorGeneratingHandler) Handle(obj *v1beta1.LinkMonitor, status v
 	if err != nil {
 		return newStatus, err
 	}
+	if !a.isNewResourceVersion(obj) {
+		return newStatus, nil
+	}
 
-	return newStatus, generic.ConfigureApplyForObject(a.apply, obj, &a.opts).
+	err = generic.ConfigureApplyForObject(a.apply, obj, &a.opts).
 		WithOwner(obj).
 		WithSetID(a.name).
 		ApplyObjects(objs...)
+	if err != nil {
+		return newStatus, err
+	}
+	a.storeResourceVersion(obj)
+	return newStatus, nil
+}
+
+// isNewResourceVersion detects if a specific resource version was already successfully processed.
+// Only used if UniqueApplyForResourceVersion is set in generic.GeneratingHandlerOptions
+func (a *linkMonitorGeneratingHandler) isNewResourceVersion(obj *v1beta1.LinkMonitor) bool {
+	if !a.opts.UniqueApplyForResourceVersion {
+		return true
+	}
+
+	// Apply once per resource version
+	key := obj.Namespace + "/" + obj.Name
+	previous, ok := a.seen.Load(key)
+	return !ok || previous != obj.ResourceVersion
+}
+
+// storeResourceVersion keeps track of the latest resource version of an object for which Apply was executed
+// Only used if UniqueApplyForResourceVersion is set in generic.GeneratingHandlerOptions
+func (a *linkMonitorGeneratingHandler) storeResourceVersion(obj *v1beta1.LinkMonitor) {
+	if !a.opts.UniqueApplyForResourceVersion {
+		return
+	}
+
+	key := obj.Namespace + "/" + obj.Name
+	a.seen.Store(key, obj.ResourceVersion)
 }

@@ -20,6 +20,8 @@ package fake
 
 import (
 	clientset "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned"
+	kubeovnv1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/kubeovn.io/v1"
+	fakekubeovnv1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/kubeovn.io/v1/fake"
 	networkv1beta1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1"
 	fakenetworkv1beta1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -31,8 +33,12 @@ import (
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
 // It's backed by a very simple object tracker that processes creates, updates and deletions as-is,
-// without applying any validations and/or defaults. It shouldn't be considered a replacement
+// without applying any field management, validations and/or defaults. It shouldn't be considered a replacement
 // for a real clientset and is mostly useful in simple unit tests.
+//
+// DEPRECATED: NewClientset replaces this with support for field management, which significantly improves
+// server side apply testing. NewClientset is only available when apply configurations are generated (e.g.
+// via --with-applyconfig).
 func NewSimpleClientset(objects ...runtime.Object) *Clientset {
 	o := testing.NewObjectTracker(scheme, codecs.UniversalDecoder())
 	for _, obj := range objects {
@@ -78,6 +84,11 @@ var (
 	_ clientset.Interface = &Clientset{}
 	_ testing.FakeClient  = &Clientset{}
 )
+
+// KubeovnV1 retrieves the KubeovnV1Client
+func (c *Clientset) KubeovnV1() kubeovnv1.KubeovnV1Interface {
+	return &fakekubeovnv1.FakeKubeovnV1{Fake: &c.Fake}
+}
 
 // NetworkV1beta1 retrieves the NetworkV1beta1Client
 func (c *Clientset) NetworkV1beta1() networkv1beta1.NetworkV1beta1Interface {
