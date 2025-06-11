@@ -20,11 +20,16 @@ import (
 )
 
 const (
-	testCnName    = "test-cn"
-	testNadConfig = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
-	testNadName   = "net1-vlan"
-	testVMName    = "vm1"
-	testNamespace = "test"
+	testCnName            = "test-cn"
+	testNadConfig         = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
+	testNadName           = "net1-vlan"
+	testVMName            = "vm1"
+	testNamespace         = "test"
+	testKubeOVNNadName    = "vswitch1"
+	testKubeOVNNamespace  = "default"
+	testKubeOVNNadConfig  = "{\"cniVersion\":\"0.3.1\",\"name\":\"vswitch1\",\"type\":\"kube-ovn\",\"server_socket\":\"/run/openvswitch/kube-ovn-daemon.sock\", \"provider\": \"vswitch1.default.ovn\"}"
+	testKubeOVNNadConfig1 = "{\"cniVersion\":\"0.3.1\",\"name\":\"vswitch1\",\"type\":\"kube-ovn\",\"server_socket\":\"/run/openvswitch/kube-ovn-daemon.sock\"}"
+	testKubeOVNNadConfig2 = "{\"cniVersion\":\"0.3.1\",\"name\":\"vswitch1\",\"type\":\"kube-ovn\",\"server_socket\":\"/run/openvswitch/kube-ovn-daemon.sock\", \"provider\": \"vswitch7.default.ovn\"}"
 )
 
 func TestCreateNAD(t *testing.T) {
@@ -274,6 +279,48 @@ func TestCreateNAD(t *testing.T) {
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
 					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"suffix-br-\":\"a\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "valid NAD of type kube-ovn can be created",
+			returnErr: false,
+			errKey:    "",
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testKubeOVNNadName,
+					Namespace: testKubeOVNNamespace,
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testKubeOVNNadConfig,
+				},
+			},
+		},
+		{
+			name:      "empty provider name type kube-ovn returns error",
+			returnErr: true,
+			errKey:    "provider is empty",
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testKubeOVNNadName,
+					Namespace: testKubeOVNNamespace,
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testKubeOVNNadConfig1,
+				},
+			},
+		},
+		{
+			name:      "invalid provider name type kube-ovn returns error",
+			returnErr: true,
+			errKey:    "invalid provider name",
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testKubeOVNNadName,
+					Namespace: testKubeOVNNamespace,
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testKubeOVNNadConfig2,
 				},
 			},
 		},

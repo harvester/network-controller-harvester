@@ -17,6 +17,8 @@ import (
 	harvesterutil "github.com/harvester/harvester/pkg/util"
 )
 
+const CNITypeKubeOVN = "kube-ovn"
+
 type Connectivity string
 
 const (
@@ -38,6 +40,7 @@ type NetworkType string
 const (
 	L2VlanNetwork   NetworkType = "L2VlanNetwork"
 	UntaggedNetwork NetworkType = "UntaggedNetwork"
+	OverlayNetwork  NetworkType = "OverlayNetwork"
 )
 
 type NadSelectedNetworks []nadv1.NetworkSelectionElement
@@ -120,6 +123,7 @@ type NetConf struct {
 	HairpinMode  bool   `json:"hairpinMode"`
 	PromiscMode  bool   `json:"promiscMode"`
 	Vlan         int    `json:"vlan"`
+	Provider     string `json:"provider"`
 }
 
 func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
