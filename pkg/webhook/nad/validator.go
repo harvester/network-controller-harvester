@@ -13,6 +13,7 @@ import (
 	k8slabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	kubeovnnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io/v1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
@@ -28,20 +29,22 @@ const (
 
 type Validator struct {
 	admission.DefaultValidator
-	vmCache  ctlkubevirtv1.VirtualMachineCache
-	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
-	cnCache  ctlnetworkv1.ClusterNetworkCache
-	vcCache  ctlnetworkv1.VlanConfigCache
+	vmCache     ctlkubevirtv1.VirtualMachineCache
+	vmiCache    ctlkubevirtv1.VirtualMachineInstanceCache
+	cnCache     ctlnetworkv1.ClusterNetworkCache
+	vcCache     ctlnetworkv1.VlanConfigCache
+	subnetCache kubeovnnetworkv1.SubnetCache
 }
 
 var _ admission.Validator = &Validator{}
 
-func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkubevirtv1.VirtualMachineInstanceCache, cnCache ctlnetworkv1.ClusterNetworkCache, vcCache ctlnetworkv1.VlanConfigCache) *Validator {
+func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkubevirtv1.VirtualMachineInstanceCache, cnCache ctlnetworkv1.ClusterNetworkCache, vcCache ctlnetworkv1.VlanConfigCache, subnetCache kubeovnnetworkv1.SubnetCache) *Validator {
 	return &Validator{
-		vmCache:  vmCache,
-		vmiCache: vmiCache,
-		cnCache:  cnCache,
-		vcCache:  vcCache,
+		vmCache:     vmCache,
+		vmiCache:    vmiCache,
+		cnCache:     cnCache,
+		vcCache:     vcCache,
+		subnetCache: subnetCache,
 	}
 }
 
@@ -90,11 +93,15 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return nil
 	}
 
-	if err := v.checkNadConfig(newConf, newNad); err != nil {
+	if err := v.checkNadTypes(oldConf, newConf); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
 	if err := v.checkNadConfigBridgeName(oldConf, newConf); err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+	}
+
+	if err := v.checkNadConfig(newConf, newNad); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
@@ -114,6 +121,17 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	nad := oldObj.(*cniv1.NetworkAttachmentDefinition)
 
+	nadConf, err := decodeConfig(nad.Spec.Config)
+	if err != nil {
+		return fmt.Errorf(updateErr, nad.Namespace, nad.Name, err)
+	}
+
+	//do not delete nad when a subnet is using it
+	//This will also make sure nad is not deleted when VMIs,VMs are using it
+	if nadConf.Type == utils.CNITypeKubeOVN {
+		return v.checkSubnetsUsingNAD(nad)
+	}
+
 	if err := v.checkVmi(nad); err != nil {
 		return fmt.Errorf(deleteErr, nad.Namespace, nad.Name, err)
 	}
@@ -126,23 +144,61 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	return nil
 }
 
-func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf, nad *cniv1.NetworkAttachmentDefinition) error {
-	if bridgeConf == nil {
-		return fmt.Errorf("config is empty")
+func (v *Validator) checkSubnetsUsingNAD(nad *cniv1.NetworkAttachmentDefinition) error {
+	subnets, err := v.subnetCache.List(k8slabels.Everything())
+	if err != nil {
+		return fmt.Errorf("failed to retrieve subnets err=%v", err)
 	}
 
-	// The VLAN value of untagged network will be empty or number 0.
-	if bridgeConf.Vlan < 0 || bridgeConf.Vlan > 4094 {
-		return fmt.Errorf("VLAN ID must >=0 and <=4094")
-	}
-
-	// check and get the bridge name
-	cnName, err := iface.GetBridgeNamePrefix(bridgeConf.BrName)
+	provider, err := utils.GetProviderFromNad(nad.Name, nad.Namespace)
 	if err != nil {
 		return err
 	}
 
+	for _, subnet := range subnets {
+		if subnet.Spec.Provider == provider {
+			return fmt.Errorf("subnet %s is still using the nad %s %s", subnet.Name, nad.Name, nad.Namespace)
+		}
+	}
+
+	return nil
+}
+
+func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAttachmentDefinition) error {
+	if nadConf == nil {
+		return fmt.Errorf("config is empty")
+	}
+
 	clusterNetwork := getNadClusterNetworkLabel(nad)
+
+	if nadConf.Type == utils.CNITypeKubeOVN && clusterNetwork != "" && clusterNetwork != utils.ManagementClusterNetworkName {
+		return fmt.Errorf("nad with kubeovn type can only be part of mgmt cluster")
+	}
+
+	//skip bridge config validation for type kube-ovn
+	if nadConf.Type == utils.CNITypeKubeOVN {
+		nadName, nadNamespace, err := utils.GetNadNameFromProvider(nadConf.Provider)
+		if err != nil {
+			return err
+		}
+
+		if nad.Name != nadName || nad.Namespace != nadNamespace {
+			return fmt.Errorf("invalid provider name %s %s for nad %s %s", nadName, nadNamespace, nad.Name, nad.Namespace)
+		}
+
+		return nil
+	}
+
+	// The VLAN value of untagged network will be empty or number 0.
+	if nadConf.Vlan < 0 || nadConf.Vlan > 4094 {
+		return fmt.Errorf("VLAN ID must >=0 and <=4094")
+	}
+
+	// check and get the bridge name
+	cnName, err := iface.GetBridgeNamePrefix(nadConf.BrName)
+	if err != nil {
+		return err
+	}
 
 	// if there is clusterNetwork label, then check if it matchs the bridge name
 	if clusterNetwork != "" && cnName != clusterNetwork {
@@ -183,8 +239,25 @@ func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf, nad *cniv1.Network
 		}
 	}
 
-	if !utils.AreEqualMTUs(targetMTU, bridgeConf.MTU) {
-		return fmt.Errorf("nad MTU %v does not match cluster network MTU %v", bridgeConf.MTU, targetMTU)
+	if !utils.AreEqualMTUs(targetMTU, nadConf.MTU) {
+		return fmt.Errorf("nad MTU %v does not match cluster network MTU %v", nadConf.MTU, targetMTU)
+	}
+
+	return nil
+}
+
+func (v *Validator) checkNadTypes(oldNC, newNC *utils.NetConf) error {
+	if oldNC == nil {
+		return fmt.Errorf("old nad config is empty")
+	}
+
+	if newNC == nil {
+		return fmt.Errorf("new nad config is empty")
+	}
+
+	//nad cannot be changed from bridge to ovn and vice-versa
+	if oldNC.Type != newNC.Type {
+		return fmt.Errorf("nad cannot be updated from network type %s to network type %s", oldNC.Type, newNC.Type)
 	}
 
 	return nil

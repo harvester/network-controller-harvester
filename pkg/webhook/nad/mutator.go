@@ -100,6 +100,20 @@ func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, 
 		labels = make(map[string]string)
 	}
 
+	if newConf.Type == utils.CNITypeKubeOVN {
+		labels[utils.KeyNetworkType] = string(utils.OverlayNetwork)
+		labels[utils.KeyNetworkReady] = utils.ValueTrue
+		if labels[utils.KeyClusterNetworkLabel] == "" {
+			labels[utils.KeyClusterNetworkLabel] = utils.ManagementClusterNetworkName
+		}
+		return admission.Patch{
+			admission.PatchOp{
+				Op:    admission.PatchOpReplace,
+				Path:  "/metadata/labels",
+				Value: labels,
+			}}, nil
+	}
+
 	// Ignore untagged network because we don't need to do more operation if the last network type is untagged network
 	if oldConf.Vlan != 0 && newConf.Vlan == 0 {
 		labels[utils.KeyLastNetworkType] = string(utils.L2VlanNetwork)
@@ -188,6 +202,11 @@ func (m *Mutator) patchMTU(nad *cniv1.NetworkAttachmentDefinition) (admission.Pa
 	if err := json.Unmarshal([]byte(config), netConf); err != nil {
 		return nil, err
 	}
+
+	if netConf.Type == utils.CNITypeKubeOVN {
+		return nil, nil
+	}
+
 	clusterNetwork := netConf.BrName[:len(netConf.BrName)-len(iface.BridgeSuffix)]
 	cn, err := m.cnCache.Get(clusterNetwork)
 	if err != nil {
