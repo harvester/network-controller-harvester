@@ -17,6 +17,11 @@ import (
 	harvesterutil "github.com/harvester/harvester/pkg/util"
 )
 
+const (
+	CNITypeKubeOVN = "kube-ovn"
+	ovnProvider    = "ovn"
+)
+
 type Connectivity string
 
 const (
@@ -38,6 +43,7 @@ type NetworkType string
 const (
 	L2VlanNetwork   NetworkType = "L2VlanNetwork"
 	UntaggedNetwork NetworkType = "UntaggedNetwork"
+	OverlayNetwork  NetworkType = "OverlayNetwork"
 )
 
 type NadSelectedNetworks []nadv1.NetworkSelectionElement
@@ -120,6 +126,7 @@ type NetConf struct {
 	HairpinMode  bool   `json:"hairpinMode"`
 	PromiscMode  bool   `json:"promiscMode"`
 	Vlan         int    `json:"vlan"`
+	Provider     string `json:"provider"`
 }
 
 func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
@@ -228,4 +235,29 @@ func generateNadNameList(nads []*nadv1.NetworkAttachmentDefinition) []string {
 		nadStrList[i] = nad.Namespace + "/" + nad.Name
 	}
 	return nadStrList
+}
+
+func GetNadNameFromProvider(provider string) (nadName string, nadNamespace string, err error) {
+	if provider == "" {
+		return "", "", fmt.Errorf("provider is empty for cni type %s", CNITypeKubeOVN)
+	}
+
+	nad := strings.Split(provider, ".")
+	if len(nad) < 3 {
+		return "", "", fmt.Errorf("invalid provider length %d for provider %s", len(nad), provider)
+	}
+
+	return nad[0], nad[1], nil
+}
+
+func GetProviderFromNad(nadName string, nadNamespace string) (provider string, err error) {
+	if nadName == "" {
+		return "", fmt.Errorf("nad name %s is empty", nadName)
+	}
+
+	if nadNamespace == "" {
+		nadNamespace = defaultNamespace
+	}
+
+	return nadName + "." + nadNamespace + "." + ovnProvider, nil
 }
