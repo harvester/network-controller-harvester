@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
+	kubeovncni "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io"
 	ctlnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
 )
 
@@ -55,10 +56,11 @@ type Management struct {
 
 	HarvesterNetworkFactory *ctlnetwork.Factory
 
-	CniFactory   *ctlcni.Factory
-	CoreFactory  *ctlcore.Factory
-	AppsFactory  *ctlapps.Factory
-	BatchFactory *ctlbatch.Factory
+	CniFactory     *ctlcni.Factory
+	CoreFactory    *ctlcore.Factory
+	AppsFactory    *ctlapps.Factory
+	BatchFactory   *ctlbatch.Factory
+	kubeovnFactory *kubeovncni.Factory
 
 	ClientSet *kubernetes.Clientset
 
@@ -160,6 +162,13 @@ func SetupManagement(ctx context.Context, restConfig *rest.Config, options *Opti
 	}
 	management.CniFactory = cni
 	management.starters = append(management.starters, cni)
+
+	kubeovncni, err := kubeovncni.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+	management.kubeovnFactory = kubeovncni
+	management.starters = append(management.starters, kubeovncni)
 
 	management.ClientSet, err = kubernetes.NewForConfig(restConfig)
 	if err != nil {

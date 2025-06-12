@@ -105,6 +105,17 @@ func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, 
 		labels[utils.KeyLastNetworkType] = string(utils.L2VlanNetwork)
 	}
 
+	if newConf.Type == utils.CNITypeKubeOVN {
+		labels[utils.KeyNetworkType] = string(utils.OverlayNetwork)
+		labels[utils.KeyNetworkReady] = utils.ValueTrue
+		return admission.Patch{
+			admission.PatchOp{
+				Op:    admission.PatchOpReplace,
+				Path:  "/metadata/labels",
+				Value: labels,
+			}}, nil
+	}
+
 	if newConf.Vlan != 0 {
 		labels[utils.KeyNetworkType] = string(utils.L2VlanNetwork)
 		labels[utils.KeyVlanLabel] = strconv.Itoa(newConf.Vlan)
@@ -140,6 +151,10 @@ func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, 
 
 // If the vlan or bridge name is changed, we need to tag the route annotation outdated
 func tagRouteOutdated(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *utils.NetConf) (admission.Patch, error) {
+	if newConf.Type == utils.CNITypeKubeOVN {
+		return nil, nil
+	}
+
 	if oldConf.BrName == newConf.BrName && oldConf.Vlan == newConf.Vlan {
 		return nil, nil
 	}
@@ -188,6 +203,11 @@ func (m *Mutator) patchMTU(nad *cniv1.NetworkAttachmentDefinition) (admission.Pa
 	if err := json.Unmarshal([]byte(config), netConf); err != nil {
 		return nil, err
 	}
+
+	if netConf.Type == utils.CNITypeKubeOVN {
+		return nil, nil
+	}
+
 	clusterNetwork := netConf.BrName[:len(netConf.BrName)-len(iface.BridgeSuffix)]
 	cn, err := m.cnCache.Get(clusterNetwork)
 	if err != nil {

@@ -131,6 +131,24 @@ func (v *Validator) checkNadConfig(bridgeConf *utils.NetConf, nad *cniv1.Network
 		return fmt.Errorf("config is empty")
 	}
 
+	//skip bridge config validation for type kube-ovn
+	if bridgeConf.Type == utils.CNITypeKubeOVN {
+		if bridgeConf.Provider == "" {
+			return fmt.Errorf("provider is empty for cni type %s", utils.CNITypeKubeOVN)
+		}
+
+		providerName := strings.Split(bridgeConf.Provider, ".")
+		if len(providerName) < 2 {
+			return fmt.Errorf("invalid provider length %d for provider %s", len(providerName), bridgeConf.Provider)
+		}
+
+		if bridgeConf.Name != providerName[0] {
+			return fmt.Errorf("invalid provider name %s for nad %s", providerName[0], bridgeConf.Name)
+		}
+
+		return nil
+	}
+
 	// The VLAN value of untagged network will be empty or number 0.
 	if bridgeConf.Vlan < 0 || bridgeConf.Vlan > 4094 {
 		return fmt.Errorf("VLAN ID must >=0 and <=4094")
@@ -198,6 +216,11 @@ func (v *Validator) checkNadConfigBridgeName(oldNC, newNC *utils.NetConf) error 
 
 	if newNC == nil {
 		return fmt.Errorf("new nad config is empty")
+	}
+
+	//do not check for cluster network when type is kube-ovn
+	if oldNC.Type == utils.CNITypeKubeOVN || newNC.Type == utils.CNITypeKubeOVN {
+		return nil
 	}
 
 	if oldNC.BrName != newNC.BrName {

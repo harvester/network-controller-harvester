@@ -194,6 +194,8 @@ func (h Handler) OnRemove(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 }
 
 func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
+	var cnName string
+
 	if nad.Labels != nil && nad.Labels[utils.KeyNetworkType] != "" && nad.Labels[utils.KeyClusterNetworkLabel] != "" {
 		return nil
 	}
@@ -208,15 +210,24 @@ func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
 		return err
 	}
 
+	if netconf.Type == utils.CNITypeKubeOVN {
+		labels[utils.KeyNetworkType] = string(utils.OverlayNetwork)
+	}
+
 	if netconf.Vlan != 0 {
 		labels[utils.KeyNetworkType] = string(utils.L2VlanNetwork)
 		labels[utils.KeyVlanLabel] = strconv.Itoa(netconf.Vlan)
-	} else {
+	} else if netconf.Type != utils.CNITypeKubeOVN {
 		labels[utils.KeyNetworkType] = string(utils.UntaggedNetwork)
 	}
 
-	cnName := netconf.BrName[:len(netconf.BrName)-len(iface.BridgeSuffix)]
-	labels[utils.KeyClusterNetworkLabel] = cnName
+	if netconf.Type != utils.CNITypeKubeOVN {
+		cnName = netconf.BrName[:len(netconf.BrName)-len(iface.BridgeSuffix)]
+		labels[utils.KeyClusterNetworkLabel] = cnName
+	} else {
+		cnName = utils.ManagementClusterNetworkName
+		labels[utils.KeyClusterNetworkLabel] = cnName
+	}
 
 	if cn, err := h.cnCache.Get(cnName); err != nil {
 		return err
