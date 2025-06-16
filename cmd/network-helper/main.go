@@ -14,9 +14,17 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
+const (
+	name = "network-helper"
+)
+
+var (
+	VERSION string
+)
+
 func main() {
 	app := cli.NewApp()
-	app.Name = "network-helper"
+	app.Name = name
 	app.Usage = "network-helper is to help get the network information through DHCP protocol from the pod within the VLAN network"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -50,6 +58,8 @@ func main() {
 			panic(err)
 		}
 	}
+
+	klog.Infof("Starting %v version %v", name, VERSION)
 
 	if err := app.Run(os.Args); err != nil {
 		klog.Error(err)
