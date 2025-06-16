@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/rancher/wrangler/v3/pkg/leader"
@@ -16,13 +17,18 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/controller/manager"
 )
 
+const (
+	name               = "harvester-network-controller"
+	defaultThreadCount = 2
+)
+
 var (
 	VERSION = "v0.0.0-dev"
 )
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "harvester-network-controller"
+	app.Name = name
 	app.Version = VERSION
 	app.Usage = "Harvester Network Controller, to help with cluster network configuration. Options kubeconfig or masterurl are required."
 	commonFlags := []cli.Flag{
@@ -53,8 +59,8 @@ func main() {
 		cli.IntFlag{
 			Name:   "threads, t",
 			EnvVar: "THREADS",
-			Value:  2,
-			Usage:  "Threadiness level to set, defaults to 2.",
+			Value:  defaultThreadCount,
+			Usage:  fmt.Sprintf("Threadiness level to set, defaults to %v.", defaultThreadCount),
 		},
 		cli.BoolFlag{
 			Name:   "enable-vip-controller",
@@ -84,6 +90,8 @@ func main() {
 		},
 	}
 
+	klog.Infof("Starting %v version %v", app.Name, app.Version)
+
 	if err := app.Run(os.Args); err != nil {
 		klog.Fatal(err)
 	}
@@ -98,17 +106,11 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 	helperImage := c.String("helper-image")
 
 	if threadiness <= 0 {
-		klog.Infof("Can not start with thread count of %d, please pass a proper thread count.", threadiness)
-		return nil
+		klog.Infof("Thread count of %d is invalid, fallback to default value %v.", threadiness, defaultThreadCount)
+		threadiness = defaultThreadCount
 	}
 
-	klog.Infof("Starting network controller with %d threads.", threadiness)
-
-	if namespace == "" {
-		klog.Info("Starting network controller with no namespace.")
-	} else {
-		klog.Infof("Starting network controller in namespace: %s.", namespace)
-	}
+	klog.Infof("namespace %v threadiness %v nodeName %v helper-image %v", namespace, threadiness, nodeName, helperImage)
 
 	ctx := signals.SetupSignalContext()
 
