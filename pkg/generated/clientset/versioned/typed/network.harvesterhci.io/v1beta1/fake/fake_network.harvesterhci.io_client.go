@@ -1,5 +1,5 @@
 /*
-Copyright 2019 Harvester Network Controller Authors
+Copyright 2025 Harvester Network Controller Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,6 +38,10 @@ func (c *FakeNetworkV1beta1) LinkMonitors() v1beta1.LinkMonitorInterface {
 
 func (c *FakeNetworkV1beta1) VlanConfigs() v1beta1.VlanConfigInterface {
 	return &FakeVlanConfigs{c}
+}
+
+func (c *FakeNetworkV1beta1) VlanIDSets() v1beta1.VlanIDSetInterface {
+	return &FakeVlanIDSets{c}
 }
 
 func (c *FakeNetworkV1beta1) VlanStatuses() v1beta1.VlanStatusInterface {

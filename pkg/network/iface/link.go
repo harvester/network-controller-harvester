@@ -50,7 +50,7 @@ func (l *Link) AddBridgeVlan(vid uint16) error {
 	return nil
 }
 
-// DelBridgeVlan adds a new vlan filter entry
+// DelBridgeVlan removes a new vlan filter entry
 // Equivalent to: `bridge vlan del dev DEV vid VID master`
 func (l *Link) DelBridgeVlan(vid uint16) error {
 	if vid == defaultPVID {

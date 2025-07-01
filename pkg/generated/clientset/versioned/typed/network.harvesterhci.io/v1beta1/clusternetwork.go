@@ -1,5 +1,5 @@
 /*
-Copyright 2019 Harvester Network Controller Authors
+Copyright 2025 Harvester Network Controller Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
 	v1beta1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	scheme "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
