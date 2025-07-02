@@ -1,7 +1,6 @@
 package nad
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -16,7 +15,6 @@ import (
 
 	kubeovnnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io/v1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
-	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
@@ -54,16 +52,16 @@ func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkube
 func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	nad := newObj.(*cniv1.NetworkAttachmentDefinition)
 
-	if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute]); err != nil {
-		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
-	}
-
-	conf, err := decodeConfig(nad.Spec.Config)
+	conf, err := utils.DecodeNadConfigToNetConf(nad)
 	if err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
 	if err := v.checkNadConfig(conf, nad); err != nil {
+		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
+	}
+
+	if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute]); err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
@@ -79,18 +77,19 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return nil
 	}
 
+	newConf, err := utils.DecodeNadConfigToNetConf(newNad)
+	if err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+	}
+	oldConf, err := utils.DecodeNadConfigToNetConf(oldNad)
+	if err != nil {
+		return fmt.Errorf(updateErr, oldNad.Namespace, oldNad.Name, err)
+	}
+
 	if err := v.checkRoute(newNad.Annotations[utils.KeyNetworkRoute]); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
-	newConf, err := decodeConfig(newNad.Spec.Config)
-	if err != nil {
-		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
-	}
-	oldConf, err := decodeConfig(oldNad.Spec.Config)
-	if err != nil {
-		return fmt.Errorf(updateErr, oldNad.Namespace, oldNad.Name, err)
-	}
 	// skip the following check if the config is not changed
 	if reflect.DeepEqual(newConf, oldConf) {
 		return nil
@@ -124,16 +123,16 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	nad := oldObj.(*cniv1.NetworkAttachmentDefinition)
 
-	nadConf, err := decodeConfig(nad.Spec.Config)
+	nadConf, err := utils.DecodeNadConfigToNetConf(nad)
 	if err != nil {
 		return fmt.Errorf(updateErr, nad.Namespace, nad.Name, err)
 	}
 
-	//do not delete nad when a subnet is using it
-	//This will also make sure nad is not deleted when VMIs,VMs are using it
-	if nadConf.Type == utils.CNITypeKubeOVN {
+	// do not delete nad when a subnet is using it
+	// This will also make sure nad is not deleted when VMIs,VMs are using it
+	if nadConf.IsKubeOVNCNI() {
 		if !v.subnetEnabled {
-			return fmt.Errorf("operation not permitted as kubeovn is not yet enabled")
+			return fmt.Errorf("operation is not permitted as kubeovn is not yet enabled")
 		}
 		return v.checkSubnetsUsingNAD(nad)
 	}
@@ -175,14 +174,13 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 		return fmt.Errorf("config is empty")
 	}
 
-	clusterNetwork := getNadClusterNetworkLabel(nad)
-
-	if nadConf.Type == utils.CNITypeKubeOVN && clusterNetwork != "" && clusterNetwork != utils.ManagementClusterNetworkName {
+	clusterNetwork := utils.GetNadLabel(nad, utils.KeyClusterNetworkLabel)
+	if nadConf.IsKubeOVNCNI() && clusterNetwork != "" && clusterNetwork != utils.ManagementClusterNetworkName {
 		return fmt.Errorf("nad with kubeovn type can only be part of mgmt cluster")
 	}
 
 	//skip bridge config validation for type kube-ovn
-	if nadConf.Type == utils.CNITypeKubeOVN {
+	if nadConf.IsKubeOVNCNI() {
 		nadName, nadNamespace, err := utils.GetNadNameFromProvider(nadConf.Provider)
 		if err != nil {
 			return err
@@ -195,13 +193,13 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 		return nil
 	}
 
-	// The VLAN value of untagged network will be empty or number 0.
-	if nadConf.Vlan < 0 || nadConf.Vlan > 4094 {
-		return fmt.Errorf("VLAN ID must >=0 and <=4094")
+	// checks untag, tag, trunk
+	if _, err := nadConf.IsVlanConfigValid(); err != nil {
+		return err
 	}
 
 	// check and get the bridge name
-	cnName, err := iface.GetBridgeNamePrefix(nadConf.BrName)
+	cnName, err := utils.GetBridgeNamePrefix(nadConf.BrName)
 	if err != nil {
 		return err
 	}
@@ -322,13 +320,6 @@ func (v *Validator) checkVM(nad *cniv1.NetworkAttachmentDefinition) error {
 	return nil
 }
 
-func getNadClusterNetworkLabel(nad *cniv1.NetworkAttachmentDefinition) string {
-	if nad == nil || nad.Labels == nil {
-		return ""
-	}
-	return nad.Labels[utils.KeyClusterNetworkLabel]
-}
-
 func (v *Validator) checkStorageNetwork(nad *cniv1.NetworkAttachmentDefinition) error {
 	if utils.IsStorageNetworkNad(nad) {
 		return fmt.Errorf("%s", storageNetworkErr)
@@ -350,18 +341,4 @@ func (v *Validator) Resource() admission.Resource {
 			admissionregv1.Delete,
 		},
 	}
-}
-
-// decode config string to a config struct
-func decodeConfig(config string) (*utils.NetConf, error) {
-	conf := &utils.NetConf{}
-	if config == "" {
-		return conf, nil
-	}
-
-	if err := json.Unmarshal([]byte(config), &conf); err != nil {
-		return nil, fmt.Errorf("unmarshal config %s failed: %w", config, err)
-	}
-
-	return conf, nil
 }

@@ -56,6 +56,8 @@ func EnsureRouteViaGateway(cidr string) error {
 		return nil
 	}
 
+	klog.Infof("route for cidr %s", cidr)
+
 	ip, network, err := net.ParseCIDR(cidr)
 	if err != nil {
 		return err
@@ -73,6 +75,7 @@ func EnsureRouteViaGateway(cidr string) error {
 
 	for _, route := range routes {
 		if route.Gw != nil {
+			klog.Infof("it has the route %s", route.String())
 			return nil
 		}
 	}

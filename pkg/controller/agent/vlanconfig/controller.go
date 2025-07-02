@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	ctlcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
@@ -14,10 +15,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
-	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
-	"github.com/harvester/harvester-network-controller/pkg/controller/agent/nad"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/network/vlan"
@@ -26,20 +25,20 @@ import (
 
 const (
 	ControllerName = "harvester-network-vlanconfig-controller"
-	bridgeCNIName  = "bridge"
 )
 
 type Handler struct {
-	nodeName   string
-	nodeClient ctlcorev1.NodeClient
-	nodeCache  ctlcorev1.NodeCache
-	nadCache   ctlcniv1.NetworkAttachmentDefinitionCache
-	vcClient   ctlnetworkv1.VlanConfigClient
-	vcCache    ctlnetworkv1.VlanConfigCache
-	vsClient   ctlnetworkv1.VlanStatusClient
-	vsCache    ctlnetworkv1.VlanStatusCache
-	cnClient   ctlnetworkv1.ClusterNetworkClient
-	cnCache    ctlnetworkv1.ClusterNetworkCache
+	nodeName     string
+	nodeClient   ctlcorev1.NodeClient
+	nodeCache    ctlcorev1.NodeCache
+	nadCache     ctlcniv1.NetworkAttachmentDefinitionCache
+	vcClient     ctlnetworkv1.VlanConfigClient
+	vcCache      ctlnetworkv1.VlanConfigCache
+	vsClient     ctlnetworkv1.VlanStatusClient
+	vsCache      ctlnetworkv1.VlanStatusCache
+	cnClient     ctlnetworkv1.ClusterNetworkClient
+	cnCache      ctlnetworkv1.ClusterNetworkCache
+	cnController ctlnetworkv1.ClusterNetworkController
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -50,16 +49,17 @@ func Register(ctx context.Context, management *config.Management) error {
 	nads := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
 
 	handler := &Handler{
-		nodeName:   management.Options.NodeName,
-		nodeClient: nodes,
-		nodeCache:  nodes.Cache(),
-		nadCache:   nads.Cache(),
-		vcClient:   vcs,
-		vcCache:    vcs.Cache(),
-		vsClient:   vss,
-		vsCache:    vss.Cache(),
-		cnClient:   cns,
-		cnCache:    cns.Cache(),
+		nodeName:     management.Options.NodeName,
+		nodeClient:   nodes,
+		nodeCache:    nodes.Cache(),
+		nadCache:     nads.Cache(),
+		vcClient:     vcs,
+		vcCache:      vcs.Cache(),
+		vsClient:     vss,
+		vsCache:      vss.Cache(),
+		cnClient:     cns,
+		cnCache:      cns.Cache(),
+		cnController: cns,
 	}
 
 	if err := handler.initialize(); err != nil {
@@ -88,7 +88,9 @@ func (h Handler) OnChange(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanCo
 		return nil, err
 	}
 
+	// vlanconfig can be migrated from one cn to another, the vs helps to clean the bridge on source cn
 	if (!isMatched && vs != nil) || (isMatched && vs != nil && !matchClusterNetwork(vc, vs)) {
+		klog.Infof("the staled vs %s on cn %s is to be removed", vs.Name, vs.Status.ClusterNetwork)
 		if err := h.removeVLAN(vs); err != nil {
 			return nil, err
 		}
@@ -134,7 +136,7 @@ func (h Handler) initialize() error {
 
 // MatchNode will also return the executed vlanconfig with the same clusterNetwork on this node if existing
 func (h Handler) MatchNode(vc *networkv1.VlanConfig) (bool, error) {
-	if vc.Annotations == nil || vc.Annotations[utils.KeyMatchedNodes] == "" {
+	if vc.Annotations[utils.KeyMatchedNodes] == "" {
 		return false, nil
 	}
 
@@ -143,10 +145,9 @@ func (h Handler) MatchNode(vc *networkv1.VlanConfig) (bool, error) {
 		return false, err
 	}
 
-	klog.Infof("matchedNodes: %+v, h.nodeName: %s", matchedNodes, h.nodeName)
-
 	for _, n := range matchedNodes {
 		if n == h.nodeName {
+			klog.Infof("vc %v matchedNodes: %+v, include this node: %s", vc.Name, matchedNodes, h.nodeName)
 			return true, nil
 		}
 	}
@@ -178,31 +179,26 @@ func matchClusterNetwork(vc *networkv1.VlanConfig, vs *networkv1.VlanStatus) boo
 	return vc.Spec.ClusterNetwork == vs.Status.ClusterNetwork
 }
 
+// only sets up uplink & vlan bridge, vids are added by clusternetwork controller
 func (h Handler) setupVLAN(vc *networkv1.VlanConfig) error {
 	var v *vlan.Vlan
 	var setupErr error
-	var localAreas []*vlan.LocalArea
 	var uplink *iface.Link
-	// get VIDs
-	localAreas, setupErr = h.getLocalAreas(vc)
-	if setupErr != nil {
-		goto updateStatus
-	}
+
 	// construct uplink
 	uplink, setupErr = setUplink(vc)
 	if setupErr != nil {
 		goto updateStatus
 	}
-	// set up VLAN
+	// set up VLAN bridge
 	v = vlan.NewVlan(vc.Spec.ClusterNetwork)
 	if setupErr = v.Setup(uplink); setupErr != nil {
 		goto updateStatus
 	}
-	setupErr = h.AddLocalAreas(v, localAreas)
 
 updateStatus:
 	// Update status and still return setup error if not nil
-	if err := h.updateStatus(vc, localAreas, setupErr); err != nil {
+	if err := h.updateStatus(vc, setupErr); err != nil {
 		return fmt.Errorf("update status into vlanstatus %s failed, error: %w, setup error: %v",
 			h.statusName(vc.Spec.ClusterNetwork), err, setupErr)
 	}
@@ -214,9 +210,25 @@ updateStatus:
 		return fmt.Errorf("add node label to node %s for vlanconfig %s failed, error: %w", h.nodeName, vc.Name, err)
 	}
 
+	if err := h.wakeUpClusterNetwork(vc); err != nil {
+		return fmt.Errorf("wake up cluster network %s for vlanconfig %s failed, error: %w", vc.Spec.ClusterNetwork, vc.Name, err)
+	}
+
 	return nil
 }
 
+// after clusternetwork bridge is set up, wake up cluster network to add vids
+func (h Handler) wakeUpClusterNetwork(vc *networkv1.VlanConfig) error {
+	_, err := h.cnCache.Get(vc.Spec.ClusterNetwork)
+	if err == nil {
+		h.cnController.Enqueue(vc.Spec.ClusterNetwork)
+		return nil
+	}
+
+	return err
+}
+
+// remove clusternetwork bridge will remove the vids automatically
 func (h Handler) removeVLAN(vs *networkv1.VlanStatus) error {
 	var v *vlan.Vlan
 	var teardownErr error
@@ -252,7 +264,7 @@ updateStatus:
 func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 	// set link attributes
 	linkAttrs := netlink.NewLinkAttrs()
-	linkAttrs.Name = vc.Spec.ClusterNetwork + iface.BondSuffix
+	linkAttrs.Name = vc.Spec.ClusterNetwork + utils.BondSuffix
 	if vc.Spec.Uplink.LinkAttrs != nil {
 		linkAttrs.MTU = vc.Spec.Uplink.LinkAttrs.MTU
 		linkAttrs.TxQLen = vc.Spec.Uplink.LinkAttrs.TxQLen
@@ -281,40 +293,7 @@ func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 	return &iface.Link{Link: b}, nil
 }
 
-func (h Handler) getLocalAreas(vc *networkv1.VlanConfig) ([]*vlan.LocalArea, error) {
-	nads, err := h.nadCache.List("", labels.Set(map[string]string{
-		utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork,
-	}).AsSelector())
-	if err != nil {
-		return nil, fmt.Errorf("list nad failed, error: %v", err)
-	}
-
-	localAreas := make([]*vlan.LocalArea, 0)
-	for _, n := range nads {
-		if !utils.IsVlanNad(n) {
-			continue
-		}
-		localArea, err := nad.GetLocalArea(n.Labels[utils.KeyVlanLabel], n.Annotations[utils.KeyNetworkRoute])
-		if err != nil {
-			return nil, fmt.Errorf("failed to get local area from nad %s/%s, error: %w", n.Namespace, n.Name, err)
-		}
-		localAreas = append(localAreas, localArea)
-	}
-
-	return localAreas, nil
-}
-
-func (h Handler) AddLocalAreas(v *vlan.Vlan, localAreas []*vlan.LocalArea) error {
-	for _, la := range localAreas {
-		if err := v.AddLocalArea(la); err != nil {
-			return fmt.Errorf("add local area %v failed, error: %w", la, err)
-		}
-	}
-
-	return nil
-}
-
-func (h Handler) updateStatus(vc *networkv1.VlanConfig, localAreas []*vlan.LocalArea, setupErr error) error {
+func (h Handler) updateStatus(vc *networkv1.VlanConfig, setupErr error) error {
 	var vStatus *networkv1.VlanStatus
 	name := h.statusName(vc.Spec.ClusterNetwork)
 	vs, getErr := h.vsCache.Get(name)
@@ -355,13 +334,6 @@ func (h Handler) updateStatus(vc *networkv1.VlanConfig, localAreas []*vlan.Local
 	if setupErr == nil {
 		networkv1.Ready.SetStatusBool(vStatus, true)
 		networkv1.Ready.Message(vStatus, "")
-		vStatus.Status.LocalAreas = []networkv1.LocalArea{}
-		for _, la := range localAreas {
-			vStatus.Status.LocalAreas = append(vStatus.Status.LocalAreas, networkv1.LocalArea{
-				VID:  la.Vid,
-				CIDR: la.Cidr,
-			})
-		}
 	} else {
 		networkv1.Ready.SetStatusBool(vStatus, false)
 		networkv1.Ready.Message(vStatus, setupErr.Error())
@@ -372,6 +344,9 @@ func (h Handler) updateStatus(vc *networkv1.VlanConfig, localAreas []*vlan.Local
 			return fmt.Errorf("failed to create vlanstatus %s, error: %w", name, err)
 		}
 	} else {
+		if reflect.DeepEqual(vs, vStatus) {
+			return nil
+		}
 		if _, err := h.vsClient.Update(vStatus); err != nil {
 			return fmt.Errorf("failed to update vlanstatus %s, error: %w", name, err)
 		}
@@ -403,7 +378,7 @@ func (h Handler) addNodeLabel(vc *networkv1.VlanConfig) error {
 		return err
 	}
 	// Since the length of cluster network isn't bigger than 12, the length of key will less than 63.
-	key := labelKeyOfClusterNetwork(vc.Spec.ClusterNetwork)
+	key := utils.GetLabelKeyOfClusterNetwork(vc.Spec.ClusterNetwork)
 	if node.Labels != nil && node.Labels[key] == utils.ValueTrue &&
 		node.Labels[utils.KeyVlanConfigLabel] == vc.Name {
 		return nil
@@ -429,7 +404,7 @@ func (h Handler) removeNodeLabel(vs *networkv1.VlanStatus) error {
 		return err
 	}
 
-	key := labelKeyOfClusterNetwork(vs.Status.ClusterNetwork)
+	key := utils.GetLabelKeyOfClusterNetwork(vs.Status.ClusterNetwork)
 	if node.Labels != nil && (node.Labels[key] == utils.ValueTrue ||
 		node.Labels[utils.KeyVlanConfigLabel] == vs.Status.VlanConfig) {
 		nodeCopy := node.DeepCopy()
@@ -446,8 +421,4 @@ func (h Handler) removeNodeLabel(vs *networkv1.VlanStatus) error {
 // vlanstatus name: <vc name>-<node name>-<crc32 checksum>
 func (h Handler) statusName(clusterNetwork string) string {
 	return utils.Name("", clusterNetwork, h.nodeName)
-}
-
-func labelKeyOfClusterNetwork(clusterNetwork string) string {
-	return network.GroupName + "/" + clusterNetwork
 }
