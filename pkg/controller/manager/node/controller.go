@@ -11,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 
-	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
@@ -62,7 +61,7 @@ func (h Handler) OnChange(_ string, node *corev1.Node) (*corev1.Node, error) {
 	}
 
 	// skip witness node because we do not allow vlan config on witness node
-	if node.Labels != nil && node.Labels[utils.HarvesterWitnessNodeLabelKey] == "true" {
+	if utils.HasWitnessNodeLabelKey(node.Labels) {
 		return nil, nil
 	}
 
@@ -138,8 +137,7 @@ func (h Handler) updateMatchedNodeAnnotation(vc *networkv1.VlanConfig, node *cor
 }
 
 func (h Handler) ensureMgmtLabels(node *corev1.Node) error {
-	key := network.GroupName + "/" + utils.ManagementClusterNetworkName
-	if node.Labels != nil && node.Labels[key] == utils.ValueTrue {
+	if utils.HasMgmtClusterNetworkLabelKey(node.Labels) {
 		return nil
 	}
 
@@ -147,7 +145,7 @@ func (h Handler) ensureMgmtLabels(node *corev1.Node) error {
 	if nodeCopy.Labels == nil {
 		nodeCopy.Labels = make(map[string]string)
 	}
-	nodeCopy.Labels[key] = utils.ValueTrue
+	utils.SetMgmtClusterNetworkLabelKey(nodeCopy.Labels)
 	if _, err := h.nodeClient.Update(nodeCopy); err != nil {
 		return fmt.Errorf("update node %s failed, error: %w", node.Name, err)
 	}
