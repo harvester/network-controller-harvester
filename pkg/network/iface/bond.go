@@ -8,8 +8,6 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-const BondSuffix = "-bo"
-
 type Bond struct {
 	*netlink.Bond
 	slaves []string

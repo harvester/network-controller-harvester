@@ -58,8 +58,6 @@ func (h Handler) OnChange(_ string, lm *networkv1.LinkMonitor) (*networkv1.LinkM
 		return nil, nil
 	}
 
-	klog.V(5).Infof("link monitor %s has been changed, spec: %+v", lm.Name, lm.Spec)
-
 	isMatch, err := h.isMatchCurrentNode(lm)
 	if err != nil {
 		return nil, err
@@ -68,6 +66,8 @@ func (h Handler) OnChange(_ string, lm *networkv1.LinkMonitor) (*networkv1.LinkM
 		h.DeletePattern(lm)
 		return lm, nil
 	}
+
+	klog.V(5).Infof("link monitor %s has been changed, spec: %+v", lm.Name, lm.Spec)
 
 	if h.isRuleChange(lm) {
 		h.AddPattern(lm)

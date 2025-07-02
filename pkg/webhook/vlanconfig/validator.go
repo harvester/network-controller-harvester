@@ -17,7 +17,6 @@ import (
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
-	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
@@ -25,8 +24,6 @@ const (
 	createErr = "can't create vlanConfig %s because %w"
 	updateErr = "can't update vlanConfig %s because %w"
 	deleteErr = "can't delete vlanConfig %s because %w"
-
-	maxClusterNetworkNameLen = iface.MaxDeviceNameLen - len(iface.BridgeSuffix)
 )
 
 type Validator struct {
@@ -59,9 +56,8 @@ var _ admission.Validator = &Validator{}
 func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	vc := newObj.(*networkv1.VlanConfig)
 
-	if len(vc.Spec.ClusterNetwork) > maxClusterNetworkNameLen {
-		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("the length of the clusterNetwork name is "+
-			"more than %d", maxClusterNetworkNameLen))
+	if _, err := utils.IsClusterNetworkNameValid(vc.Spec.ClusterNetwork); err != nil {
+		return fmt.Errorf(createErr, vc.Name, err)
 	}
 
 	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
@@ -95,13 +91,14 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	oldVc := oldObj.(*networkv1.VlanConfig)
 	newVc := newObj.(*networkv1.VlanConfig)
 
+	// ignore the update if the resource is being deleted
+	if newVc.DeletionTimestamp != nil {
+		return nil
+	}
+
 	if newVc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
 		return fmt.Errorf(updateErr, newVc.Name, fmt.Errorf("cluster network can't be %s",
 			utils.ManagementClusterNetworkName))
-	}
-	// skip validation if spec is not changed
-	if reflect.DeepEqual(oldVc.Spec, newVc.Spec) {
-		return nil
 	}
 
 	// check if clusternetwork exists

@@ -4,7 +4,6 @@ import (
 	"context"
 
 	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
-	"github.com/harvester/harvester/pkg/util/crd"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/rancher/lasso/pkg/controller"
 	wcrd "github.com/rancher/wrangler/v3/pkg/crd"
@@ -26,6 +25,7 @@ import (
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	kubeovncni "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io"
 	ctlnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
+	networkcrd "github.com/harvester/harvester-network-controller/pkg/utils/crd"
 )
 
 var (
@@ -95,7 +95,7 @@ func (s *Management) NewRecorder(componentName, namespace, nodeName string) reco
 }
 
 func createCRDsIfNotExisted(ctx context.Context, config *rest.Config) error {
-	factory, err := crd.NewFactoryFromClient(ctx, config)
+	factory, err := networkcrd.NewFactoryFromClient(ctx, config)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func createCRDsIfNotExisted(ctx context.Context, config *rest.Config) error {
 }
 
 func createNetworkAttachmentDefinitionCRD() wcrd.CRD {
-	nad := crd.FromGV(cniv1.SchemeGroupVersion, "NetworkAttachmentDefinition", &cniv1.NetworkAttachmentDefinition{})
+	nad := networkcrd.FromGV(cniv1.SchemeGroupVersion, "NetworkAttachmentDefinition", &cniv1.NetworkAttachmentDefinition{})
 	nad.PluralName = "network-attachment-definitions"
 	nad.SingularName = "network-attachment-definition"
 	return nad

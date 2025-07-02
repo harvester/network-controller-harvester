@@ -7,17 +7,13 @@ import (
 	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 type Vlan struct {
 	name   string
 	bridge *iface.Bridge
 	uplink *iface.Link
-}
-
-type LocalArea struct {
-	Vid  uint16
-	Cidr string
 }
 
 func (v *Vlan) Type() string {
@@ -27,7 +23,7 @@ func (v *Vlan) Type() string {
 // The bridge of a pure VLAN may have no latest information
 // The NIC of a pure VLAN can be empty
 func NewVlan(name string) *Vlan {
-	br := iface.NewBridge(iface.GenerateName(name, iface.BridgeSuffix))
+	br := iface.NewBridge(utils.GenerateBridgeName(name))
 
 	return &Vlan{
 		name:   name,
@@ -36,7 +32,7 @@ func NewVlan(name string) *Vlan {
 }
 
 func (v *Vlan) getUplink() (*iface.Link, error) {
-	l, err := netlink.LinkByName(iface.GenerateName(v.name, iface.BondSuffix))
+	l, err := netlink.LinkByName(utils.GenerateBondName(v.name))
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +55,14 @@ func GetVlan(name string) (*Vlan, error) {
 	return v, nil
 }
 
+// by default, each clusternetwork (L2 type) is mapped to a bridge
+// when one node is not selected on the clusternetwork, then it does not have the bridge
+// mgmt is populated to all nodes
+func IsClusterNetworkBridgeSetup(cnName string) bool {
+	_, err := GetVlan(cnName)
+	return err == nil
+}
+
 func (v *Vlan) Setup(l *iface.Link) error {
 	// ensure bridge and get NIC
 	if err := v.bridge.Ensure(); err != nil {
@@ -74,7 +78,6 @@ func (v *Vlan) Setup(l *iface.Link) error {
 	return nil
 }
 
-// Note: It's required to call function GetVlanWithNic before tearing down VLAN.
 func (v *Vlan) Teardown() error {
 	klog.Info("start to tear down VLAN network")
 	if v.uplink == nil {
@@ -98,28 +101,36 @@ func (v *Vlan) Teardown() error {
 	return nil
 }
 
-func (v *Vlan) AddLocalArea(la *LocalArea) error {
+func (v *Vlan) AddLocalAreas(vis *utils.VlanIDSet) error {
+	if vis == nil {
+		return nil
+	}
 	if v.uplink == nil {
-		return fmt.Errorf("bridge %s hasn't attached an uplink", v.bridge.Name)
+		return fmt.Errorf("bridge %s hasn't attached with an uplink", v.bridge.Name)
 	}
-
-	if err := v.uplink.AddBridgeVlan(la.Vid); err != nil {
-		return fmt.Errorf("add bridge vlanconfig %d failed, error: %w", la.Vid, err)
+	if err := vis.WalkVIDs("add bridge vlanconfig", v.uplink.AddBridgeVlan); err != nil {
+		return nil
 	}
-
 	return nil
 }
 
-func (v *Vlan) RemoveLocalArea(la *LocalArea) error {
+func (v *Vlan) RemoveLocalAreas(vis *utils.VlanIDSet) error {
+	if vis == nil {
+		return nil
+	}
 	if v.uplink == nil {
-		return fmt.Errorf("bridge %s hasn't attached an uplink", v.bridge.Name)
+		return fmt.Errorf("bridge %s hasn't attached with an uplink", v.bridge.Name)
 	}
 
-	if err := v.uplink.DelBridgeVlan(la.Vid); err != nil {
-		return fmt.Errorf("remove bridge vlanconfig %d failed, error: %w", la.Vid, err)
+	if err := vis.WalkVIDs("remove bridge vlanconfig", v.uplink.DelBridgeVlan); err != nil {
+		return nil
 	}
-
 	return nil
+}
+
+func (v *Vlan) ToVlanIDSet() (*utils.VlanIDSet, error) {
+	// the NewVlan returned vlan never has an empty uplink, skip check it
+	return v.uplink.ToVlanIDSet()
 }
 
 func (v *Vlan) Bridge() *iface.Bridge {
