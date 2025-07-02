@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	harvesterfake "github.com/harvester/harvester/pkg/generated/clientset/versioned/fake"
-	harvesterfakeclients "github.com/harvester/harvester/pkg/util/fakeclients"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/fake"
@@ -280,7 +279,7 @@ func TestCreateSubnet(t *testing.T) {
 			nchclientset := fake.NewSimpleClientset()
 			harvesterclientset := harvesterfake.NewSimpleClientset()
 
-			nadCache := harvesterfakeclients.NetworkAttachmentDefinitionCache(harvesterclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
+			nadCache := fakeclients.NetworkAttachmentDefinitionCache(harvesterclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			vpcCache := fakeclients.VpcCache(nchclientset.KubeovnV1().Vpcs)
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
 
@@ -430,7 +429,7 @@ func TestUpdateSubnet(t *testing.T) {
 			nchclientset := fake.NewSimpleClientset()
 			harvesterclientset := harvesterfake.NewSimpleClientset()
 
-			nadCache := harvesterfakeclients.NetworkAttachmentDefinitionCache(harvesterclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
+			nadCache := fakeclients.NetworkAttachmentDefinitionCache(harvesterclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			vpcCache := fakeclients.VpcCache(nchclientset.KubeovnV1().Vpcs)
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
 

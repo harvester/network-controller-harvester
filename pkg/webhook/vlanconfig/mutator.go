@@ -3,7 +3,6 @@ package vlanconfig
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
 
 	"github.com/harvester/webhook/pkg/server/admission"
 	ctlcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
@@ -45,11 +44,12 @@ func (m *Mutator) Update(_ *admission.Request, oldObj, newObj runtime.Object) (a
 	newVc := newObj.(*networkv1.VlanConfig)
 	oldVc := oldObj.(*networkv1.VlanConfig)
 
-	// skip mutation if spec is not changed
-	if reflect.DeepEqual(oldVc.Spec, newVc.Spec) {
+	// ignore the update if the resource is being deleted
+	if newVc.DeletionTimestamp != nil {
 		return nil, nil
 	}
 
+	// continue the mutation even if spec is not changed, to ensure those labels
 	var cnLabelPatch, annotationPatch admission.Patch
 	if newVc.Spec.ClusterNetwork != oldVc.Spec.ClusterNetwork {
 		cnLabelPatch = getCnLabelPatch(newVc)

@@ -93,7 +93,7 @@ func TestCreateNAD(t *testing.T) {
 		{
 			name:      "NAD can't be created as it's config is an invalid JSON string",
 			returnErr: true,
-			errKey:    "unmarshal config",
+			errKey:    "failed to unmarshal",
 			currentCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testCnName,
@@ -203,7 +203,7 @@ func TestCreateNAD(t *testing.T) {
 		{
 			name:      "NAD can't be created as it has invalid VLAN id which is -1",
 			returnErr: true,
-			errKey:    "VLAN ID must",
+			errKey:    "out of range",
 			currentCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testCnName,
@@ -225,7 +225,7 @@ func TestCreateNAD(t *testing.T) {
 		{
 			name:      "NAD can't be created as it has invalid VLAN id which is 4095",
 			returnErr: true,
-			errKey:    "VLAN ID must",
+			errKey:    "out of range",
 			currentCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testCnName,
@@ -247,7 +247,7 @@ func TestCreateNAD(t *testing.T) {
 		{
 			name:      "NAD can't be created as it has too long bridge name",
 			returnErr: true,
-			errKey:    "the length of the brName",
+			errKey:    "more than",
 			currentCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testCnName,
@@ -269,7 +269,7 @@ func TestCreateNAD(t *testing.T) {
 		{
 			name:      "NAD can't be created as it has too short bridge name",
 			returnErr: true,
-			errKey:    "the suffix of the brName",
+			errKey:    "less than",
 			currentCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testCnName,
@@ -291,7 +291,7 @@ func TestCreateNAD(t *testing.T) {
 		{
 			name:      "NAD can't be created as it has empty bridge name",
 			returnErr: true,
-			errKey:    "the suffix of the brName",
+			errKey:    "less than",
 			currentCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testCnName,
@@ -313,7 +313,7 @@ func TestCreateNAD(t *testing.T) {
 		{
 			name:      "NAD can't be created as has invalid bridge suffix",
 			returnErr: true,
-			errKey:    "the suffix of the brName",
+			errKey:    "does not include suffix",
 			currentCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testCnName,
@@ -329,6 +329,160 @@ func TestCreateNAD(t *testing.T) {
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
 					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"suffix-br-\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as has vlan and trunk set in parallel",
+			returnErr: true,
+			errKey:    "vlan can only be 0",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"vlanTrunk\":[{\"minID\":3100,\"maxID\":3104}],\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as trunk vid error incorrect trunk minID",
+			returnErr: true,
+			errKey:    "incorrect trunk minID",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":0,\"vlanTrunk\":[{\"minID\":-1,\"maxID\":3104}],\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as trunk vid error incorrect trunk maxID",
+			returnErr: true,
+			errKey:    "incorrect trunk maxID",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":0,\"vlanTrunk\":[{\"minID\":3104,\"maxID\":4095}],\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as trunk vid error minID is missing",
+			returnErr: true,
+			errKey:    "minID is missing",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":0,\"vlanTrunk\":[{\"maxID\":3104}],\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as trunk vid error maxID is missing",
+			returnErr: true,
+			errKey:    "maxID is missing",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":0,\"vlanTrunk\":[{\"minID\":3100}],\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as trunk vid error incorrect trunk id parameter 4096",
+			returnErr: true,
+			errKey:    "incorrect trunk id parameter",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":0,\"vlanTrunk\":[{\"minID\":3100,\"maxID\":3104, \"ID\":4096}],\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as trunk vid error incorrect trunk id parameter 0",
+			returnErr: true,
+			errKey:    "incorrect trunk id parameter",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":0,\"vlanTrunk\":[{\"minID\":3100,\"maxID\":3104, \"ID\":0}],\"ipam\":{}}",
 				},
 			},
 		},
