@@ -217,11 +217,15 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 	getMtu := false
 
 	// get MTU from clusternetwork
-	if lbMTU := cn.Annotations[utils.KeyUplinkMTU]; lbMTU != "" {
-		if mtu, err := utils.GetMTUFromAnnotation(lbMTU); err == nil {
-			targetMTU = mtu
-			getMtu = true
+	if mtuStr, ok := cn.Annotations[utils.KeyUplinkMTU]; ok {
+		mtu, err := utils.GetMTUFromAnnotation(mtuStr)
+		if err != nil {
+			return fmt.Errorf("nad's host cluster network %v has invalid MTU annotation %v/%v %w", cn.Name, utils.KeyUplinkMTU, mtuStr, err)
 		}
+		if mtu != 0 {
+			targetMTU = mtu
+		}
+		getMtu = true
 	}
 
 	// get MTU value from vlanconfig
@@ -233,9 +237,12 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 			return err
 		}
 
-		// if there is no vlanconfig, use default
-		if len(vcs) != 0 && utils.IsValidMTU(vcs[0].Spec.Uplink.LinkAttrs.MTU) {
-			targetMTU = vcs[0].Spec.Uplink.LinkAttrs.MTU
+		// if there is no vlanconfig, use default; in other case, use the first one
+		if len(vcs) != 0 {
+			mtu := utils.GetMTUFromVlanConfig(vcs[0])
+			if utils.IsValidMTU(mtu) && mtu != 0 {
+				targetMTU = mtu
+			}
 		}
 	}
 
