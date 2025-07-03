@@ -91,8 +91,9 @@ func (h Handler) ensureClusterNetwork(vc *networkv1.VlanConfig) error {
 	}
 
 	MTU := utils.DefaultMTU
-	if utils.IsValidMTU(vc.Spec.Uplink.LinkAttrs.MTU) && vc.Spec.Uplink.LinkAttrs.MTU != 0 {
-		MTU = vc.Spec.Uplink.LinkAttrs.MTU
+	vcMtu := utils.GetMTUFromVlanConfig(vc)
+	if utils.IsValidMTU(vcMtu) && vcMtu != 0 {
+		MTU = vcMtu
 	}
 	targetMTU := fmt.Sprintf("%v", MTU)
 
