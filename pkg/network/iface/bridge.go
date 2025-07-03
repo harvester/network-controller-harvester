@@ -13,7 +13,7 @@ const (
 	BridgeSuffix         = "-br"
 	bridgeNFCallIptables = "net/bridge/bridge-nf-call-iptables"
 
-	lenOfBridgeSuffix = len(BridgeSuffix)
+	lenOfBridgeSuffix = 3 // lengh of BridgeSuffix
 )
 
 type Bridge struct {
