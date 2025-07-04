@@ -22,6 +22,7 @@ func main() {
 					networkv1.VlanConfig{},
 					networkv1.VlanStatus{},
 					networkv1.LinkMonitor{},
+					// networkv1.VlanIDSet{},
 				},
 				GenerateTypes:   true,
 				GenerateClients: true,

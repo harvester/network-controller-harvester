@@ -1,5 +1,5 @@
 /*
-Copyright 2019 Harvester Network Controller Authors
+Copyright 2025 Harvester Network Controller Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,5 +23,7 @@ type ClusterNetworkExpansion interface{}
 type LinkMonitorExpansion interface{}
 
 type VlanConfigExpansion interface{}
+
+type VlanIDSetExpansion interface{}
 
 type VlanStatusExpansion interface{}

@@ -27,39 +27,39 @@ import (
 	gentype "k8s.io/client-go/gentype"
 )
 
-// VlanConfigsGetter has a method to return a VlanConfigInterface.
+// VlanIDSetsGetter has a method to return a VlanIDSetInterface.
 // A group's client should implement this interface.
-type VlanConfigsGetter interface {
-	VlanConfigs() VlanConfigInterface
+type VlanIDSetsGetter interface {
+	VlanIDSets() VlanIDSetInterface
 }
 
-// VlanConfigInterface has methods to work with VlanConfig resources.
-type VlanConfigInterface interface {
-	Create(ctx context.Context, vlanConfig *v1beta1.VlanConfig, opts v1.CreateOptions) (*v1beta1.VlanConfig, error)
-	Update(ctx context.Context, vlanConfig *v1beta1.VlanConfig, opts v1.UpdateOptions) (*v1beta1.VlanConfig, error)
+// VlanIDSetInterface has methods to work with VlanIDSet resources.
+type VlanIDSetInterface interface {
+	Create(ctx context.Context, vlanIDSet *v1beta1.VlanIDSet, opts v1.CreateOptions) (*v1beta1.VlanIDSet, error)
+	Update(ctx context.Context, vlanIDSet *v1beta1.VlanIDSet, opts v1.UpdateOptions) (*v1beta1.VlanIDSet, error)
 	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
-	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1beta1.VlanConfig, error)
-	List(ctx context.Context, opts v1.ListOptions) (*v1beta1.VlanConfigList, error)
+	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1beta1.VlanIDSet, error)
+	List(ctx context.Context, opts v1.ListOptions) (*v1beta1.VlanIDSetList, error)
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
-	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.VlanConfig, err error)
-	VlanConfigExpansion
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.VlanIDSet, err error)
+	VlanIDSetExpansion
 }
 
-// vlanConfigs implements VlanConfigInterface
-type vlanConfigs struct {
-	*gentype.ClientWithList[*v1beta1.VlanConfig, *v1beta1.VlanConfigList]
+// vlanIDSets implements VlanIDSetInterface
+type vlanIDSets struct {
+	*gentype.ClientWithList[*v1beta1.VlanIDSet, *v1beta1.VlanIDSetList]
 }
 
-// newVlanConfigs returns a VlanConfigs
-func newVlanConfigs(c *NetworkV1beta1Client) *vlanConfigs {
-	return &vlanConfigs{
-		gentype.NewClientWithList[*v1beta1.VlanConfig, *v1beta1.VlanConfigList](
-			"vlanconfigs",
+// newVlanIDSets returns a VlanIDSets
+func newVlanIDSets(c *NetworkV1beta1Client) *vlanIDSets {
+	return &vlanIDSets{
+		gentype.NewClientWithList[*v1beta1.VlanIDSet, *v1beta1.VlanIDSetList](
+			"vlanidsets",
 			c.RESTClient(),
 			scheme.ParameterCodec,
 			"",
-			func() *v1beta1.VlanConfig { return &v1beta1.VlanConfig{} },
-			func() *v1beta1.VlanConfigList { return &v1beta1.VlanConfigList{} }),
+			func() *v1beta1.VlanIDSet { return &v1beta1.VlanIDSet{} },
+			func() *v1beta1.VlanIDSetList { return &v1beta1.VlanIDSetList{} }),
 	}
 }

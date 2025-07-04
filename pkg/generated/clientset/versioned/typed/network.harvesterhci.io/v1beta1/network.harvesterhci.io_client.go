@@ -1,5 +1,5 @@
 /*
-Copyright 2019 Harvester Network Controller Authors
+Copyright 2025 Harvester Network Controller Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"net/http"
 	v1beta1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"
@@ -30,6 +29,7 @@ type NetworkV1beta1Interface interface {
 	ClusterNetworksGetter
 	LinkMonitorsGetter
 	VlanConfigsGetter
+	VlanIDSetsGetter
 	VlanStatusesGetter
 }
 
@@ -48,6 +48,10 @@ func (c *NetworkV1beta1Client) LinkMonitors() LinkMonitorInterface {
 
 func (c *NetworkV1beta1Client) VlanConfigs() VlanConfigInterface {
 	return newVlanConfigs(c)
+}
+
+func (c *NetworkV1beta1Client) VlanIDSets() VlanIDSetInterface {
+	return newVlanIDSets(c)
 }
 
 func (c *NetworkV1beta1Client) VlanStatuses() VlanStatusInterface {
