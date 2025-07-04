@@ -131,14 +131,14 @@ func checkMTUOfNewClusterNetwork(cn *networkv1.ClusterNetwork) error {
 		return nil
 	}
 
-	// for none-mgmt cluster network, this annotation can only be operated by controller
+	// for non-mgmt cluster network, this annotation can only be operated by controller
 	if _, ok := cn.Annotations[utils.KeyUplinkMTU]; ok {
 		return fmt.Errorf("annotation %v can't be added", utils.KeyUplinkMTU)
 	}
 	return nil
 }
 
-// for none-mgmt cluster network
+// for non-mgmt cluster network
 func (c *CnValidator) checkMTUOfUpdatedClusterNetwork(oldCn, newCn *networkv1.ClusterNetwork) error {
 	if oldCn == nil || newCn == nil || newCn.Name == utils.ManagementClusterNetworkName {
 		return nil
@@ -146,8 +146,8 @@ func (c *CnValidator) checkMTUOfUpdatedClusterNetwork(oldCn, newCn *networkv1.Cl
 
 	newMtu := utils.DefaultMTU
 	var err error
-	if mtu, ok := newCn.Annotations[utils.KeyUplinkMTU]; ok {
-		if newMtu, err = utils.GetMTUFromAnnotation(mtu); err != nil {
+	if mtuStr, ok := newCn.Annotations[utils.KeyUplinkMTU]; ok {
+		if newMtu, err = utils.GetMTUFromAnnotation(mtuStr); err != nil {
 			return err
 		}
 	}
@@ -161,8 +161,9 @@ func (c *CnValidator) checkMTUOfUpdatedClusterNetwork(oldCn, newCn *networkv1.Cl
 	}
 
 	for _, vc := range vcs {
-		if !utils.AreEqualMTUs(vc.Spec.Uplink.LinkAttrs.MTU, newMtu) {
-			return fmt.Errorf("clusternetwork has MTU %v, but the vlanconfigs %v has another MTU %v", newMtu, vc.Name, vc.Spec.Uplink.LinkAttrs.MTU)
+		vcMtu := utils.GetMTUFromVlanConfig(vc)
+		if !utils.AreEqualMTUs(vcMtu, newMtu) {
+			return fmt.Errorf("clusternetwork has MTU %v, but the vlanconfigs %v has another MTU %v", newMtu, vc.Name, vcMtu)
 		}
 	}
 
@@ -180,15 +181,15 @@ func (c *CnValidator) checkMTUOfUpdatedMgmtClusterNetwork(oldCn, newCn *networkv
 	// mgmt network, MTU can be updated
 	newMtu := utils.DefaultMTU
 	var err error
-	if mtu, ok := newCn.Annotations[utils.KeyUplinkMTU]; ok {
-		if newMtu, err = utils.GetMTUFromAnnotation(mtu); err != nil {
+	if mtuStr, ok := newCn.Annotations[utils.KeyUplinkMTU]; ok {
+		if newMtu, err = utils.GetMTUFromAnnotation(mtuStr); err != nil {
 			return err
 		}
 	}
 
 	oldMtu := utils.DefaultMTU
-	if mtu, ok := oldCn.Annotations[utils.KeyUplinkMTU]; ok {
-		if oldMtu, err = utils.GetMTUFromAnnotation(mtu); err != nil {
+	if mtuStr, ok := oldCn.Annotations[utils.KeyUplinkMTU]; ok {
+		if oldMtu, err = utils.GetMTUFromAnnotation(mtuStr); err != nil {
 			return err
 		}
 	}

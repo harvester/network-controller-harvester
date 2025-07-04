@@ -91,6 +91,29 @@ func TestCreateNAD(t *testing.T) {
 			},
 		},
 		{
+			name:      "NAD can't be created as it's config is an invalid JSON string",
+			returnErr: true,
+			errKey:    "unmarshal config",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: "test-cn"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					// config is invalid
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridgebridge\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
 			name:      "NAD can't be created as it's label does not match bridge name",
 			returnErr: true,
 			errKey:    "does not match",
@@ -266,6 +289,28 @@ func TestCreateNAD(t *testing.T) {
 			},
 		},
 		{
+			name:      "NAD can't be created as it has empty bridge name",
+			returnErr: true,
+			errKey:    "the suffix of the brName",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
 			name:      "NAD can't be created as has invalid bridge suffix",
 			returnErr: true,
 			errKey:    "the suffix of the brName",
@@ -283,7 +328,29 @@ func TestCreateNAD(t *testing.T) {
 					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"suffix-br-\":\"a\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"suffix-br-\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as the host cluster network has invalid mtu annotation",
+			returnErr: true,
+			errKey:    "has invalid MTU annotation",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{utils.KeyUplinkMTU: "15000"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
 				},
 			},
 		},

@@ -3,6 +3,8 @@ package utils
 import (
 	"fmt"
 	"strconv"
+
+	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 )
 
 func IsValidMTU(MTU int) bool {
@@ -26,4 +28,13 @@ func GetMTUFromAnnotation(annotation string) (int, error) {
 		return 0, fmt.Errorf("annotation %v value is not in range [0, %v..%v]", annotation, MinMTU, MaxMTU)
 	}
 	return MTU, nil
+}
+
+// caller handlers the return value of 0 which is normally treated as the default MTU
+func GetMTUFromVlanConfig(vc *networkv1.VlanConfig) int {
+	if vc == nil || vc.Spec.Uplink.LinkAttrs == nil {
+		return 0
+	}
+
+	return vc.Spec.Uplink.LinkAttrs.MTU
 }

@@ -251,8 +251,9 @@ func getMatchNodes(vc *networkv1.VlanConfig) (mapset.Set[string], error) {
 
 func (v *Validator) validateMTU(current *networkv1.VlanConfig) error {
 	// MTU can be 0, it means user does not input and the default value is used
-	if !utils.IsValidMTU(current.Spec.Uplink.LinkAttrs.MTU) {
-		return fmt.Errorf("the MTU %v is out of range [0, %v..%v]", current.Spec.Uplink.LinkAttrs.MTU, utils.MinMTU, utils.MaxMTU)
+	mtu := utils.GetMTUFromVlanConfig(current)
+	if !utils.IsValidMTU(mtu) {
+		return fmt.Errorf("the MTU %v is out of range [0, %v..%v]", mtu, utils.MinMTU, utils.MaxMTU)
 	}
 
 	// ensure all vlanconfigs on one clusternetwork have the same MTU
@@ -267,8 +268,9 @@ func (v *Validator) validateMTU(current *networkv1.VlanConfig) error {
 		if vc.Name == current.Name {
 			continue
 		}
-		if !utils.AreEqualMTUs(current.Spec.Uplink.LinkAttrs.MTU, vc.Spec.Uplink.LinkAttrs.MTU) {
-			return fmt.Errorf("the vlanconfig %s MTU %v is different with another vlanconfig %s MTU %v, all vlanconfigs on one clusternetwork need to have same MTU", current.Name, current.Spec.Uplink.LinkAttrs.MTU, vc.Name, vc.Spec.Uplink.LinkAttrs.MTU)
+		vcMtu := utils.GetMTUFromVlanConfig(vc)
+		if !utils.AreEqualMTUs(mtu, vcMtu) {
+			return fmt.Errorf("the vlanconfig %s MTU %v is different with another vlanconfig %s MTU %v, all vlanconfigs on one clusternetwork need to have same MTU", current.Name, mtu, vc.Name, vcMtu)
 		}
 	}
 
