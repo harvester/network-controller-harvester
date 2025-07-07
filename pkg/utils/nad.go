@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -20,6 +21,9 @@ import (
 const (
 	CNITypeKubeOVN = "kube-ovn"
 	ovnProvider    = "ovn"
+
+	CNITypeBridge       = "bridge"
+	CNITypeDefaultEmpty = "" // potential empty type, is treated as CNITypeBridge
 )
 
 type Connectivity string
@@ -115,18 +119,133 @@ func (n NadSelectedNetworks) ToString() (string, error) {
 	return string(bytes), nil
 }
 
+// L2 mode
 type NetConf struct {
 	cniv1.NetConf
-	BrName       string `json:"bridge"`
-	IsGW         bool   `json:"isGateway"`
-	IsDefaultGW  bool   `json:"isDefaultGateway"`
-	ForceAddress bool   `json:"forceAddress"`
-	IPMasq       bool   `json:"ipMasq"`
-	MTU          int    `json:"mtu"`
-	HairpinMode  bool   `json:"hairpinMode"`
-	PromiscMode  bool   `json:"promiscMode"`
-	Vlan         int    `json:"vlan"`
-	Provider     string `json:"provider"`
+	BrName       string       `json:"bridge"`
+	IsGW         bool         `json:"isGateway"`
+	IsDefaultGW  bool         `json:"isDefaultGateway"`
+	ForceAddress bool         `json:"forceAddress"`
+	IPMasq       bool         `json:"ipMasq"`
+	MTU          int          `json:"mtu"`
+	HairpinMode  bool         `json:"hairpinMode"`
+	PromiscMode  bool         `json:"promiscMode"`
+	Vlan         int          `json:"vlan"`
+	Provider     string       `json:"provider"`
+	VlanTrunk    []*VlanTrunk `json:"vlanTrunk,omitempty"`
+}
+
+type VlanTrunk struct {
+	MinID *int `json:"minID,omitempty"`
+	MaxID *int `json:"maxID,omitempty"`
+	ID    *int `json:"id,omitempty"`
+}
+
+func (item *VlanTrunk) IsValid() (bool, error) {
+	if item == nil {
+		return true, nil
+	}
+
+	switch {
+	case item.MinID != nil && item.MaxID != nil:
+		minID := *item.MinID
+		if minID < MinTrunkVlanID || minID > MaxVlanID {
+			return false, fmt.Errorf("incorrect trunk minID parameter %v", minID)
+		}
+		maxID := *item.MaxID
+		if maxID < MinTrunkVlanID || maxID > MaxVlanID {
+			return false, fmt.Errorf("incorrect trunk maxID parameter %v", maxID)
+		}
+		if maxID < minID {
+			return false, fmt.Errorf("minID %v is greater than maxID %v in trunk parameter", minID, maxID)
+		}
+	case item.MinID == nil && item.MaxID != nil:
+		return false, errors.New("minID and maxID should be configured simultaneously, minID is missing")
+	case item.MinID != nil && item.MaxID == nil:
+		return false, errors.New("minID and maxID should be configured simultaneously, maxID is missing")
+	}
+
+	// single vid
+	if item.ID != nil {
+		ID := *item.ID
+		if ID < MinTrunkVlanID || ID > MaxVlanID {
+			return false, fmt.Errorf("incorrect trunk id parameter %v", ID)
+		}
+	}
+
+	return true, nil
+}
+
+// if related vlanconfig is valid
+func (nc *NetConf) IsVlanConfigValid() (bool, error) {
+	if nc.Vlan < MinVlanID || nc.Vlan > MaxVlanID {
+		return false, fmt.Errorf("vlan %v is out of range [%v .. %v]", nc.Vlan, MinVlanID, MaxVlanID)
+	}
+
+	for _, vt := range nc.VlanTrunk {
+		if _, err := vt.IsValid(); err != nil {
+			return false, err
+		}
+	}
+
+	return true, nil
+}
+
+func (nc *NetConf) dumpVlanIDSet() (*VlanIDSet, error) {
+	vis := newVlanIDSet()
+	var err error
+	if err = vis.SetVID(nc.Vlan); err != nil {
+		return nil, err
+	}
+
+	for _, vt := range nc.VlanTrunk {
+		if vt.ID != nil {
+			if err = vis.SetVID(*vt.ID); err != nil {
+				return nil, err
+			}
+		}
+		if vt.MinID != nil && vt.MaxID != nil {
+			for i := *vt.MinID; i <= *vt.MaxID; i++ {
+				if err = vis.SetVID(i); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+	return vis, nil
+}
+
+func NewVlanIDSetFromNetConf(nc *NetConf) (*VlanIDSet, error) {
+	if nc == nil {
+		return nil, fmt.Errorf("the input netconf is empty")
+	}
+	if !nc.IsBridgeCNI() {
+		return nil, fmt.Errorf("the netconf is not bridge type")
+	}
+
+	if _, err := nc.IsVlanConfigValid(); err != nil {
+		return nil, err
+	}
+
+	return nc.dumpVlanIDSet()
+}
+
+// if VlanTrunk is configured
+func (nc *NetConf) IsVlanTrunkMode() bool {
+	return len(nc.VlanTrunk) > 0
+}
+
+// the default mode
+func (nc *NetConf) IsVlanAccessMode() bool {
+	return len(nc.VlanTrunk) == 0
+}
+
+func (nc *NetConf) IsBridgeCNI() bool {
+	return nc.Type == CNITypeBridge || nc.Type == CNITypeDefaultEmpty
+}
+
+func (nc *NetConf) IsKubeOVNCNI() bool {
+	return nc.Type == CNITypeKubeOVN
 }
 
 func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
@@ -136,6 +255,20 @@ func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
 	}
 
 	return true
+}
+
+// decode nad config string to a config struct
+func DecodeNadConfigToNetConf(nad *nadv1.NetworkAttachmentDefinition) (*NetConf, error) {
+	conf := &NetConf{}
+	if nad.Spec.Config == "" {
+		return conf, nil
+	}
+
+	if err := json.Unmarshal([]byte(nad.Spec.Config), &conf); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal nad %v/%v config %s %w", nad.Namespace, nad.Name, nad.Spec.Config, err)
+	}
+
+	return conf, nil
 }
 
 func isMaskZero(ipnet *net.IPNet) bool {
