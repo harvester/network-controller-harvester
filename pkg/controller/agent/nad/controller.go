@@ -59,7 +59,7 @@ func (h Handler) OnChange(_ string, nad *nadv1.NetworkAttachmentDefinition) (*na
 		return nil, fmt.Errorf("remove outdated local area for nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
 	}
 
-	// NadCaopy could be nil and nad is readonly here
+	// NadCopy could be nil and nad is readonly here
 	if err := h.addLocalArea(nad); err != nil {
 		return nil, fmt.Errorf("add local area for nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
 	}

@@ -155,6 +155,20 @@ func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 
 	klog.Infof("nad configuration %s/%s has been changed: %s", nad.Namespace, nad.Name, nad.Spec.Config)
 
+	nc, err := utils.DecodeNadConfigToNetConf(nad)
+	if err != nil {
+		return nil, err
+	}
+
+	if nc.IsVlanTrunkMode() {
+		vis, err := utils.NewVlanIDSetFromNetConf(nc)
+		if err != nil {
+			klog.Infof("convert trunk mode slice failed %s", err.Error())
+		} else {
+			klog.Infof("trunk vids %v", vis.VidSetToStr())
+		}
+	}
+
 	if err := h.ensureLabels(nad); err != nil {
 		return nil, fmt.Errorf("ensure labels of nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
 	}

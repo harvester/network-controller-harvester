@@ -2,6 +2,8 @@ package utils
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -29,11 +31,11 @@ func (vis *VlanIDSet) SetVID(vid int) error {
 	}
 
 	if len(vis.VIDSet) < (vid + 1) {
-		fmt.Errorf("not enough space")
+		fmt.Errorf("vlan set length is %v, not enough space to store vid %v", len(vis.VIDSet), vid)
 	}
 	if vis.VIDSet[vid] == false {
 		vis.VIDSet[vid] = true
-		vis.VlanCount += 1
+		vis.VlanCount++
 	}
 	return nil
 }
@@ -48,10 +50,26 @@ func (vis *VlanIDSet) Append(other *VlanIDSet) *VlanIDSet {
 	for i := range other.VIDSet {
 		if other.VIDSet[i] {
 			vis.VIDSet[i] = true
-			vis.VlanCount += 1
+			vis.VlanCount++
 		}
 	}
 	return vis
+}
+
+func (vis *VlanIDSet) VidSetToStr() string {
+	if vis == nil || len(vis.VIDSet) == 0 || vis.VlanCount == 0 {
+		return ""
+	}
+	tgt := make([]string, vis.VlanCount)
+	k := 0
+
+	for i := range vis.VIDSet {
+		if vis.VIDSet[i] {
+			tgt[k] = strconv.Itoa(i)
+			k++
+		}
+	}
+	return strings.Join(tgt, " ")
 }
 
 func newVlanIDSet() *VlanIDSet {
