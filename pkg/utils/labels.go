@@ -20,6 +20,9 @@ const (
 
 	KeyMatchedNodes = network.GroupName + "/matched-nodes"
 
+	KeyVlanIDSetStr     = network.GroupName + "/vlan-id-set-str"      // all vlan ids under current cluster network, format "1,2,3..."
+	KeyVlanIDSetStrHash = network.GroupName + "/vlan-id-set-str-hash" // hash value of above string
+
 	ValueTrue  = "true"
 	ValueFalse = "false"
 

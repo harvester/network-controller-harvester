@@ -192,7 +192,7 @@ func (nc *NetConf) IsVlanConfigValid() (bool, error) {
 }
 
 func (nc *NetConf) dumpVlanIDSet() (*VlanIDSet, error) {
-	vis := newVlanIDSet()
+	vis := NewVlanIDSet()
 	var err error
 	if err = vis.SetVID(nc.Vlan); err != nil {
 		return nil, err
@@ -228,6 +228,68 @@ func NewVlanIDSetFromNetConf(nc *NetConf) (*VlanIDSet, error) {
 	}
 
 	return nc.dumpVlanIDSet()
+}
+
+// return vidsets from all bridge nads
+func NewVlanIDSetFromNadList(nads []*nadv1.NetworkAttachmentDefinition) (*VlanIDSet, error) {
+	vis := NewVlanIDSet()
+	if len(nads) == 0 {
+		return vis, nil
+	}
+
+	for _, nad := range nads {
+		if nad.DeletionTimestamp != nil {
+			continue
+		}
+		nc, err := DecodeNadConfigToNetConf(nad)
+		if err != nil {
+			return nil, err
+		}
+
+		// skip non-bridge CNI
+		if !nc.IsBridgeCNI() {
+			continue
+		}
+
+		tmpvis, err := NewVlanIDSetFromNetConf(nc)
+		if err != nil {
+			return nil, err
+		}
+		vis = vis.Append(tmpvis)
+	}
+
+	return vis, nil
+}
+
+// return vidsets from all vlan trunk mode bridge nads
+func NewVlanIDSetFromTrunkModeNadList(nads []*nadv1.NetworkAttachmentDefinition) (*VlanIDSet, error) {
+	vis := NewVlanIDSet()
+	if len(nads) == 0 {
+		return vis, nil
+	}
+
+	for _, nad := range nads {
+		if nad.DeletionTimestamp != nil {
+			continue
+		}
+		nc, err := DecodeNadConfigToNetConf(nad)
+		if err != nil {
+			return nil, err
+		}
+
+		// skip non-bridge CNI
+		if !nc.IsBridgeCNI() || !nc.IsVlanTrunkMode() {
+			continue
+		}
+
+		tmpvis, err := NewVlanIDSetFromNetConf(nc)
+		if err != nil {
+			return nil, err
+		}
+		vis = vis.Append(tmpvis)
+	}
+
+	return vis, nil
 }
 
 // if VlanTrunk is configured

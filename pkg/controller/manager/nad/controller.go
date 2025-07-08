@@ -63,6 +63,7 @@ type Handler struct {
 	jobCache  ctlbatchv1.JobCache
 	nadClient ctlcniv1.NetworkAttachmentDefinitionClient
 	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
+	cnClient  ctlnetworkv1.ClusterNetworkClient
 	cnCache   ctlnetworkv1.ClusterNetworkCache
 
 	*checkMap
@@ -80,6 +81,7 @@ func Register(ctx context.Context, management *config.Management) error {
 		jobCache:    jobs.Cache(),
 		nadClient:   nads,
 		nadCache:    nads.Cache(),
+		cnClient:    cns,
 		cnCache:     cns.Cache(),
 		checkMap: &checkMap{
 			items: make(map[nameWithNamespace]string),
@@ -165,7 +167,7 @@ func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 		if err != nil {
 			klog.Infof("convert trunk mode slice failed %s", err.Error())
 		} else {
-			klog.Infof("trunk vids %v", vis.VidSetToStr())
+			klog.Infof("trunk vids %v", vis.VidSetToString())
 		}
 	}
 
@@ -186,6 +188,13 @@ func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 		return nil, err
 	}
 
+	klog.Infof("reset cn vid set")
+
+	// nad change triggers the re-compute of cn's vlanset
+	if err := h.UpdateClusetNetworkVlanSet(nad); err != nil {
+		return nil, err
+	}
+
 	return nad, nil
 }
 
@@ -196,11 +205,17 @@ func (h Handler) OnRemove(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 
 	klog.Infof("nad configuration %s/%s has been removed", nad.Namespace, nad.Name)
 
+	// TODO: need to go through
 	if !utils.IsVlanNad(nad) {
 		return nad, nil
 	}
 
 	if err := h.clearJob(nad); err != nil {
+		return nil, err
+	}
+
+	// nad change triggers the re-compute of cn's vlanset
+	if err := h.UpdateClusetNetworkVlanSet(nad); err != nil {
 		return nil, err
 	}
 
@@ -251,6 +266,79 @@ func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
 	nadCopy.Labels = labels
 	if _, err := h.nadClient.Update(nadCopy); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (h Handler) UpdateClusetNetworkVlanSet(nad *cniv1.NetworkAttachmentDefinition) error {
+	if nad.Labels == nil {
+		return nil
+	}
+	cnname := nad.Labels[utils.KeyClusterNetworkLabel]
+	cnlast := nad.Labels[utils.KeyLastClusterNetworkLabel]
+
+	// no current cluster name, wait until the label is updated
+	if cnname == "" {
+		return nil
+	}
+	err := h.updateClusetNetworkVlanSet(nad, cnname, false)
+	if err != nil {
+		return err
+	}
+
+	if cnlast == "" || cnlast == cnname {
+		return nil
+	}
+	err = h.updateClusetNetworkVlanSet(nad, cnlast, true)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (h Handler) updateClusetNetworkVlanSet(_ *cniv1.NetworkAttachmentDefinition, cnname string, skipIsNotFounnd bool) error {
+	klog.Infof("handle cn %v", cnname)
+	cn, err := h.cnCache.Get(cnname)
+	if err != nil {
+		if skipIsNotFounnd && apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	if cn.DeletionTimestamp != nil {
+		return nil
+	}
+
+	nadg := utils.NewNadGetter(h.nadCache)
+	nads, err := nadg.ListNadsOnClusterNetwork(cnname)
+	if err != nil {
+		return err
+	}
+	vids, err := utils.NewVlanIDSetFromNadList(nads)
+	if err != nil {
+		return err
+	}
+	vidstr, vidhash := vids.VidSetToStringHash()
+
+	if cn.Annotations[utils.KeyVlanIDSetStr] != vidstr || cn.Annotations[utils.KeyVlanIDSetStrHash] != vidhash {
+		klog.Infof("update cn %v annotations %v:%v", cnname, utils.KeyVlanIDSetStrHash, vidhash)
+		// update new vid and hash to cluster network
+		cnCopy := cn.DeepCopy()
+		if cnCopy.Annotations == nil {
+			cnCopy.Annotations = make(map[string]string)
+		}
+		cnCopy.Annotations[utils.KeyVlanIDSetStr] = vidstr
+		cnCopy.Annotations[utils.KeyVlanIDSetStrHash] = vidhash
+
+		if _, err := h.cnClient.Update(cnCopy); err != nil {
+			if skipIsNotFounnd && apierrors.IsNotFound(err) {
+				return nil
+			}
+			return fmt.Errorf("failed to update cluster network %s label %s/%s error %w", cnname, utils.KeyVlanIDSetStrHash, vidhash, err)
+		}
 	}
 
 	return nil
