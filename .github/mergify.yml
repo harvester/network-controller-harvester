@@ -15,9 +15,28 @@ pull_request_rules:
     review:
       type: APPROVE
 
+- name: Automatically merge Backport PRs
+  conditions:
+  - check-success="dapper-build"
+  - author = mergify[bot]
+  - -conflict
+  actions:
+    merge:
+      method: rebase
+
 - name: Ask to resolve conflict
   conditions:
   - conflict
   actions:
     comment:
       message: This pull request is now in conflict. Could you fix it @{{author}}? 🙏
+
+- name: Automatically approve Backport PRs
+  conditions:
+  - check-success="dapper-build"
+  - author = mergify[bot]
+  - -conflict
+  actions:
+    review:
+      type: APPROVE
+      bot_account: harvesterhci-io-github-bot
