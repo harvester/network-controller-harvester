@@ -14,7 +14,6 @@ import (
 
 	kubeovnnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io/v1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
-	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
@@ -195,7 +194,7 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 	}
 
 	// check and get the bridge name
-	cnName, err := iface.GetBridgeNamePrefix(nadConf.BrName)
+	cnName, err := utils.GetBridgeNamePrefix(nadConf.BrName)
 	if err != nil {
 		return err
 	}

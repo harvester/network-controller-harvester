@@ -16,7 +16,6 @@ import (
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
-	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
@@ -134,10 +133,19 @@ func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, 
 		labels[utils.KeyLastVlanLabel] = strconv.Itoa(oldConf.Vlan)
 	}
 
-	cnName := newConf.BrName[:len(newConf.BrName)-len(iface.BridgeSuffix)]
+	// check and get the bridge name
+	cnName, err := utils.GetBridgeNamePrefix(newConf.BrName)
+	if err != nil {
+		return nil, err
+	}
+	//cnName := newConf.BrName[:len(newConf.BrName)-len(iface.BridgeSuffix)]
 	labels[utils.KeyClusterNetworkLabel] = cnName
 	if oldConf.BrName != newConf.BrName {
-		labels[utils.KeyLastClusterNetworkLabel] = oldConf.BrName[:len(oldConf.BrName)-len(iface.BridgeSuffix)]
+		oldCnName, err := utils.GetBridgeNamePrefix(oldConf.BrName)
+		if err != nil {
+			return nil, err
+		}
+		labels[utils.KeyLastClusterNetworkLabel] = oldCnName
 	}
 	if cn, err := m.cnCache.Get(cnName); err != nil {
 		return nil, err

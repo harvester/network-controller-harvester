@@ -23,7 +23,7 @@ func (v *Vlan) Type() string {
 // The bridge of a pure VLAN may have no latest information
 // The NIC of a pure VLAN can be empty
 func NewVlan(name string) *Vlan {
-	br := iface.NewBridge(iface.GenerateName(name, iface.BridgeSuffix))
+	br := iface.NewBridge(utils.GenerateBridgeName(name))
 
 	return &Vlan{
 		name:   name,
@@ -32,7 +32,7 @@ func NewVlan(name string) *Vlan {
 }
 
 func (v *Vlan) getUplink() (*iface.Link, error) {
-	l, err := netlink.LinkByName(iface.GenerateName(v.name, iface.BondSuffix))
+	l, err := netlink.LinkByName(utils.GenerateBridgeName(v.name))
 	if err != nil {
 		return nil, err
 	}

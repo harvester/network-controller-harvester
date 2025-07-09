@@ -25,7 +25,6 @@ import (
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
-	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
@@ -243,7 +242,11 @@ func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) error {
 		labels[utils.KeyNetworkType] = string(utils.OverlayNetwork)
 		cnName = utils.ManagementClusterNetworkName
 	} else {
-		cnName = netconf.BrName[:len(netconf.BrName)-len(iface.BridgeSuffix)]
+		cName, err := utils.GetBridgeNamePrefix(netconf.BrName)
+		if err != nil {
+			return err
+		}
+		cnName = cName
 		if netconf.Vlan != 0 {
 			labels[utils.KeyNetworkType] = string(utils.L2VlanNetwork)
 			labels[utils.KeyVlanLabel] = strconv.Itoa(netconf.Vlan)

@@ -110,7 +110,7 @@ func (h Handler) ensureLinkMonitor(name string) error {
 		},
 		Spec: networkv1.LinkMonitorSpec{
 			TargetLinkRule: networkv1.TargetLinkRule{
-				NameRule: name + "(" + iface.BridgeSuffix + "|" + iface.BondSuffix + ")",
+				NameRule: name + "(" + utils.BridgeSuffix + "|" + utils.BondSuffix + ")",
 			}},
 	}); err != nil {
 		return err

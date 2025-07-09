@@ -45,9 +45,10 @@ const (
 type NetworkType string
 
 const (
-	L2VlanNetwork   NetworkType = "L2VlanNetwork"
-	UntaggedNetwork NetworkType = "UntaggedNetwork"
-	OverlayNetwork  NetworkType = "OverlayNetwork"
+	L2VlanNetwork      NetworkType = "L2VlanNetwork"
+	L2VlanTrunkNetwork NetworkType = "L2VlanTrunkNetwork"
+	UntaggedNetwork    NetworkType = "UntaggedNetwork"
+	OverlayNetwork     NetworkType = "OverlayNetwork"
 )
 
 type NadSelectedNetworks []nadv1.NetworkSelectionElement

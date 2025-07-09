@@ -251,7 +251,7 @@ updateStatus:
 func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 	// set link attributes
 	linkAttrs := netlink.NewLinkAttrs()
-	linkAttrs.Name = vc.Spec.ClusterNetwork + iface.BondSuffix
+	linkAttrs.Name = vc.Spec.ClusterNetwork + utils.BondSuffix
 	if vc.Spec.Uplink.LinkAttrs != nil {
 		linkAttrs.MTU = vc.Spec.Uplink.LinkAttrs.MTU
 		linkAttrs.TxQLen = vc.Spec.Uplink.LinkAttrs.TxQLen
