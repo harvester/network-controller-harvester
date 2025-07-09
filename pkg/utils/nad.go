@@ -187,7 +187,7 @@ func (nc *NetConf) IsVlanConfigValid() (bool, error) {
 
 	// when VlanTrunk is set, the Vlan can only 0
 	if nc.Vlan != 0 && len(nc.VlanTrunk) > 0 {
-		return false, fmt.Errorf("Vlan can only be 0 when VlanTrunk is set")
+		return false, fmt.Errorf("vlan can only be 0 when vlanTrunk is set")
 	}
 
 	for _, vt := range nc.VlanTrunk {
