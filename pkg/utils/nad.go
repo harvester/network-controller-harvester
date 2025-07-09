@@ -14,8 +14,6 @@ import (
 
 	cniv1 "github.com/containernetworking/cni/pkg/types"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-
-	harvesterutil "github.com/harvester/harvester/pkg/util"
 )
 
 const (
@@ -355,7 +353,7 @@ func isMaskZero(ipnet *net.IPNet) bool {
 
 // if this nad is a storagenetwork nad
 func IsStorageNetworkNad(nad *nadv1.NetworkAttachmentDefinition) bool {
-	if nad == nil || nad.Namespace != harvesterutil.HarvesterSystemNamespaceName {
+	if nad == nil || nad.Namespace != HarvesterSystemNamespaceName {
 		return false
 	}
 
@@ -409,7 +407,7 @@ func (n *NadGetter) ListNadsOnClusterNetwork(cnName string) ([]*nadv1.NetworkAtt
 }
 
 func (n *NadGetter) GetFirstActiveStorageNetworkNadOnClusterNetwork(cnName string) (*nadv1.NetworkAttachmentDefinition, error) {
-	nads, err := n.nadCache.List(harvesterutil.HarvesterSystemNamespaceName, labels.Set(map[string]string{
+	nads, err := n.nadCache.List(HarvesterSystemNamespaceName, labels.Set(map[string]string{
 		KeyClusterNetworkLabel: cnName,
 	}).AsSelector())
 	if err != nil {
