@@ -4,7 +4,6 @@ import (
 	"context"
 
 	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
-	//"github.com/harvester/harvester/pkg/util/crd"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/rancher/lasso/pkg/controller"
 	wcrd "github.com/rancher/wrangler/v3/pkg/crd"

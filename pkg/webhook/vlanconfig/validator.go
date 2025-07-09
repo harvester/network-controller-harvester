@@ -56,9 +56,8 @@ var _ admission.Validator = &Validator{}
 func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	vc := newObj.(*networkv1.VlanConfig)
 
-	if len(vc.Spec.ClusterNetwork) > utils.MaxClusterNetworkNameLen {
-		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("the length of the clusterNetwork name is "+
-			"more than %d", utils.MaxClusterNetworkNameLen))
+	if _, err := utils.IsClusterNetworkNameValid(vc.Spec.ClusterNetwork); err != nil {
+		return fmt.Errorf(createErr, vc.Name, err)
 	}
 
 	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {

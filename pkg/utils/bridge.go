@@ -12,8 +12,7 @@ const (
 	LenOfBridgeSuffix = 3 // length of BridgeSuffix
 	LenOfBondSuffix   = 3 // length of BondSuffix
 
-	MaxDeviceNameLen         = 15
-	MaxClusterNetworkNameLen = MaxDeviceNameLen - LenOfBridgeSuffix
+	MaxDeviceNameLen = 15
 
 	ManagementClusterNetworkDevicePrefix = ManagementClusterNetworkName + "-" + BridgeSuffix + "."
 )

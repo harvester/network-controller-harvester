@@ -288,24 +288,9 @@ func (h Handler) getLocalAreas(vc *networkv1.VlanConfig) ([]utils.LocalArea, err
 		return nil, fmt.Errorf("failed to list nad, error: %w", err)
 	}
 
-	/*
-		localAreas := make([]*utils.LocalArea, 0)
-		for _, n := range nads {
-			if !utils.IsVlanNad(n) {
-				continue
-			}
-			localArea, err := utils.GetLocalArea(n.Labels[utils.KeyVlanLabel], n.Annotations[utils.KeyNetworkRoute])
-			if err != nil {
-				return nil, fmt.Errorf("failed to get local area from nad %s/%s, error: %w", n.Namespace, n.Name, err)
-			}
-			localAreas = append(localAreas, localArea)
-		}
-
-		return localAreas, nil
-	*/
 	vis, err := utils.NewVlanIDSetFromNadList(nads)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get vid set, error: %w", err)
+		return nil, fmt.Errorf("failed to get cluster network %v vlan id set, error: %w", vc.Spec.ClusterNetwork, err)
 	}
 	return vis.ToLocalAreas(), nil
 }

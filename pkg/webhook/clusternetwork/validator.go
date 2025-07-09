@@ -44,8 +44,8 @@ func NewCnValidator(nadCache ctlcniv1.NetworkAttachmentDefinitionCache, vmiCache
 func (c *CnValidator) Create(_ *admission.Request, newObj runtime.Object) error {
 	cn := newObj.(*networkv1.ClusterNetwork)
 
-	if len(cn.Name) > utils.MaxClusterNetworkNameLen {
-		return fmt.Errorf(createErr, cn.Name, fmt.Errorf("the length of name is more than %d", utils.MaxClusterNetworkNameLen))
+	if _, err := utils.IsClusterNetworkNameValid(cn.Name); err != nil {
+		return fmt.Errorf(createErr, cn.Name, err)
 	}
 
 	if err := checkMTUOfNewClusterNetwork(cn); err != nil {
