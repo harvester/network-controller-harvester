@@ -173,6 +173,10 @@ func (item *VlanTrunk) IsValid() (bool, error) {
 		}
 	}
 
+	if item.ID == nil && item.MinID == nil && item.MaxID == nil {
+		return false, fmt.Errorf("all fields in this VlanTrunk are empty")
+	}
+
 	return true, nil
 }
 
@@ -180,6 +184,11 @@ func (item *VlanTrunk) IsValid() (bool, error) {
 func (nc *NetConf) IsVlanConfigValid() (bool, error) {
 	if nc.Vlan < MinVlanID || nc.Vlan > MaxVlanID {
 		return false, fmt.Errorf("vlan %v is out of range [%v .. %v]", nc.Vlan, MinVlanID, MaxVlanID)
+	}
+
+	// when VlanTrunk is set, the Vlan can only 0
+	if nc.Vlan != 0 && len(nc.VlanTrunk) > 0 {
+		return false, fmt.Errorf("Vlan can only be 0 when VlanTrunk is set")
 	}
 
 	for _, vt := range nc.VlanTrunk {
@@ -322,11 +331,11 @@ func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
 // decode nad config string to a config struct
 func DecodeNadConfigToNetConf(nad *nadv1.NetworkAttachmentDefinition) (*NetConf, error) {
 	conf := &NetConf{}
-	if nad.Spec.Config == "" {
+	if nad == nil || nad.Spec.Config == "" {
 		return conf, nil
 	}
 
-	if err := json.Unmarshal([]byte(nad.Spec.Config), &conf); err != nil {
+	if err := json.Unmarshal([]byte(nad.Spec.Config), conf); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal nad %v/%v config %s %w", nad.Namespace, nad.Name, nad.Spec.Config, err)
 	}
 

@@ -1,7 +1,6 @@
 package nad
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -51,16 +50,16 @@ func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkube
 func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	nad := newObj.(*cniv1.NetworkAttachmentDefinition)
 
-	if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute]); err != nil {
-		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
-	}
-
-	conf, err := decodeConfig(nad.Spec.Config)
+	conf, err := utils.DecodeNadConfigToNetConf(nad)
 	if err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
 	if err := v.checkNadConfig(conf, nad); err != nil {
+		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
+	}
+
+	if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute]); err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
@@ -76,18 +75,19 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return nil
 	}
 
+	newConf, err := utils.DecodeNadConfigToNetConf(newNad)
+	if err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+	}
+	oldConf, err := utils.DecodeNadConfigToNetConf(oldNad)
+	if err != nil {
+		return fmt.Errorf(updateErr, oldNad.Namespace, oldNad.Name, err)
+	}
+
 	if err := v.checkRoute(newNad.Annotations[utils.KeyNetworkRoute]); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
-	newConf, err := decodeConfig(newNad.Spec.Config)
-	if err != nil {
-		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
-	}
-	oldConf, err := decodeConfig(oldNad.Spec.Config)
-	if err != nil {
-		return fmt.Errorf(updateErr, oldNad.Namespace, oldNad.Name, err)
-	}
 	// skip the following check if the config is not changed
 	if reflect.DeepEqual(newConf, oldConf) {
 		return nil
@@ -121,7 +121,7 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	nad := oldObj.(*cniv1.NetworkAttachmentDefinition)
 
-	nadConf, err := decodeConfig(nad.Spec.Config)
+	nadConf, err := utils.DecodeNadConfigToNetConf(nad)
 	if err != nil {
 		return fmt.Errorf(updateErr, nad.Namespace, nad.Name, err)
 	}
@@ -189,9 +189,9 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 		return nil
 	}
 
-	// The VLAN value of untagged network will be empty or number 0.
-	if nadConf.Vlan < 0 || nadConf.Vlan > 4094 {
-		return fmt.Errorf("VLAN ID must >=0 and <=4094")
+	// checks untag, tag, trunk
+	if _, err := nadConf.IsVlanConfigValid(); err != nil {
+		return err
 	}
 
 	// check and get the bridge name
@@ -344,18 +344,4 @@ func (v *Validator) Resource() admission.Resource {
 			admissionregv1.Delete,
 		},
 	}
-}
-
-// decode config string to a config struct
-func decodeConfig(config string) (*utils.NetConf, error) {
-	conf := &utils.NetConf{}
-	if config == "" {
-		return conf, nil
-	}
-
-	if err := json.Unmarshal([]byte(config), &conf); err != nil {
-		return nil, fmt.Errorf("unmarshal config %s failed: %w", config, err)
-	}
-
-	return conf, nil
 }

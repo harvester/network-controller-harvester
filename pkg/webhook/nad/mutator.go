@@ -55,13 +55,16 @@ func (m *Mutator) Update(_ *admission.Request, oldObj, newObj runtime.Object) (a
 		return nil, nil
 	}
 
-	oldNetconf, newNetconf := &utils.NetConf{}, &utils.NetConf{}
-	if err := json.Unmarshal([]byte(oldNad.Spec.Config), oldNetconf); err != nil {
+	oldNetconf, err := utils.DecodeNadConfigToNetConf(oldNad)
+	if err != nil {
 		return nil, fmt.Errorf(updateErr, oldNad.Namespace, oldNad.Name, err)
 	}
-	if err := json.Unmarshal([]byte(newNad.Spec.Config), newNetconf); err != nil {
+
+	newNetconf, err := utils.DecodeNadConfigToNetConf(newNad)
+	if err != nil {
 		return nil, fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
+
 	// ignore the update if the config is not being updated
 	if reflect.DeepEqual(oldNetconf, newNetconf) {
 		return nil, nil
@@ -198,8 +201,9 @@ func tagRouteOutdated(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *
 
 func (m *Mutator) patchMTU(nad *cniv1.NetworkAttachmentDefinition) (admission.Patch, error) {
 	config := nad.Spec.Config
-	netConf := &utils.NetConf{}
-	if err := json.Unmarshal([]byte(config), netConf); err != nil {
+
+	netConf, err := utils.DecodeNadConfigToNetConf(nad)
+	if err != nil {
 		return nil, err
 	}
 
@@ -207,7 +211,11 @@ func (m *Mutator) patchMTU(nad *cniv1.NetworkAttachmentDefinition) (admission.Pa
 		return nil, nil
 	}
 
-	clusterNetwork := netConf.BrName[:len(netConf.BrName)-len(iface.BridgeSuffix)]
+	clusterNetwork, err := utils.GetClusterNetworkFromBridgeName(netConf.BrName)
+	if err != nil {
+		return nil, err
+	}
+
 	cn, err := m.cnCache.Get(clusterNetwork)
 	if err != nil {
 		return nil, err

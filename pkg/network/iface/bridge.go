@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	BridgeSuffix         = "-br"
+	BridgeSuffix         = utils.BridgeSuffix
 	bridgeNFCallIptables = "net/bridge/bridge-nf-call-iptables"
 
-	lenOfBridgeSuffix = 3 // lengh of BridgeSuffix
+	lenOfBridgeSuffix = utils.LenOfBridgeSuffix
 )
 
 type Bridge struct {
