@@ -138,7 +138,8 @@ func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, 
 	if err != nil {
 		return nil, err
 	}
-	//cnName := newConf.BrName[:len(newConf.BrName)-len(iface.BridgeSuffix)]
+
+	// mutator does not check if old cn is valid/existing, validator will do
 	labels[utils.KeyClusterNetworkLabel] = cnName
 	if oldConf.BrName != newConf.BrName {
 		oldCnName, err := utils.GetBridgeNamePrefix(oldConf.BrName)

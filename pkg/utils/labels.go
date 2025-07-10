@@ -15,8 +15,9 @@ const (
 	KeyLastNetworkType         = network.GroupName + "/last-type"
 	KeyNetworkReady            = network.GroupName + "/ready"
 	KeyNetworkRoute            = network.GroupName + "/route"
-	KeyMTUSourceVlanConfig     = network.GroupName + "/mtu-source-vc" // the VC which syncs MTU to CN
-	KeyUplinkMTU               = network.GroupName + "/uplink-mtu"    // configured MTU on the VC'uplink
+	KeyNetworkRouteSourceVID   = network.GroupName + "/route-source-vid" // the source vid of this route
+	KeyMTUSourceVlanConfig     = network.GroupName + "/mtu-source-vc"    // the VC which syncs MTU to CN
+	KeyUplinkMTU               = network.GroupName + "/uplink-mtu"       // configured MTU on the VC'uplink
 
 	KeyMatchedNodes = network.GroupName + "/matched-nodes"
 

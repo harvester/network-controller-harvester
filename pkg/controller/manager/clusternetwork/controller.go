@@ -144,10 +144,16 @@ func (h Handler) setNadReadyLabel(cn *networkv1.ClusterNetwork) error {
 	}
 
 	for _, nad := range nads {
+		if nad.DeletionTimestamp != nil {
+			continue
+		}
 		if nad.Labels[utils.KeyNetworkReady] == isReady {
 			continue
 		}
 		nadCopy := nad.DeepCopy()
+		if nadCopy.Labels == nil {
+			nadCopy.Labels = make(map[string]string)
+		}
 		nadCopy.Labels[utils.KeyNetworkReady] = isReady
 		if _, err := h.nadClient.Update(nadCopy); err != nil {
 			return err

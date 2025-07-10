@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
@@ -310,12 +311,93 @@ func (nc *NetConf) IsVlanAccessMode() bool {
 	return len(nc.VlanTrunk) == 0
 }
 
+func (nc *NetConf) IsL2VlanNetwork() bool {
+	return nc.Vlan != 0
+}
+
+func (nc *NetConf) IsUntaggedNetwork() bool {
+	return nc.Vlan == 0 && len(nc.VlanTrunk) == 0
+}
+
+func (nc *NetConf) IsL2VlanTrunkNetwork() bool {
+	return nc.Vlan == 0 && len(nc.VlanTrunk) > 0
+}
+
 func (nc *NetConf) IsBridgeCNI() bool {
 	return nc.Type == CNITypeBridge || nc.Type == CNITypeDefaultEmpty
 }
 
 func (nc *NetConf) IsKubeOVNCNI() bool {
 	return nc.Type == CNITypeKubeOVN
+}
+
+func (nc *NetConf) SetNetworkInfoToLabels(lbs map[string]string) error {
+	if lbs == nil {
+		return nil
+	}
+
+	if nc.IsKubeOVNCNI() {
+		// OVN is only attached to mgmt network for now
+		lbs[KeyClusterNetworkLabel] = ManagementClusterNetworkName
+		lbs[KeyNetworkType] = string(OverlayNetwork)
+		delete(lbs, KeyVlanLabel) // avoid dangling vid label
+		return nil
+	}
+
+	if !nc.IsBridgeCNI() {
+		return fmt.Errorf("cannot determin the network type from netconf type %v", nc.Type)
+	}
+
+	// all others are assumed as bridge CNI
+	cnname, err := GetBridgeNamePrefix(nc.BrName)
+	if err != nil {
+		return err
+	}
+
+	lbs[KeyClusterNetworkLabel] = cnname
+	if nc.IsL2VlanNetwork() {
+		lbs[KeyNetworkType] = string(L2VlanNetwork)
+		lbs[KeyVlanLabel] = strconv.Itoa(nc.Vlan)
+		return nil
+	}
+	if nc.IsL2VlanTrunkNetwork() {
+		lbs[KeyNetworkType] = string(L2VlanTrunkNetwork)
+		delete(lbs, KeyVlanLabel) // avoid dangling vid label
+		return nil
+	}
+	if nc.IsUntaggedNetwork() {
+		lbs[KeyNetworkType] = string(UntaggedNetwork)
+		delete(lbs, KeyVlanLabel) // avoid dangling vid label
+		return nil
+	}
+	return fmt.Errorf("cannot determin the l2 network type from netconf vid %v length of vlantrunk %v", nc.Vlan, len(nc.VlanTrunk))
+}
+
+func (nc *NetConf) GetClusterNetworkName() (string, error) {
+	// OVN is only attached to mgmt network for now
+	if nc.IsKubeOVNCNI() {
+		return ManagementClusterNetworkName, nil
+	}
+
+	if !nc.IsBridgeCNI() {
+		return "", fmt.Errorf("cannot determin the network type from netconf type %v", nc.Type)
+	}
+
+	// all others are assumed as bridge CNI
+	cnname, err := GetBridgeNamePrefix(nc.BrName)
+	if err != nil {
+		return "", err
+	}
+	return cnname, nil
+}
+
+func IsNadNetworkLabelSet(nad *nadv1.NetworkAttachmentDefinition) bool {
+	// the label KeyNetworkReady is not included when making decision; cluster network is responsible for updating this label
+	if nad.Labels != nil && nad.Labels[KeyNetworkType] != "" && nad.Labels[KeyClusterNetworkLabel] != "" {
+		return true
+	}
+
+	return false
 }
 
 func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
@@ -325,6 +407,14 @@ func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
 	}
 
 	return true
+}
+
+func IsOverlayNad(nad *nadv1.NetworkAttachmentDefinition) bool {
+	if nad != nil && nad.Labels != nil && nad.Labels[KeyNetworkType] == string(OverlayNetwork) {
+		return false
+	}
+
+	return false
 }
 
 // decode nad config string to a config struct

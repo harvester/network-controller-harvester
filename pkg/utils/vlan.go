@@ -131,6 +131,7 @@ func GetLocalArea(vlanIDStr, routeConf string) (*LocalArea, error) {
 		return nil, fmt.Errorf("invalid vlan id %s", vlanIDStr)
 	}
 
+	Vid := uint16(vlanID) //nolint:gosec
 	layer3NetworkConf := &Layer3NetworkConf{}
 	if routeConf != "" {
 		if layer3NetworkConf, err = NewLayer3NetworkConf(routeConf); err != nil {
@@ -139,7 +140,7 @@ func GetLocalArea(vlanIDStr, routeConf string) (*LocalArea, error) {
 	}
 
 	return &LocalArea{
-		Vid:  uint16(vlanID), //nolint:gosec
+		Vid:  Vid,
 		Cidr: layer3NetworkConf.CIDR,
 	}, nil
 }
