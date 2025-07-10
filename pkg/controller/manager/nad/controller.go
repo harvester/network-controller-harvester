@@ -177,9 +177,14 @@ func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 	if ok, err := h.ensureLabels(nad); err != nil {
 		return nil, fmt.Errorf("ensure labels of nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
 	} else if ok {
-		// nad labels is updated (rarely happens, it should be done via mutator)
+		// nad labels is updated by controller (rarely happens, it should be done via mutator)
 		// following IsVlanNad depends on those labels
-		// wait next loop to go followings
+		// wait until it is updated and then go to below
+		return nad, nil
+	}
+
+	// overlay nad does not trigger following steps
+	if utils.IsOverlayNad(nad) {
 		return nad, nil
 	}
 
@@ -187,11 +192,6 @@ func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 		if err := h.clearJob(nad); err != nil {
 			return nil, err
 		}
-		return nad, nil
-	}
-
-	// overlay nad does not trigger following steps
-	if utils.IsOverlayNad(nad) {
 		return nad, nil
 	}
 
@@ -220,6 +220,11 @@ func (h Handler) OnRemove(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 			return nad, nil
 		}
 	*/
+
+	// overlay nad does not trigger following steps
+	if utils.IsOverlayNad(nad) {
+		return nad, nil
+	}
 
 	if err := h.clearJob(nad); err != nil {
 		return nil, err
@@ -297,6 +302,8 @@ func (h Handler) UpdateClusetNetworkVlanSet(nad *cniv1.NetworkAttachmentDefiniti
 		return err
 	}
 
+	// TODO: remove last network label
+
 	return nil
 }
 
@@ -352,14 +359,19 @@ func (h Handler) EnsureJob2GetLayer3NetworkInfo(nad *cniv1.NetworkAttachmentDefi
 	}
 
 	networkConf := &utils.Layer3NetworkConf{}
-	if nad.Annotations != nil && nad.Annotations[utils.KeyNetworkRoute] != "" {
-		var err error
-		networkConf, err = utils.NewLayer3NetworkConf(nad.Annotations[utils.KeyNetworkRoute])
-		if err != nil {
-			return fmt.Errorf("invalid layer 3 network configure: %w", err)
-		}
+	routeStr := nad.Annotations[utils.KeyNetworkRoute]
+	if routeStr == "" {
+		// return and wait this label
+		return nil
 	}
-	klog.Infof("netconf: %+v", networkConf)
+
+	var err error
+	networkConf, err = utils.NewLayer3NetworkConf(routeStr)
+	if err != nil {
+		return fmt.Errorf("invalid layer 3 network configure: %w", err)
+	}
+
+	klog.Infof("EnsureJob2GetLayer3NetworkInfo netconf: %+v", networkConf)
 
 	if networkConf.Outdated {
 		if err := h.clearJob(nad); err != nil {
@@ -383,7 +395,7 @@ func (h Handler) EnsureJob2GetLayer3NetworkInfo(nad *cniv1.NetworkAttachmentDefi
 	if networkConf.Mode != utils.Auto {
 		return nil
 	}
-	// create or update job to get layer 3 network information automatically
+	// create or update job to get layer 3 network information automatically, the `Outdated` will be updated by the job
 	return h.createOrUpdateJob(nad, networkConf.ServerIPAddr)
 }
 
@@ -411,7 +423,9 @@ func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition, dhcpS
 	job, err := h.jobCache.Get(h.namespace, name)
 	if err != nil && !errors.IsNotFound(err) {
 		return err
-	} else if err == nil {
+	}
+
+	if err == nil {
 		// update job
 		job, err = constructJob(job, h.namespace, h.helperImage, dhcpServerAddr, nad)
 		if err != nil {
@@ -420,15 +434,15 @@ func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition, dhcpS
 		if _, err := h.jobClient.Update(job); err != nil {
 			return err
 		}
-	} else {
-		// create job
-		job, err = constructJob(nil, h.namespace, h.helperImage, dhcpServerAddr, nad)
-		if err != nil {
-			return err
-		}
-		if _, err := h.jobClient.Create(job); err != nil {
-			return err
-		}
+	}
+
+	// create job
+	job, err = constructJob(nil, h.namespace, h.helperImage, dhcpServerAddr, nad)
+	if err != nil {
+		return err
+	}
+	if _, err := h.jobClient.Create(job); err != nil {
+		return err
 	}
 
 	return nil

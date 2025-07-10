@@ -48,6 +48,8 @@ const (
 	L2VlanTrunkNetwork NetworkType = "L2VlanTrunkNetwork"
 	UntaggedNetwork    NetworkType = "UntaggedNetwork"
 	OverlayNetwork     NetworkType = "OverlayNetwork"
+
+	InvalidNetwork NetworkType = "InvalidNetwork"
 )
 
 type NadSelectedNetworks []nadv1.NetworkSelectionElement
@@ -331,16 +333,32 @@ func (nc *NetConf) IsKubeOVNCNI() bool {
 	return nc.Type == CNITypeKubeOVN
 }
 
+func (nc *NetConf) GetNetworkType() (NetworkType, error) {
+	switch {
+	case nc.Type == CNITypeBridge:
+		return OverlayNetwork, nil
+	case nc.Type == CNITypeBridge || nc.Type == CNITypeDefaultEmpty:
+		switch {
+		case nc.Vlan != 0:
+			return L2VlanNetwork, nil
+		case nc.Vlan == 0 && len(nc.VlanTrunk) == 0:
+			return UntaggedNetwork, nil
+		case nc.Vlan == 0 && len(nc.VlanTrunk) != 0:
+			return L2VlanTrunkNetwork, nil
+		}
+	}
+	return "", fmt.Errorf("unknown network type")
+}
+
 func (nc *NetConf) SetNetworkInfoToLabels(lbs map[string]string) error {
 	if lbs == nil {
 		return nil
 	}
-
+	delete(lbs, KeyVlanLabel) // avoid dangling vid label
 	if nc.IsKubeOVNCNI() {
 		// OVN is only attached to mgmt network for now
 		lbs[KeyClusterNetworkLabel] = ManagementClusterNetworkName
 		lbs[KeyNetworkType] = string(OverlayNetwork)
-		delete(lbs, KeyVlanLabel) // avoid dangling vid label
 		return nil
 	}
 
@@ -353,7 +371,6 @@ func (nc *NetConf) SetNetworkInfoToLabels(lbs map[string]string) error {
 	if err != nil {
 		return err
 	}
-
 	lbs[KeyClusterNetworkLabel] = cnname
 	if nc.IsL2VlanNetwork() {
 		lbs[KeyNetworkType] = string(L2VlanNetwork)
@@ -362,12 +379,10 @@ func (nc *NetConf) SetNetworkInfoToLabels(lbs map[string]string) error {
 	}
 	if nc.IsL2VlanTrunkNetwork() {
 		lbs[KeyNetworkType] = string(L2VlanTrunkNetwork)
-		delete(lbs, KeyVlanLabel) // avoid dangling vid label
 		return nil
 	}
 	if nc.IsUntaggedNetwork() {
 		lbs[KeyNetworkType] = string(UntaggedNetwork)
-		delete(lbs, KeyVlanLabel) // avoid dangling vid label
 		return nil
 	}
 	return fmt.Errorf("cannot determin the l2 network type from netconf vid %v length of vlantrunk %v", nc.Vlan, len(nc.VlanTrunk))
@@ -401,8 +416,8 @@ func IsNadNetworkLabelSet(nad *nadv1.NetworkAttachmentDefinition) bool {
 }
 
 func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
-	if nad == nil || nad.Spec.Config == "" || nad.Labels == nil || nad.Labels[KeyNetworkType] == "" ||
-		nad.Labels[KeyClusterNetworkLabel] == "" || nad.Labels[KeyVlanLabel] == "" {
+	if nad == nil || nad.Spec.Config == "" || nad.Labels == nil || nad.Labels[KeyVlanLabel] == "" ||
+		nad.Labels[KeyNetworkType] == "" || nad.Labels[KeyClusterNetworkLabel] == "" {
 		return false
 	}
 
@@ -411,7 +426,7 @@ func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
 
 func IsOverlayNad(nad *nadv1.NetworkAttachmentDefinition) bool {
 	if nad != nil && nad.Labels != nil && nad.Labels[KeyNetworkType] == string(OverlayNetwork) {
-		return false
+		return true
 	}
 
 	return false

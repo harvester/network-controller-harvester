@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"strconv"
 
 	"github.com/harvester/webhook/pkg/server/admission"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -102,12 +101,13 @@ func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, 
 		labels = make(map[string]string)
 	}
 
-	if newConf.Type == utils.CNITypeKubeOVN {
+	if newConf.IsKubeOVNCNI() {
 		labels[utils.KeyNetworkType] = string(utils.OverlayNetwork)
 		labels[utils.KeyNetworkReady] = utils.ValueTrue
 		if labels[utils.KeyClusterNetworkLabel] == "" {
 			labels[utils.KeyClusterNetworkLabel] = utils.ManagementClusterNetworkName
 		}
+		delete(labels, utils.KeyVlanLabel)
 		return admission.Patch{
 			admission.PatchOp{
 				Op:    admission.PatchOpReplace,
@@ -117,20 +117,27 @@ func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, 
 	}
 
 	// Ignore untagged network because we don't need to do more operation if the last network type is untagged network
-	if oldConf.Vlan != 0 && newConf.Vlan == 0 {
-		labels[utils.KeyLastNetworkType] = string(utils.L2VlanNetwork)
-	}
+	/*
+		if oldConf.Vlan != 0 && newConf.Vlan == 0 {
+			labels[utils.KeyLastNetworkType] = string(utils.L2VlanNetwork)
+		}
 
-	if newConf.Vlan != 0 {
-		labels[utils.KeyNetworkType] = string(utils.L2VlanNetwork)
-		labels[utils.KeyVlanLabel] = strconv.Itoa(newConf.Vlan)
-	} else {
-		labels[utils.KeyNetworkType] = string(utils.UntaggedNetwork)
-		delete(labels, utils.KeyVlanLabel)
-	}
+		if newConf.Vlan != 0 {
+			labels[utils.KeyNetworkType] = string(utils.L2VlanNetwork)
+			labels[utils.KeyVlanLabel] = strconv.Itoa(newConf.Vlan)
+		} else {
+			labels[utils.KeyNetworkType] = string(utils.UntaggedNetwork)
+			delete(labels, utils.KeyVlanLabel)
+		}
 
-	if oldConf.Vlan != 0 && oldConf.Vlan != newConf.Vlan {
-		labels[utils.KeyLastVlanLabel] = strconv.Itoa(oldConf.Vlan)
+		if oldConf.Vlan != 0 && oldConf.Vlan != newConf.Vlan {
+			labels[utils.KeyLastVlanLabel] = strconv.Itoa(oldConf.Vlan)
+		}
+	*/
+
+	err := newConf.SetNetworkInfoToLabels(labels)
+	if err != nil {
+		return nil, err
 	}
 
 	// check and get the bridge name
@@ -140,7 +147,7 @@ func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, 
 	}
 
 	// mutator does not check if old cn is valid/existing, validator will do
-	labels[utils.KeyClusterNetworkLabel] = cnName
+	// labels[utils.KeyClusterNetworkLabel] = cnName
 	if oldConf.BrName != newConf.BrName {
 		oldCnName, err := utils.GetBridgeNamePrefix(oldConf.BrName)
 		if err != nil {
@@ -166,6 +173,9 @@ func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, oldConf, 
 
 // If the vlan or bridge name is changed, we need to tag the route annotation outdated
 func tagRouteOutdated(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *utils.NetConf) (admission.Patch, error) {
+	if newConf.IsKubeOVNCNI() {
+		return nil, nil
+	}
 	if oldConf.BrName == newConf.BrName && oldConf.Vlan == newConf.Vlan {
 		return nil, nil
 	}
@@ -178,6 +188,7 @@ func tagRouteOutdated(nad *cniv1.NetworkAttachmentDefinition, oldConf, newConf *
 	klog.Infof("new config: %+v", newConf)
 
 	if newConf.Vlan == 0 {
+		// both untag and trunk have vlan id 0
 		delete(annotations, utils.KeyNetworkRoute)
 	} else {
 		layer3NetworkConf := utils.Layer3NetworkConf{}

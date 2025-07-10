@@ -170,12 +170,12 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 
 	clusterNetwork := getNadClusterNetworkLabel(nad)
 
-	if nadConf.Type == utils.CNITypeKubeOVN && clusterNetwork != "" && clusterNetwork != utils.ManagementClusterNetworkName {
+	if nadConf.IsKubeOVNCNI() && clusterNetwork != "" && clusterNetwork != utils.ManagementClusterNetworkName {
 		return fmt.Errorf("nad with kubeovn type can only be part of mgmt cluster")
 	}
 
 	//skip bridge config validation for type kube-ovn
-	if nadConf.Type == utils.CNITypeKubeOVN {
+	if nadConf.IsKubeOVNCNI() {
 		nadName, nadNamespace, err := utils.GetNadNameFromProvider(nadConf.Provider)
 		if err != nil {
 			return err
