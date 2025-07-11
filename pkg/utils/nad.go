@@ -534,7 +534,7 @@ func (n *NadGetter) NadNamesOnClusterNetwork(cnName string) ([]string, error) {
 	return generateNadNameList(nads), nil
 }
 
-func GeVlanIdSetFromClusterNetwork(cnName string, nadCache ctlcniv1.NetworkAttachmentDefinitionCache) (*VlanIDSet, error) {
+func GeVlanIDSetFromClusterNetwork(cnName string, nadCache ctlcniv1.NetworkAttachmentDefinitionCache) (*VlanIDSet, error) {
 	ng := NewNadGetter(nadCache)
 	nads, err := ng.ListNadsOnClusterNetwork(cnName)
 	if err != nil {
@@ -548,7 +548,7 @@ func GeVlanIdSetFromClusterNetwork(cnName string, nadCache ctlcniv1.NetworkAttac
 }
 
 func GetLocalAreaSetFromClusterNetwork(cnName string, nadCache ctlcniv1.NetworkAttachmentDefinitionCache) ([]LocalArea, error) {
-	vis, err := GeVlanIdSetFromClusterNetwork(cnName, nadCache)
+	vis, err := GeVlanIDSetFromClusterNetwork(cnName, nadCache)
 	if err != nil {
 		return nil, err
 	}

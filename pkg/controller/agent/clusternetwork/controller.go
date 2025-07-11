@@ -2,14 +2,21 @@ package clusternetwork
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
+	"github.com/vishvananda/netlink"
+
+	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/config"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 
+	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
+	"github.com/harvester/harvester-network-controller/pkg/network/vlan"
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 const (
@@ -17,7 +24,7 @@ const (
 )
 
 type Handler struct {
-	cnCache   ctlnetworkv1.ClusterNetworkClient
+	cnCache   ctlnetworkv1.ClusterNetworkCache
 	cnClient  ctlnetworkv1.ClusterNetworkClient
 	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
 	nadClient ctlcniv1.NetworkAttachmentDefinitionClient
@@ -27,7 +34,7 @@ type Handler struct {
 func Register(ctx context.Context, management *config.Management) error {
 	cns := management.HarvesterNetworkFactory.Network().V1beta1().ClusterNetwork()
 	nads := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
-	h := Handler{
+	handler := Handler{
 		cnCache:   cns.Cache(),
 		cnClient:  cns,
 		nadClient: nads,
@@ -42,7 +49,7 @@ func Register(ctx context.Context, management *config.Management) error {
 
 	klog.Infof("%s starts with mgmt vid %v", controllerName, vlanID)
 
-	cns.OnChange(ctx, controllerName, h.OnChange)
+	cns.OnChange(ctx, controllerName, handler.OnChange)
 
 	return nil
 }
@@ -51,29 +58,29 @@ func (h Handler) OnChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.Cl
 	if cn == nil || cn.DeletionTimestamp != nil {
 		return nil, nil
 	}
-	klog.Debugf("cluster network %s has been changed, vid hash: %+v", cn.Name, cn.Name)
+	klog.Infof("cluster network %s has been changed, vid hash: %+v", cn.Name, cn.Name)
 
-	v, err = vlan.GetVlan(cn.Name)
+	v, err := vlan.GetVlan(cn.Name)
 	if err != nil {
 		// vlanconfig controller sets up the non-mgmt cn; mgmt cn is setup by wicked daemon service
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			klog.Debugf("cluster network %s is not set on this node, skip", cn.Name)
+			klog.Infof("cluster network %s is not set on this node, skip", cn.Name)
 			return nil, nil
 		}
 		return nil, err
 	}
 
-	cnVlans, err := utils.GeVlanIdSetFromClusterNetwork(cn.Name, h.nadCache)
+	cnVlans, err := utils.GeVlanIDSetFromClusterNetwork(cn.Name, h.nadCache)
 	if err != nil {
-		klog.Infof("cluster network %s failed to get vlanset %s", cn.Name, err.Errorf())
+		klog.Infof("cluster network %s failed to get vlanset %s", cn.Name, err.Error())
 		return nil, err
 	}
 
-	// if mgmt network, add mgmvid to list
+	// if mgmt network, add mgmt vid to list
 	if utils.IsManagementClusterNetwork(cn.Name) {
-		err := cnVlans.SetVid(h.mgmtVlan)
+		err := cnVlans.SetVID(h.mgmtVlan)
 		if err != nil {
-			klog.Infof("cluster network %s failed to add mgmt vid %v to vlanset %s", cn.Name, h.mgmtVlan, err.Errorf())
+			klog.Infof("cluster network %s failed to add mgmt vid %v to vlanset %s", cn.Name, h.mgmtVlan, err.Error())
 			return nil, err
 		}
 	}
@@ -96,15 +103,15 @@ func (h Handler) OnChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.Cl
 		return cn, nil
 	}
 
-	klog.Infof("cluster network %s will add %s vlans, remove %v vlans", cn.Name, len(addList), len(removedList))
+	klog.Infof("cluster network %s will add %v vlans, remove %v vlans", cn.Name, len(addedList), len(removedList))
 
 	// get diff list, to add, to remove
 
-	err := v.AddLocalAreas(addedList)
+	err = v.AddLocalAreas(addedList)
 	if err != nil {
 		return nil, err
 	}
-	err := v.RemoveLocalAreas(removedList)
+	err = v.RemoveLocalAreas(removedList)
 	if err != nil {
 		return nil, err
 	}

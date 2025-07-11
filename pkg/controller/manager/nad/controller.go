@@ -192,13 +192,12 @@ func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 		if err := h.clearJob(nad); err != nil {
 			return nil, err
 		}
-		return nad, nil
-	}
+	} else {
 
-	if err := h.EnsureJob2GetLayer3NetworkInfo(nad); err != nil {
-		return nil, err
+		if err := h.EnsureJob2GetLayer3NetworkInfo(nad); err != nil {
+			return nil, err
+		}
 	}
-
 	// nad change triggers the re-compute of cn's vlanset
 	if err := h.UpdateClusetNetworkVlanSet(nad); err != nil {
 		return nil, err
@@ -321,15 +320,22 @@ func (h Handler) updateClusetNetworkVlanSet(_ *cniv1.NetworkAttachmentDefinition
 		return nil
 	}
 
-	nadg := utils.NewNadGetter(h.nadCache)
-	nads, err := nadg.ListNadsOnClusterNetwork(cnname)
+	vids, err := utils.GeVlanIDSetFromClusterNetwork(cn.Name, h.nadCache)
 	if err != nil {
+		klog.Infof("cluster network %s failed to get vlanset %s", cn.Name, err.Error())
 		return err
 	}
-	vids, err := utils.NewVlanIDSetFromNadList(nads)
-	if err != nil {
-		return err
-	}
+	/*
+		nadg := utils.NewNadGetter(h.nadCache)
+		nads, err := nadg.ListNadsOnClusterNetwork(cnname)
+		if err != nil {
+			return err
+		}
+		vids, err := utils.NewVlanIDSetFromNadList(nads)
+		if err != nil {
+			return err
+		}
+	*/
 	vidstr, vidhash := vids.VidSetToStringHash()
 
 	if cn.Annotations[utils.KeyVlanIDSetStr] != vidstr || cn.Annotations[utils.KeyVlanIDSetStrHash] != vidhash {
@@ -425,23 +431,23 @@ func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition, dhcpS
 		return err
 	}
 
-	if err == nil {
-		// update job
-		job, err = constructJob(job, h.namespace, h.helperImage, dhcpServerAddr, nad)
+	if err != nil && errors.IsNotFound(err) {
+		// create job
+		job, err = constructJob(nil, h.namespace, h.helperImage, dhcpServerAddr, nad)
 		if err != nil {
 			return err
 		}
-		if _, err := h.jobClient.Update(job); err != nil {
+		if _, err := h.jobClient.Create(job); err != nil {
 			return err
 		}
 	}
 
-	// create job
-	job, err = constructJob(nil, h.namespace, h.helperImage, dhcpServerAddr, nad)
+	// is already existing, update
+	job, err = constructJob(job, h.namespace, h.helperImage, dhcpServerAddr, nad)
 	if err != nil {
 		return err
 	}
-	if _, err := h.jobClient.Create(job); err != nil {
+	if _, err := h.jobClient.Update(job); err != nil {
 		return err
 	}
 

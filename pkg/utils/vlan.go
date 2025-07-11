@@ -72,7 +72,7 @@ func (vis *VlanIDSet) SetUint16VID(vid uint16) error {
 
 // merge another VlandIDSet to current
 func (vis *VlanIDSet) Append(other *VlanIDSet) *VlanIDSet {
-	if other == nil {
+	if other == nil || len(other.vidSet) == 0 {
 		return vis
 	}
 
@@ -130,6 +130,9 @@ func (vis *VlanIDSet) Diff(existing *VlanIDSet) (added, removed *VlanIDSet, err 
 			}
 		}
 	}
+	added.safelyUnSetVID(MinVlanID)       // added list should skip vid 0
+	removed.safelyUnSetVID(MinVlanID)     // removed list should skip vid 0
+	added.safelyUnSetVID(DefaultVlanID)   // added list should skip default vid
 	removed.safelyUnSetVID(DefaultVlanID) // removed list should skip default vid
 	err = nil
 	return
