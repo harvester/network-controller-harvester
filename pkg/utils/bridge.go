@@ -49,10 +49,18 @@ func GetBridgeNamePrefix(brName string) (string, error) {
 	return GetClusterNetworkFromBridgeName(brName)
 }
 
-func GenerateBridgeName(prefix string) string {
-	maxPrefixLen := MaxDeviceNameLen - LenOfBridgeSuffix
+func generateName(prefix, suffix string, lenOfSufix int) string {
+	maxPrefixLen := MaxDeviceNameLen - lenOfSufix
 	if len(prefix) > maxPrefixLen {
-		return prefix[:maxPrefixLen] + BridgeSuffix
+		return prefix[:maxPrefixLen] + suffix
 	}
-	return prefix + BridgeSuffix
+	return prefix + suffix
+}
+
+func GenerateBridgeName(prefix string) string {
+	return generateName(prefix, BridgeSuffix, LenOfBridgeSuffix)
+}
+
+func GenerateBondName(prefix string) string {
+	return generateName(prefix, BondSuffix, LenOfBondSuffix)
 }

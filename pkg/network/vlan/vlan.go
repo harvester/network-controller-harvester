@@ -32,7 +32,7 @@ func NewVlan(name string) *Vlan {
 }
 
 func (v *Vlan) getUplink() (*iface.Link, error) {
-	l, err := netlink.LinkByName(utils.GenerateBridgeName(v.name))
+	l, err := netlink.LinkByName(utils.GenerateBondName(v.name))
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +151,11 @@ func (v *Vlan) RemoveLocalArea(la *utils.LocalArea) error {
 	}
 
 	return nil
+}
+
+func (v *Vlan) ToVlanIDSet() (*utils.VlanIDSet, error) {
+	// the NewVlan returned vlan never has an empty uplink, skip check it
+	return v.uplink.ToVlanIDSet()
 }
 
 func (v *Vlan) Bridge() *iface.Bridge {

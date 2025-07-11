@@ -49,6 +49,10 @@ func (vis *VlanIDSet) SetVID(vid int) error {
 	return nil
 }
 
+func (vis *VlanIDSet) SetUint16VID(vid uint16) error {
+	return vis.SetVID(int(vid))
+}
+
 // merge another VlandIDSet to current
 func (vis *VlanIDSet) Append(other *VlanIDSet) *VlanIDSet {
 	if other == nil {
