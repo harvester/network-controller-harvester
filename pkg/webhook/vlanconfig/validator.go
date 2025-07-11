@@ -17,7 +17,6 @@ import (
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
-	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
@@ -25,8 +24,6 @@ const (
 	createErr = "can't create vlanConfig %s because %w"
 	updateErr = "can't update vlanConfig %s because %w"
 	deleteErr = "can't delete vlanConfig %s because %w"
-
-	maxClusterNetworkNameLen = iface.MaxDeviceNameLen - len(iface.BridgeSuffix)
 )
 
 type Validator struct {
@@ -59,9 +56,8 @@ var _ admission.Validator = &Validator{}
 func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	vc := newObj.(*networkv1.VlanConfig)
 
-	if len(vc.Spec.ClusterNetwork) > maxClusterNetworkNameLen {
-		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("the length of the clusterNetwork name is "+
-			"more than %d", maxClusterNetworkNameLen))
+	if _, err := utils.IsClusterNetworkNameValid(vc.Spec.ClusterNetwork); err != nil {
+		return fmt.Errorf(createErr, vc.Name, err)
 	}
 
 	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {

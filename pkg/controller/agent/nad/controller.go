@@ -34,7 +34,7 @@ func Register(ctx context.Context, management *config.Management) error {
 		nadClient: nad,
 	}
 
-	vlanID, err := GetMgmtVlan()
+	vlanID, err := iface.GetMgmtVlan()
 	if err != nil {
 		return fmt.Errorf("failed to get mgmt vlan err:%v", err)
 	}
@@ -53,23 +53,25 @@ func (h Handler) OnChange(_ string, nad *nadv1.NetworkAttachmentDefinition) (*na
 
 	klog.Infof("nad configuration %s/%s has been changed: %s", nad.Namespace, nad.Name, nad.Spec.Config)
 
-	// nadCopy could be nil
-	nadCopy, err := h.removeOutdatedLocalArea(nad)
-	if err != nil {
-		return nil, fmt.Errorf("remove outdated local area for nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
-	}
-
-	// NadCaopy could be nil and nad is readonly here
-	if err := h.addLocalArea(nad); err != nil {
-		return nil, fmt.Errorf("add local area for nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
-	}
-
-	// update nad if needed
-	if nadCopy != nil {
-		if _, err := h.nadClient.Update(nadCopy); err != nil {
-			return nil, err
+	/*
+		// nadCopy could be nil
+		nadCopy, err := h.removeOutdatedLocalArea(nad)
+		if err != nil {
+			return nil, fmt.Errorf("remove outdated local area for nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
 		}
-	}
+
+		// NadCopy could be nil and nad is readonly here
+		if err := h.addLocalArea(nad); err != nil {
+			return nil, fmt.Errorf("add local area for nad %s/%s failed, error: %w", nad.Namespace, nad.Name, err)
+		}
+
+		// update nad if needed
+		if nadCopy != nil {
+			if _, err := h.nadClient.Update(nadCopy); err != nil {
+				return nil, err
+			}
+		}
+	*/
 
 	return nad, nil
 }
@@ -80,21 +82,7 @@ func (h Handler) OnRemove(_ string, nad *nadv1.NetworkAttachmentDefinition) (*na
 	}
 
 	klog.Infof("nad configuration %s/%s has been deleted", nad.Namespace, nad.Name)
-
-	if !utils.IsVlanNad(nad) {
-		return nad, nil
-	}
-
-	localArea, err := GetLocalArea(nad.Labels[utils.KeyVlanLabel], nad.Annotations[utils.KeyNetworkRoute])
-	if err != nil {
-		return nil, fmt.Errorf("failed to get local area from nad %s/%s, error: %w", nad.Namespace, nad.Name, err)
-	}
-
-	if err := h.removeLocalArea(nad.Labels[utils.KeyClusterNetworkLabel], localArea); err != nil {
-		return nil, fmt.Errorf("remove local area %+v failed, cluster network: %s, error: %w",
-			localArea, nad.Labels[utils.KeyClusterNetworkLabel], err)
-	}
-
+	// nad does not need to remove vlan, it is done via cn controller
 	return nad, nil
 }
 
@@ -107,10 +95,11 @@ func (h Handler) addLocalArea(nad *nadv1.NetworkAttachmentDefinition) error {
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) {
 		return err
 	} else if errors.As(err, &netlink.LinkNotFoundError{}) {
+		// when the node is not included in the clusternetwork, it returns here
 		return nil
 	}
 
-	localArea, err := GetLocalArea(nad.Labels[utils.KeyVlanLabel], nad.Annotations[utils.KeyNetworkRoute])
+	localArea, err := utils.GetLocalArea(nad.Labels[utils.KeyVlanLabel], nad.Annotations[utils.KeyNetworkRoute])
 	if err != nil {
 		return fmt.Errorf("failed to get local area from nad %s/%s, error: %w", nad.Namespace, nad.Name, err)
 	}
@@ -130,7 +119,7 @@ func (h Handler) existDuplicateNad(vlanIDStr, cn string) (bool, error) {
 	return len(nads) > 1, nil
 }
 
-func (h Handler) removeLocalArea(clusternetwork string, localArea *vlan.LocalArea) error {
+func (h Handler) removeLocalArea(clusternetwork string, localArea *utils.LocalArea) error {
 	//do not delete vlan id configured for mgmt-br from any user operations
 	if clusternetwork == utils.ManagementClusterNetworkName && localArea.Vid == uint16(h.mgmtVlan) { //nolint:gosec
 		return nil
@@ -171,7 +160,7 @@ func (h Handler) removeOutdatedLocalArea(nad *nadv1.NetworkAttachmentDefinition)
 		vlanIDStr = nad.Labels[utils.KeyVlanLabel]
 	}
 
-	localArea, err := GetLocalArea(vlanIDStr, nad.Annotations[utils.KeyNetworkRoute])
+	localArea, err := utils.GetLocalArea(vlanIDStr, nad.Annotations[utils.KeyNetworkRoute])
 	if err != nil {
 		return nil, fmt.Errorf("failed to get local area from nad %s/%s, error: %w", nad.Namespace, nad.Name, err)
 	}
@@ -185,32 +174,4 @@ func (h Handler) removeOutdatedLocalArea(nad *nadv1.NetworkAttachmentDefinition)
 	delete(nadCopy.Labels, utils.KeyLastClusterNetworkLabel)
 	delete(nadCopy.Labels, utils.KeyLastVlanLabel)
 	return nadCopy, nil
-}
-
-func GetLocalArea(vlanIDStr, routeConf string) (*vlan.LocalArea, error) {
-	vlanID, err := strconv.Atoi(vlanIDStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid vlan id %s", vlanIDStr)
-	}
-
-	layer3NetworkConf := &utils.Layer3NetworkConf{}
-	if routeConf != "" {
-		if layer3NetworkConf, err = utils.NewLayer3NetworkConf(routeConf); err != nil {
-			return nil, err
-		}
-	}
-
-	return &vlan.LocalArea{
-		Vid:  uint16(vlanID), //nolint:gosec
-		Cidr: layer3NetworkConf.CIDR,
-	}, nil
-}
-
-func GetMgmtVlan() (vlanID int, err error) {
-	vlanID, err = iface.GetMgmtVlan()
-	if err != nil {
-		return vlanID, fmt.Errorf("failed to get vlan id from mgmt-br %d", vlanID)
-	}
-
-	return vlanID, nil
 }

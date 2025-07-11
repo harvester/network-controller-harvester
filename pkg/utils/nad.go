@@ -2,8 +2,10 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
@@ -13,13 +15,14 @@ import (
 
 	cniv1 "github.com/containernetworking/cni/pkg/types"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-
-	harvesterutil "github.com/harvester/harvester/pkg/util"
 )
 
 const (
 	CNITypeKubeOVN = "kube-ovn"
 	ovnProvider    = "ovn"
+
+	CNITypeBridge       = "bridge"
+	CNITypeDefaultEmpty = "" // potential empty type, is treated as CNITypeBridge
 )
 
 type Connectivity string
@@ -41,9 +44,12 @@ const (
 type NetworkType string
 
 const (
-	L2VlanNetwork   NetworkType = "L2VlanNetwork"
-	UntaggedNetwork NetworkType = "UntaggedNetwork"
-	OverlayNetwork  NetworkType = "OverlayNetwork"
+	L2VlanNetwork      NetworkType = "L2VlanNetwork"
+	L2VlanTrunkNetwork NetworkType = "L2VlanTrunkNetwork"
+	UntaggedNetwork    NetworkType = "UntaggedNetwork"
+	OverlayNetwork     NetworkType = "OverlayNetwork"
+
+	InvalidNetwork NetworkType = "InvalidNetwork"
 )
 
 type NadSelectedNetworks []nadv1.NetworkSelectionElement
@@ -115,27 +121,329 @@ func (n NadSelectedNetworks) ToString() (string, error) {
 	return string(bytes), nil
 }
 
+// L2 mode
 type NetConf struct {
 	cniv1.NetConf
-	BrName       string `json:"bridge"`
-	IsGW         bool   `json:"isGateway"`
-	IsDefaultGW  bool   `json:"isDefaultGateway"`
-	ForceAddress bool   `json:"forceAddress"`
-	IPMasq       bool   `json:"ipMasq"`
-	MTU          int    `json:"mtu"`
-	HairpinMode  bool   `json:"hairpinMode"`
-	PromiscMode  bool   `json:"promiscMode"`
-	Vlan         int    `json:"vlan"`
-	Provider     string `json:"provider"`
+	BrName       string       `json:"bridge"`
+	IsGW         bool         `json:"isGateway"`
+	IsDefaultGW  bool         `json:"isDefaultGateway"`
+	ForceAddress bool         `json:"forceAddress"`
+	IPMasq       bool         `json:"ipMasq"`
+	MTU          int          `json:"mtu"`
+	HairpinMode  bool         `json:"hairpinMode"`
+	PromiscMode  bool         `json:"promiscMode"`
+	Vlan         int          `json:"vlan"`
+	Provider     string       `json:"provider"`
+	VlanTrunk    []*VlanTrunk `json:"vlanTrunk,omitempty"`
+}
+
+type VlanTrunk struct {
+	MinID *int `json:"minID,omitempty"`
+	MaxID *int `json:"maxID,omitempty"`
+	ID    *int `json:"id,omitempty"`
+}
+
+func (item *VlanTrunk) IsValid() (bool, error) {
+	if item == nil {
+		return true, nil
+	}
+
+	switch {
+	case item.MinID != nil && item.MaxID != nil:
+		minID := *item.MinID
+		if minID < MinTrunkVlanID || minID > MaxVlanID {
+			return false, fmt.Errorf("incorrect trunk minID parameter %v", minID)
+		}
+		maxID := *item.MaxID
+		if maxID < MinTrunkVlanID || maxID > MaxVlanID {
+			return false, fmt.Errorf("incorrect trunk maxID parameter %v", maxID)
+		}
+		if maxID < minID {
+			return false, fmt.Errorf("minID %v is greater than maxID %v in trunk parameter", minID, maxID)
+		}
+	case item.MinID == nil && item.MaxID != nil:
+		return false, errors.New("minID and maxID should be configured simultaneously, minID is missing")
+	case item.MinID != nil && item.MaxID == nil:
+		return false, errors.New("minID and maxID should be configured simultaneously, maxID is missing")
+	}
+
+	// single vid
+	if item.ID != nil {
+		ID := *item.ID
+		if ID < MinTrunkVlanID || ID > MaxVlanID {
+			return false, fmt.Errorf("incorrect trunk id parameter %v", ID)
+		}
+	}
+
+	if item.ID == nil && item.MinID == nil && item.MaxID == nil {
+		return false, fmt.Errorf("all fields in this VlanTrunk are empty")
+	}
+
+	return true, nil
+}
+
+// if related vlanconfig is valid
+func (nc *NetConf) IsVlanConfigValid() (bool, error) {
+	if nc.Vlan < MinVlanID || nc.Vlan > MaxVlanID {
+		return false, fmt.Errorf("vlan %v is out of range [%v .. %v]", nc.Vlan, MinVlanID, MaxVlanID)
+	}
+
+	// when VlanTrunk is set, the Vlan can only 0
+	if nc.Vlan != 0 && len(nc.VlanTrunk) > 0 {
+		return false, fmt.Errorf("vlan can only be 0 when vlanTrunk is set")
+	}
+
+	for _, vt := range nc.VlanTrunk {
+		if _, err := vt.IsValid(); err != nil {
+			return false, err
+		}
+	}
+
+	return true, nil
+}
+
+func (nc *NetConf) dumpVlanIDSet() (*VlanIDSet, error) {
+	vis := NewVlanIDSet()
+	var err error
+	if err = vis.SetVID(nc.Vlan); err != nil {
+		return nil, err
+	}
+
+	for _, vt := range nc.VlanTrunk {
+		if vt.ID != nil {
+			if err = vis.SetVID(*vt.ID); err != nil {
+				return nil, err
+			}
+		}
+		if vt.MinID != nil && vt.MaxID != nil {
+			for i := *vt.MinID; i <= *vt.MaxID; i++ {
+				if err = vis.SetVID(i); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+	return vis, nil
+}
+
+func NewVlanIDSetFromNetConf(nc *NetConf) (*VlanIDSet, error) {
+	if nc == nil {
+		return nil, fmt.Errorf("the input netconf is empty")
+	}
+	if !nc.IsBridgeCNI() {
+		return nil, fmt.Errorf("the netconf is not bridge type")
+	}
+
+	if _, err := nc.IsVlanConfigValid(); err != nil {
+		return nil, err
+	}
+
+	return nc.dumpVlanIDSet()
+}
+
+// return vidsets from all bridge nads
+func NewVlanIDSetFromNadList(nads []*nadv1.NetworkAttachmentDefinition) (*VlanIDSet, error) {
+	vis := NewVlanIDSet()
+	if len(nads) == 0 {
+		return vis, nil
+	}
+
+	for _, nad := range nads {
+		if nad.DeletionTimestamp != nil {
+			continue
+		}
+		nc, err := DecodeNadConfigToNetConf(nad)
+		if err != nil {
+			return nil, err
+		}
+
+		// skip non-bridge CNI
+		if !nc.IsBridgeCNI() {
+			continue
+		}
+
+		tmpvis, err := NewVlanIDSetFromNetConf(nc)
+		if err != nil {
+			return nil, err
+		}
+		vis = vis.Append(tmpvis)
+	}
+
+	return vis, nil
+}
+
+// return vidsets from all vlan trunk mode bridge nads
+func NewVlanIDSetFromTrunkModeNadList(nads []*nadv1.NetworkAttachmentDefinition) (*VlanIDSet, error) {
+	vis := NewVlanIDSet()
+	if len(nads) == 0 {
+		return vis, nil
+	}
+
+	for _, nad := range nads {
+		if nad.DeletionTimestamp != nil {
+			continue
+		}
+		nc, err := DecodeNadConfigToNetConf(nad)
+		if err != nil {
+			return nil, err
+		}
+
+		// skip non-bridge CNI
+		if !nc.IsBridgeCNI() || !nc.IsVlanTrunkMode() {
+			continue
+		}
+
+		tmpvis, err := NewVlanIDSetFromNetConf(nc)
+		if err != nil {
+			return nil, err
+		}
+		vis = vis.Append(tmpvis)
+	}
+
+	return vis, nil
+}
+
+// if VlanTrunk is configured
+func (nc *NetConf) IsVlanTrunkMode() bool {
+	return len(nc.VlanTrunk) > 0
+}
+
+// the default mode
+func (nc *NetConf) IsVlanAccessMode() bool {
+	return len(nc.VlanTrunk) == 0
+}
+
+func (nc *NetConf) IsL2VlanNetwork() bool {
+	return nc.Vlan != 0
+}
+
+func (nc *NetConf) IsUntaggedNetwork() bool {
+	return nc.Vlan == 0 && len(nc.VlanTrunk) == 0
+}
+
+func (nc *NetConf) IsL2VlanTrunkNetwork() bool {
+	return nc.Vlan == 0 && len(nc.VlanTrunk) > 0
+}
+
+func (nc *NetConf) IsBridgeCNI() bool {
+	return nc.Type == CNITypeBridge || nc.Type == CNITypeDefaultEmpty
+}
+
+func (nc *NetConf) IsKubeOVNCNI() bool {
+	return nc.Type == CNITypeKubeOVN
+}
+
+func (nc *NetConf) GetNetworkType() (NetworkType, error) {
+	switch {
+	case nc.Type == CNITypeBridge:
+		return OverlayNetwork, nil
+	case nc.Type == CNITypeBridge || nc.Type == CNITypeDefaultEmpty:
+		switch {
+		case nc.Vlan != 0:
+			return L2VlanNetwork, nil
+		case nc.Vlan == 0 && len(nc.VlanTrunk) == 0:
+			return UntaggedNetwork, nil
+		case nc.Vlan == 0 && len(nc.VlanTrunk) != 0:
+			return L2VlanTrunkNetwork, nil
+		}
+	}
+	return "", fmt.Errorf("unknown network type")
+}
+
+func (nc *NetConf) SetNetworkInfoToLabels(lbs map[string]string) error {
+	if lbs == nil {
+		return nil
+	}
+	delete(lbs, KeyVlanLabel) // avoid dangling vid label
+	if nc.IsKubeOVNCNI() {
+		// OVN is only attached to mgmt network for now
+		lbs[KeyClusterNetworkLabel] = ManagementClusterNetworkName
+		lbs[KeyNetworkType] = string(OverlayNetwork)
+		return nil
+	}
+
+	if !nc.IsBridgeCNI() {
+		return fmt.Errorf("cannot determin the network type from netconf type %v", nc.Type)
+	}
+
+	// all others are assumed as bridge CNI
+	cnname, err := GetBridgeNamePrefix(nc.BrName)
+	if err != nil {
+		return err
+	}
+	lbs[KeyClusterNetworkLabel] = cnname
+	if nc.IsL2VlanNetwork() {
+		lbs[KeyNetworkType] = string(L2VlanNetwork)
+		lbs[KeyVlanLabel] = strconv.Itoa(nc.Vlan)
+		return nil
+	}
+	if nc.IsL2VlanTrunkNetwork() {
+		lbs[KeyNetworkType] = string(L2VlanTrunkNetwork)
+		return nil
+	}
+	if nc.IsUntaggedNetwork() {
+		lbs[KeyNetworkType] = string(UntaggedNetwork)
+		return nil
+	}
+	return fmt.Errorf("cannot determin the l2 network type from netconf vid %v length of vlantrunk %v", nc.Vlan, len(nc.VlanTrunk))
+}
+
+func (nc *NetConf) GetClusterNetworkName() (string, error) {
+	// OVN is only attached to mgmt network for now
+	if nc.IsKubeOVNCNI() {
+		return ManagementClusterNetworkName, nil
+	}
+
+	if !nc.IsBridgeCNI() {
+		return "", fmt.Errorf("cannot determin the network type from netconf type %v", nc.Type)
+	}
+
+	// all others are assumed as bridge CNI
+	cnname, err := GetBridgeNamePrefix(nc.BrName)
+	if err != nil {
+		return "", err
+	}
+	return cnname, nil
+}
+
+func IsNadNetworkLabelSet(nad *nadv1.NetworkAttachmentDefinition) bool {
+	// the label KeyNetworkReady is not included when making decision; cluster network is responsible for updating this label
+	if nad.Labels != nil && nad.Labels[KeyNetworkType] != "" && nad.Labels[KeyClusterNetworkLabel] != "" {
+		return true
+	}
+
+	return false
 }
 
 func IsVlanNad(nad *nadv1.NetworkAttachmentDefinition) bool {
-	if nad == nil || nad.Spec.Config == "" || nad.Labels == nil || nad.Labels[KeyNetworkType] == "" ||
-		nad.Labels[KeyClusterNetworkLabel] == "" || nad.Labels[KeyVlanLabel] == "" {
+	if nad == nil || nad.Spec.Config == "" || nad.Labels == nil || nad.Labels[KeyVlanLabel] == "" ||
+		nad.Labels[KeyNetworkType] == "" || nad.Labels[KeyClusterNetworkLabel] == "" {
 		return false
 	}
 
 	return true
+}
+
+func IsOverlayNad(nad *nadv1.NetworkAttachmentDefinition) bool {
+	if nad != nil && nad.Labels != nil && nad.Labels[KeyNetworkType] == string(OverlayNetwork) {
+		return true
+	}
+
+	return false
+}
+
+// decode nad config string to a config struct
+func DecodeNadConfigToNetConf(nad *nadv1.NetworkAttachmentDefinition) (*NetConf, error) {
+	conf := &NetConf{}
+	if nad == nil || nad.Spec.Config == "" {
+		return conf, nil
+	}
+
+	if err := json.Unmarshal([]byte(nad.Spec.Config), conf); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal nad %v/%v config %s %w", nad.Namespace, nad.Name, nad.Spec.Config, err)
+	}
+
+	return conf, nil
 }
 
 func isMaskZero(ipnet *net.IPNet) bool {
@@ -150,7 +458,7 @@ func isMaskZero(ipnet *net.IPNet) bool {
 
 // if this nad is a storagenetwork nad
 func IsStorageNetworkNad(nad *nadv1.NetworkAttachmentDefinition) bool {
-	if nad == nil || nad.Namespace != harvesterutil.HarvesterSystemNamespaceName {
+	if nad == nil || nad.Namespace != HarvesterSystemNamespaceName {
 		return false
 	}
 
@@ -204,7 +512,7 @@ func (n *NadGetter) ListNadsOnClusterNetwork(cnName string) ([]*nadv1.NetworkAtt
 }
 
 func (n *NadGetter) GetFirstActiveStorageNetworkNadOnClusterNetwork(cnName string) (*nadv1.NetworkAttachmentDefinition, error) {
-	nads, err := n.nadCache.List(harvesterutil.HarvesterSystemNamespaceName, labels.Set(map[string]string{
+	nads, err := n.nadCache.List(HarvesterSystemNamespaceName, labels.Set(map[string]string{
 		KeyClusterNetworkLabel: cnName,
 	}).AsSelector())
 	if err != nil {
@@ -224,6 +532,27 @@ func (n *NadGetter) NadNamesOnClusterNetwork(cnName string) ([]string, error) {
 		return nil, err
 	}
 	return generateNadNameList(nads), nil
+}
+
+func GeVlanIDSetFromClusterNetwork(cnName string, nadCache ctlcniv1.NetworkAttachmentDefinitionCache) (*VlanIDSet, error) {
+	ng := NewNadGetter(nadCache)
+	nads, err := ng.ListNadsOnClusterNetwork(cnName)
+	if err != nil {
+		return nil, err
+	}
+	vis, err := NewVlanIDSetFromNadList(nads)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cluster network %v vlan id set, error: %w", cnName, err)
+	}
+	return vis, nil
+}
+
+func GetLocalAreaSetFromClusterNetwork(cnName string, nadCache ctlcniv1.NetworkAttachmentDefinitionCache) ([]LocalArea, error) {
+	vis, err := GeVlanIDSetFromClusterNetwork(cnName, nadCache)
+	if err != nil {
+		return nil, err
+	}
+	return vis.ToLocalAreas(), nil
 }
 
 func generateNadNameList(nads []*nadv1.NetworkAttachmentDefinition) []string {
