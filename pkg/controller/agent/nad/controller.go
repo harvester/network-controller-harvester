@@ -34,7 +34,7 @@ func Register(ctx context.Context, management *config.Management) error {
 		nadClient: nad,
 	}
 
-	vlanID, err := GetMgmtVlan()
+	vlanID, err := iface.GetMgmtVlan()
 	if err != nil {
 		return fmt.Errorf("failed to get mgmt vlan err:%v", err)
 	}
@@ -188,6 +188,7 @@ func (h Handler) removeOutdatedLocalArea(nad *nadv1.NetworkAttachmentDefinition)
 	return nadCopy, nil
 }
 
+/*
 func GetMgmtVlan() (vlanID int, err error) {
 	vlanID, err = iface.GetMgmtVlan()
 	if err != nil {
@@ -196,3 +197,4 @@ func GetMgmtVlan() (vlanID int, err error) {
 
 	return vlanID, nil
 }
+*/

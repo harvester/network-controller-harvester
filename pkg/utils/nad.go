@@ -534,6 +534,19 @@ func (n *NadGetter) NadNamesOnClusterNetwork(cnName string) ([]string, error) {
 	return generateNadNameList(nads), nil
 }
 
+func GetLocalAreaSetFromClusterNetwork(cnName string, nadCache ctlcniv1.NetworkAttachmentDefinitionCache) ([]LocalArea, error) {
+	ng := NewNadGetter(nadCache)
+	nads, err := ng.ListNadsOnClusterNetwork(cnName)
+	if err != nil {
+		return nil, err
+	}
+	vis, err := NewVlanIDSetFromNadList(nads)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cluster network %v vlan id set, error: %w", cnName, err)
+	}
+	return vis.ToLocalAreas(), nil
+}
+
 func generateNadNameList(nads []*nadv1.NetworkAttachmentDefinition) []string {
 	if len(nads) == 0 {
 		return nil
