@@ -26,9 +26,7 @@ type Handler struct {
 
 func Register(ctx context.Context, management *config.Management) error {
 	cns := management.HarvesterNetworkFactory.Network().V1beta1().ClusterNetwork()
-
 	nads := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
-
 	h := Handler{
 		cnCache:   cns.Cache(),
 		cnClient:  cns,
@@ -41,6 +39,8 @@ func Register(ctx context.Context, management *config.Management) error {
 		return fmt.Errorf("failed to get mgmt vlan err:%v", err)
 	}
 	handler.mgmtVlan = vlanID
+
+	klog.Infof("%s starts with mgmt vid %v", controllerName, vlanID)
 
 	cns.OnChange(ctx, controllerName, h.OnChange)
 
@@ -58,30 +58,56 @@ func (h Handler) OnChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.Cl
 		// vlanconfig controller sets up the non-mgmt cn; mgmt cn is setup by wicked daemon service
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
 			klog.Debugf("cluster network %s is not set on this node, skip", cn.Name)
-			return nil
+			return nil, nil
 		}
-		return err
+		return nil, err
 	}
 
 	cnVlans, err := utils.GeVlanIdSetFromClusterNetwork(cn.Name, h.nadCache)
 	if err != nil {
 		klog.Infof("cluster network %s failed to get vlanset %s", cn.Name, err.Errorf())
-		return err
+		return nil, err
 	}
 
 	// if mgmt network, add mgmvid to list
-
 	if utils.IsManagementClusterNetwork(cn.Name) {
-		cnVlans.SetVid(h.mgmtVlan)
+		err := cnVlans.SetVid(h.mgmtVlan)
+		if err != nil {
+			klog.Infof("cluster network %s failed to add mgmt vid %v to vlanset %s", cn.Name, h.mgmtVlan, err.Errorf())
+			return nil, err
+		}
 	}
 
 	// get current set vlan, mgmt vid is always there
 	existingVlans, err := v.ToVlanIDSet()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	added, removed, err := cnVlans.Diff(existingVlans)
+	if err != nil {
+		return nil, err
+	}
+
+	addedList := added.ToLocalAreasWitoutCIDR()
+	removedList := removed.ToLocalAreasWitoutCIDR()
+
+	if len(addedList) == 0 && len(removedList) == 0 {
+		return cn, nil
+	}
+
+	klog.Infof("cluster network %s will add %s vlans, remove %v vlans", cn.Name, len(addList), len(removedList))
+
 	// get diff list, to add, to remove
+
+	err := v.AddLocalAreas(addedList)
+	if err != nil {
+		return nil, err
+	}
+	err := v.RemoveLocalAreas(removedList)
+	if err != nil {
+		return nil, err
+	}
 
 	return cn, nil
 }

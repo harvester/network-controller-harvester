@@ -12,6 +12,8 @@ const (
 	MinVlanID      = 0
 	MinTrunkVlanID = 1
 
+	DefaultVlanID = 1
+
 	VlanIDCount = 4096
 )
 
@@ -47,6 +49,21 @@ func (vis *VlanIDSet) SetVID(vid int) error {
 		vis.vlanCount++
 	}
 	return nil
+}
+
+// caller has ensured the vid is in range
+func (vis *VlanIDSet) safelySetVID(vid int) {
+	if vis.vidSet[vid] == false {
+		vis.vidSet[vid] = true
+		vis.vlanCount++
+	}
+}
+
+func (vis *VlanIDSet) safelyUnSetVID(vid int) {
+	if vis.vidSet[vid] == true {
+		vis.vidSet[vid] = false
+		vis.vlanCount--
+	}
 }
 
 func (vis *VlanIDSet) SetUint16VID(vid uint16) error {
@@ -94,6 +111,30 @@ func (vis *VlanIDSet) VidSetToString() string {
 	return strings.Join(tgt, ",")
 }
 
+// according to current and the existing vlandidset, compute the to be added and removed vidset
+func (vis *VlanIDSet) Diff(existing *VlanIDSet) (added, removed *VlanIDSet, err error) {
+	if existing == nil {
+		return vis, nil, nil
+	}
+	if len(vis.vidSet) != VlanIDCount || len(existing.vidSet) != VlanIDCount {
+		return nil, nil, fmt.Errorf("the input vidset is not valid current length %v, existing length %v", len(vis.vidSet), len(existing.vidSet))
+	}
+	added = NewVlanIDSet()
+	removed = NewVlanIDSet()
+	for i := 2; i <= MaxVlanID; i++ {
+		if vis.vidSet[i] != existing.vidSet[i] {
+			if vis.vidSet[i] {
+				added.safelySetVID(i)
+			} else {
+				removed.safelySetVID(i)
+			}
+		}
+	}
+	removed.safelyUnSetVID(DefaultVlanID) // removed list should skip default vid
+	err = nil
+	return
+}
+
 func (vis *VlanIDSet) ToLocalAreas() []LocalArea {
 	if vis == nil || len(vis.vidSet) == 0 || vis.vlanCount == 0 {
 		return nil
@@ -105,6 +146,22 @@ func (vis *VlanIDSet) ToLocalAreas() []LocalArea {
 		if vis.vidSet[i] {
 			tgt[k].Vid = uint16(i) // nolint: gosec
 			tgt[k].Cidr = vis.cidrSet[i]
+			k++
+		}
+	}
+	return tgt
+}
+
+// strip CIDR
+func (vis *VlanIDSet) ToLocalAreasWitoutCIDR() []LocalArea {
+	if vis == nil || len(vis.vidSet) == 0 || vis.vlanCount == 0 {
+		return nil
+	}
+	tgt := make([]LocalArea, vis.vlanCount)
+	k := 0
+	for i := range vis.vidSet {
+		if vis.vidSet[i] {
+			tgt[k].Vid = uint16(i) // nolint: gosec
 			k++
 		}
 	}
@@ -124,7 +181,7 @@ func NewVlanIDSet() *VlanIDSet {
 		cidrSet: make([]string, VlanIDCount),
 	}
 	// 1 are always set
-	vis.vidSet[1] = true
+	vis.vidSet[DefaultVlanID] = true
 	vis.vlanCount = 1
 	return vis
 }
