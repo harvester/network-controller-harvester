@@ -13,9 +13,13 @@ RUN curl -sSfL https://github.com/docker/buildx/releases/download/v0.13.1/buildx
     chmod +x buildx-v0.13.1.linux-${ARCH} && \
     mv buildx-v0.13.1.linux-${ARCH} /usr/local/bin/buildx
 
+# tools needed for generate target
+RUN GO111MODULE=on go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.17.1
+RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@latest
+
 ENV DAPPER_ENV REPO TAG DRONE_TAG
 ENV DAPPER_SOURCE /go/src/github.com/harvester/harvester-network-controller/
-ENV DAPPER_OUTPUT ./bin
+ENV DAPPER_OUTPUT ./bin ./pkg/apis ./pkg/generated
 ENV DAPPER_DOCKER_SOCKET true
 ENV HOME ${DAPPER_SOURCE}
 WORKDIR ${DAPPER_SOURCE}

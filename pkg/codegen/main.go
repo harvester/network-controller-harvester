@@ -31,7 +31,7 @@ func main() {
 					kubeovnsubnetv1.Subnet{},
 					kubeovnsubnetv1.Vpc{},
 				},
-				GenerateTypes:   true,
+				GenerateTypes:   false,
 				GenerateClients: true,
 			},
 		},
