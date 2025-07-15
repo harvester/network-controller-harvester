@@ -131,7 +131,7 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 		clusternetwork.NewCnValidator(c.nadCache, c.vmiCache, c.vcCache),
 		nad.NewNadValidator(c.vmCache, c.vmiCache, c.cnCache, c.vcCache, c.kubeovnsubnetCache),
 		vlanconfig.NewVlanConfigValidator(c.nadCache, c.vcCache, c.vsCache, c.vmiCache, c.cnCache),
-		subnet.NewSubnetValidator(c.nadCache, c.kubeovnvpcCache),
+		subnet.NewSubnetValidator(c.nadCache, c.kubeovnsubnetCache, c.kubeovnvpcCache),
 	); err != nil {
 		return fmt.Errorf("failed to register validators: %v", err)
 	}
