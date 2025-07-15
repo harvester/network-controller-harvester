@@ -3,7 +3,6 @@ package nad
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strconv"
 
 	"github.com/harvester/webhook/pkg/server/admission"
@@ -61,10 +60,6 @@ func (m *Mutator) Update(_ *admission.Request, oldObj, newObj runtime.Object) (a
 	}
 	if err := json.Unmarshal([]byte(newNad.Spec.Config), newNetconf); err != nil {
 		return nil, fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
-	}
-	// ignore the update if the config is not being updated
-	if reflect.DeepEqual(oldNetconf, newNetconf) {
-		return nil, nil
 	}
 
 	patch, err := m.ensureLabels(newNad, oldNetconf, newNetconf)

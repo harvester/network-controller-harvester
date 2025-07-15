@@ -62,6 +62,11 @@ func (c *CnValidator) Update(_ *admission.Request, oldObj, newObj runtime.Object
 	oldCn := oldObj.(*networkv1.ClusterNetwork)
 	newCn := newObj.(*networkv1.ClusterNetwork)
 
+	// ignore the update if the resource is being deleted
+	if newCn.DeletionTimestamp != nil {
+		return nil
+	}
+
 	if err := c.checkMTUOfUpdatedClusterNetwork(oldCn, newCn); err != nil {
 		return fmt.Errorf(updateErr, newCn.Name, err)
 	}

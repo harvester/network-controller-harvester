@@ -95,13 +95,13 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	oldVc := oldObj.(*networkv1.VlanConfig)
 	newVc := newObj.(*networkv1.VlanConfig)
 
+	if newVc.DeletionTimestamp != nil {
+		return nil
+	}
+
 	if newVc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
 		return fmt.Errorf(updateErr, newVc.Name, fmt.Errorf("cluster network can't be %s",
 			utils.ManagementClusterNetworkName))
-	}
-	// skip validation if spec is not changed
-	if reflect.DeepEqual(oldVc.Spec, newVc.Spec) {
-		return nil
 	}
 
 	// check if clusternetwork exists
