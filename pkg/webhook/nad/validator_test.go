@@ -440,7 +440,7 @@ func TestCreateNAD(t *testing.T) {
 				cnClient.Create(tc.currentCN)
 			}
 
-			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true)
 
 			err := validator.Create(nil, tc.newNAD)
 			assert.True(t, tc.returnErr == (err != nil))
@@ -517,7 +517,7 @@ func TestUpdateNAD(t *testing.T) {
 			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
-			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true)
 
 			nadGvr := schema.GroupVersionResource{
 				Group:    "k8s.cni.cncf.io",
@@ -698,7 +698,7 @@ func TestDeleteNAD(t *testing.T) {
 			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
-			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true)
 
 			if tc.currentVM != nil {
 				err := harvesterclientset.Tracker().Add(tc.currentVM)
