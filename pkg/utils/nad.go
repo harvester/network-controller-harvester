@@ -302,6 +302,8 @@ type VlanTrunk struct {
 	ID    *int `json:"id,omitempty"`
 }
 
+// honor https://github.com/containernetworking/plugins/blob/48a4ae5ab5f12966c935a793b1316ec13dd05a3e/plugins/main/bridge/bridge.go#L147
+// with some updates
 func (item *VlanTrunk) IsValid() (bool, error) {
 	if item == nil {
 		return true, nil
@@ -341,7 +343,7 @@ func (item *VlanTrunk) IsValid() (bool, error) {
 	return true, nil
 }
 
-// if related vlanconfig is valid
+// if vlanconfig is valid
 func (nc *NetConf) IsVlanConfigValid() (bool, error) {
 	if nc.Vlan < MinVlanID || nc.Vlan > MaxVlanID {
 		return false, fmt.Errorf("vlan %v is out of range [%v .. %v]", nc.Vlan, MinVlanID, MaxVlanID)
@@ -364,7 +366,6 @@ func (nc *NetConf) IsVlanConfigValid() (bool, error) {
 func (nc *NetConf) dumpVlanIDSet(cidr string) (*VlanIDSet, error) {
 	vis := NewVlanIDSet()
 	var err error
-	// TODO: confirm > 0 or > 1
 	// only l2 tag mode has cidr
 	if nc.Vlan > 0 {
 		if err = vis.SetVIDCidr(nc.Vlan, cidr); err != nil {
