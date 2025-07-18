@@ -38,7 +38,12 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 
 	subnetSpec := subnet.Spec
 
-	err := v.checkIfValidNad(subnetSpec.Provider)
+	isReserved, err := utils.IsReservedSubnet(subnet.Name, subnetSpec.Provider)
+	if isReserved {
+		return err
+	}
+
+	err = v.checkIfValidNad(subnetSpec.Provider)
 	if err != nil {
 		return err
 	}
@@ -73,6 +78,11 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return nil
 	}
 
+	isReserved, err := utils.IsReservedSubnet(newSubnet.Name, newSubnetSpec.Provider)
+	if isReserved {
+		return err
+	}
+
 	if newSubnetSpec.Provider != oldSubnetSpec.Provider && oldSubnet.Status.V4UsingIPs != 0 {
 		return fmt.Errorf("cannot update provider %s for subnet %s as VMs are still using it", newSubnetSpec.Provider, oldSubnet.Name)
 	}
@@ -81,7 +91,7 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return fmt.Errorf("cannot update vpc %s for subnet %s as VMs are still using it", newSubnetSpec.Vpc, oldSubnet.Name)
 	}
 
-	err := v.checkIfValidNad(newSubnetSpec.Provider)
+	err = v.checkIfValidNad(newSubnetSpec.Provider)
 	if err != nil {
 		return err
 	}
