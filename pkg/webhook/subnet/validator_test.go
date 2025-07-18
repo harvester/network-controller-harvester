@@ -60,6 +60,45 @@ func TestCreateSubnet(t *testing.T) {
 			},
 		},
 		{
+			name:      "default subnet join can be created",
+			returnErr: false,
+			errKey:    "",
+			newSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "join",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Provider: "ovn",
+				},
+			},
+		},
+		{
+			name:      "default subnet ovn-default can be created",
+			returnErr: false,
+			errKey:    "",
+			newSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ovn-default",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Provider: "ovn",
+				},
+			},
+		},
+		{
+			name:      "user created subnet with default subnets name,should fail",
+			returnErr: true,
+			errKey:    "not a default subnet",
+			newSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ovn-default",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Provider: "vswitch1.default.ovn",
+				},
+			},
+		},
+		{
 			name:      "provider is empty for subnet,return error",
 			returnErr: true,
 			errKey:    "provider is empty",
