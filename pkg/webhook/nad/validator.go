@@ -6,12 +6,13 @@ import (
 	"reflect"
 	"strings"
 
-	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
 	"github.com/harvester/webhook/pkg/server/admission"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	k8slabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
 
 	kubeovnnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io/v1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
@@ -29,22 +30,24 @@ const (
 
 type Validator struct {
 	admission.DefaultValidator
-	vmCache     ctlkubevirtv1.VirtualMachineCache
-	vmiCache    ctlkubevirtv1.VirtualMachineInstanceCache
-	cnCache     ctlnetworkv1.ClusterNetworkCache
-	vcCache     ctlnetworkv1.VlanConfigCache
-	subnetCache kubeovnnetworkv1.SubnetCache
+	vmCache       ctlkubevirtv1.VirtualMachineCache
+	vmiCache      ctlkubevirtv1.VirtualMachineInstanceCache
+	cnCache       ctlnetworkv1.ClusterNetworkCache
+	vcCache       ctlnetworkv1.VlanConfigCache
+	subnetCache   kubeovnnetworkv1.SubnetCache
+	subnetEnabled bool
 }
 
 var _ admission.Validator = &Validator{}
 
-func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkubevirtv1.VirtualMachineInstanceCache, cnCache ctlnetworkv1.ClusterNetworkCache, vcCache ctlnetworkv1.VlanConfigCache, subnetCache kubeovnnetworkv1.SubnetCache) *Validator {
+func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkubevirtv1.VirtualMachineInstanceCache, cnCache ctlnetworkv1.ClusterNetworkCache, vcCache ctlnetworkv1.VlanConfigCache, subnetCache kubeovnnetworkv1.SubnetCache, subnetEnabled bool) *Validator {
 	return &Validator{
-		vmCache:     vmCache,
-		vmiCache:    vmiCache,
-		cnCache:     cnCache,
-		vcCache:     vcCache,
-		subnetCache: subnetCache,
+		vmCache:       vmCache,
+		vmiCache:      vmiCache,
+		cnCache:       cnCache,
+		vcCache:       vcCache,
+		subnetCache:   subnetCache,
+		subnetEnabled: subnetEnabled,
 	}
 }
 
@@ -129,6 +132,9 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	//do not delete nad when a subnet is using it
 	//This will also make sure nad is not deleted when VMIs,VMs are using it
 	if nadConf.Type == utils.CNITypeKubeOVN {
+		if !v.subnetEnabled {
+			return fmt.Errorf("operation not permitted as kubeovn is not yet enabled")
+		}
 		return v.checkSubnetsUsingNAD(nad)
 	}
 
