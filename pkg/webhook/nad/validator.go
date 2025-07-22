@@ -128,11 +128,11 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 		return fmt.Errorf(updateErr, nad.Namespace, nad.Name, err)
 	}
 
-	//do not delete nad when a subnet is using it
-	//This will also make sure nad is not deleted when VMIs,VMs are using it
-	if nadConf.Type == utils.CNITypeKubeOVN {
+	// do not delete nad when a subnet is using it
+	// This will also make sure nad is not deleted when VMIs,VMs are using it
+	if nadConf.IsKubeOVNCNI() {
 		if !v.subnetEnabled {
-			return fmt.Errorf("operation not permitted as kubeovn is not yet enabled")
+			return fmt.Errorf("operation is not permitted as kubeovn is not yet enabled")
 		}
 		return v.checkSubnetsUsingNAD(nad)
 	}
@@ -174,8 +174,7 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 		return fmt.Errorf("config is empty")
 	}
 
-	clusterNetwork := getNadClusterNetworkLabel(nad)
-
+	clusterNetwork := utils.GetNadLabel(nad, utils.KeyClusterNetworkLabel)
 	if nadConf.IsKubeOVNCNI() && clusterNetwork != "" && clusterNetwork != utils.ManagementClusterNetworkName {
 		return fmt.Errorf("nad with kubeovn type can only be part of mgmt cluster")
 	}
@@ -319,13 +318,6 @@ func (v *Validator) checkVM(nad *cniv1.NetworkAttachmentDefinition) error {
 	}
 
 	return nil
-}
-
-func getNadClusterNetworkLabel(nad *cniv1.NetworkAttachmentDefinition) string {
-	if nad == nil || nad.Labels == nil {
-		return ""
-	}
-	return nad.Labels[utils.KeyClusterNetworkLabel]
 }
 
 func (v *Validator) checkStorageNetwork(nad *cniv1.NetworkAttachmentDefinition) error {

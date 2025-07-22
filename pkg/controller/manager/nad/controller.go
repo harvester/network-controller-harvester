@@ -241,9 +241,9 @@ func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) (*utils.Ne
 	if cn, err := h.cnCache.Get(cnName); err != nil {
 		return nil, false, err
 	} else if networkv1.Ready.IsTrue(cn.Status) {
-		nadCopy.Labels[utils.KeyNetworkReady] = utils.ValueTrue
+		utils.SetNadLabel(nadCopy, utils.KeyNetworkReady, utils.ValueTrue)
 	} else {
-		nadCopy.Labels[utils.KeyNetworkReady] = utils.ValueFalse
+		utils.SetNadLabel(nadCopy, utils.KeyNetworkReady, utils.ValueFalse)
 	}
 	if reflect.DeepEqual(nad.Labels, nadCopy.Labels) {
 		return netconf, false, nil
@@ -256,11 +256,8 @@ func (h Handler) ensureLabels(nad *cniv1.NetworkAttachmentDefinition) (*utils.Ne
 }
 
 func (h Handler) UpdateClusetNetworkVlanSet(nad *cniv1.NetworkAttachmentDefinition) error {
-	if utils.IsOverlayNad(nad) {
-		return nil
-	}
-
-	cnname := nad.Labels[utils.KeyClusterNetworkLabel]
+	// the caller has ensured this nad !IsOverlayNad
+	cnname := utils.GetNadLabel(nad, utils.KeyClusterNetworkLabel)
 	if cnname == "" {
 		return nil
 	}
@@ -290,18 +287,14 @@ func (h Handler) updateClusetNetworkVlanSet(_ *cniv1.NetworkAttachmentDefinition
 	}
 	vidstr, vidhash := vids.VidSetToStringHash()
 	// no change
-	if cn.Annotations[utils.KeyVlanIDSetStr] == vidstr && cn.Annotations[utils.KeyVlanIDSetStrHash] == vidhash {
+	if utils.AreClusterNetworkVlanAnnotationsUnchanged(cn, vidstr, vidhash) {
 		return nil
 	}
 
 	klog.Infof("update cn %v annotations %v:%v", cnname, utils.KeyVlanIDSetStrHash, vidhash)
 	// update new vid and hash to cluster network
 	cnCopy := cn.DeepCopy()
-	if cnCopy.Annotations == nil {
-		cnCopy.Annotations = make(map[string]string)
-	}
-	cnCopy.Annotations[utils.KeyVlanIDSetStr] = vidstr
-	cnCopy.Annotations[utils.KeyVlanIDSetStrHash] = vidhash
+	utils.SetClusterNetworkVlanAnnotations(cnCopy, vidstr, vidhash)
 
 	if _, err := h.cnClient.Update(cnCopy); err != nil {
 		return fmt.Errorf("failed to update cluster network %s label %s/%s error %w", cnname, utils.KeyVlanIDSetStrHash, vidhash, err)
@@ -316,7 +309,7 @@ func (h Handler) EnsureJob2GetLayer3NetworkInfo(nad *cniv1.NetworkAttachmentDefi
 	}
 
 	networkConf := &utils.Layer3NetworkConf{}
-	routeStr := nad.Annotations[utils.KeyNetworkRoute]
+	routeStr := utils.GetNadAnnotation(nad, utils.KeyNetworkRoute)
 	if routeStr == "" {
 		// no l3 label on nad like storage-network
 		return nil
@@ -408,7 +401,7 @@ func (h Handler) clearOutdatedJob(nad *cniv1.NetworkAttachmentDefinition, netcon
 
 		// without a label check, new job for the working nad might be cleared
 		// when vlan id or dhcp server are changed, the job needs to be re-created
-		if utils.IsDHCPInfoSameOnJobLabels(job.Labels, netconf, l3netconf) {
+		if utils.AreJobLabelsDHCPInfoUnchanged(job.Labels, netconf, l3netconf) {
 			return nil
 		}
 
@@ -537,7 +530,7 @@ func constructJob(cur *batchv1.Job, namespace, image string, nad *cniv1.NetworkA
 					{
 						MatchExpressions: []corev1.NodeSelectorRequirement{
 							{
-								Key:      network.GroupName + "/" + nad.Labels[utils.KeyClusterNetworkLabel],
+								Key:      network.GroupName + "/" + utils.GetNadLabel(nad, utils.KeyClusterNetworkLabel),
 								Operator: corev1.NodeSelectorOpIn,
 								Values: []string{
 									utils.ValueTrue,

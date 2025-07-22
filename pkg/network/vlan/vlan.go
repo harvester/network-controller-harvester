@@ -101,24 +101,6 @@ func (v *Vlan) Teardown() error {
 	return nil
 }
 
-func (v *Vlan) AddLocalArea(la *utils.LocalArea) error {
-	if v.uplink == nil {
-		return fmt.Errorf("bridge %s hasn't attached an uplink", v.bridge.Name)
-	}
-
-	if err := v.uplink.AddBridgeVlan(la.Vid); err != nil {
-		return fmt.Errorf("add bridge vlanconfig %d failed, error: %w", la.Vid, err)
-	}
-
-	/*
-		if err := iface.EnsureRouteViaGateway(la.Cidr); err != nil {
-			return fmt.Errorf("ensure %s to route via gateway failed, error: %w", la.Cidr, err)
-		}
-	*/
-
-	return nil
-}
-
 func (v *Vlan) AddLocalAreas(las []utils.LocalArea) error {
 	if len(las) == 0 {
 		return nil
@@ -130,30 +112,7 @@ func (v *Vlan) AddLocalAreas(las []utils.LocalArea) error {
 		if err := v.uplink.AddBridgeVlan(la.Vid); err != nil {
 			return fmt.Errorf("add bridge vlanconfig %d failed, error: %w", la.Vid, err)
 		}
-		/*
-			if err := iface.EnsureRouteViaGateway(la.Cidr); err != nil {
-				return fmt.Errorf("ensure %s to route via gateway failed, error: %w", la.Cidr, err)
-			}
-		*/
 	}
-
-	return nil
-}
-
-func (v *Vlan) RemoveLocalArea(la *utils.LocalArea) error {
-	if v.uplink == nil {
-		return fmt.Errorf("bridge %s hasn't attached with an uplink", v.bridge.Name)
-	}
-
-	if err := v.uplink.DelBridgeVlan(la.Vid); err != nil {
-		return fmt.Errorf("remove bridge vlanconfig %d failed, error: %w", la.Vid, err)
-	}
-
-	/*
-		if err := iface.DeleteRouteViaGateway(la.Cidr); err != nil {
-			return fmt.Errorf("delete route with dst %s via gateway failed, error: %w", la.Cidr, err)
-		}
-	*/
 
 	return nil
 }
@@ -167,11 +126,6 @@ func (v *Vlan) RemoveLocalAreas(las []utils.LocalArea) error {
 		if err := v.uplink.DelBridgeVlan(la.Vid); err != nil {
 			return fmt.Errorf("remove bridge vlanconfig %d failed, error: %w", la.Vid, err)
 		}
-		/*
-			if err := iface.DeleteRouteViaGateway(la.Cidr); err != nil {
-				return fmt.Errorf("delete route with dst %s via gateway failed, error: %w", la.Cidr, err)
-			}
-		*/
 	}
 
 	return nil

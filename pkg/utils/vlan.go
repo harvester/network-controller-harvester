@@ -44,7 +44,7 @@ func (vis *VlanIDSet) SetVIDCidr(vid int, cidr string) error {
 	}
 
 	if len(vis.vidSet) < (vid + 1) {
-		fmt.Errorf("vlan set length is %v, not enough space to store vid %v", len(vis.vidSet), vid)
+		return fmt.Errorf("vlan set length is %v, there is not enough space to store vid %v", len(vis.vidSet), vid)
 	}
 	if vis.vidSet[vid] == false {
 		vis.vidSet[vid] = true
@@ -64,7 +64,7 @@ func (vis *VlanIDSet) SetVID(vid int) error {
 	}
 
 	if len(vis.vidSet) < (vid + 1) {
-		fmt.Errorf("vlan set length is %v, not enough space to store vid %v", len(vis.vidSet), vid)
+		return fmt.Errorf("vlan set length is %v, there is not enough space to store vid %v", len(vis.vidSet), vid)
 	}
 	if vis.vidSet[vid] == false {
 		vis.vidSet[vid] = true
@@ -210,7 +210,7 @@ func NewVlanIDSet() *VlanIDSet {
 		vidSet:  make([]bool, VlanIDCount),
 		cidrSet: make([]string, VlanIDCount),
 	}
-	// 1 are always set
+	// vid 1 is always set
 	vis.vidSet[DefaultVlanID] = true
 	vis.vlanCount = 1
 	return vis

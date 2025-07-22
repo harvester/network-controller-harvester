@@ -50,7 +50,7 @@ func TestL2NetConf(t *testing.T) {
 				},
 			},
 			vlan:          300,
-			networklabels: 3,
+			networklabels: 3, // cn, networktype, vid
 			cnname:        testCnName,
 		},
 		{
@@ -69,7 +69,7 @@ func TestL2NetConf(t *testing.T) {
 				},
 			},
 			vlan:          0,
-			networklabels: 2,
+			networklabels: 2, // cn, networktype
 			cnname:        testCnName,
 		},
 		{
@@ -88,7 +88,7 @@ func TestL2NetConf(t *testing.T) {
 				},
 			},
 			vlan:          0,
-			networklabels: 2,
+			networklabels: 2, // cn, networktype
 			cnname:        testCnName,
 		},
 		{
@@ -107,7 +107,7 @@ func TestL2NetConf(t *testing.T) {
 				},
 			},
 			vlan:          0,
-			networklabels: 2,
+			networklabels: 2, // cn, networktype
 			cnname:        ManagementClusterNetworkName,
 			ovnci:         true,
 		},

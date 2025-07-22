@@ -227,6 +227,39 @@ func NewLayer3NetworkConfFromNad(nad *nadv1.NetworkAttachmentDefinition) (*Layer
 	return networkConf, nil
 }
 
+func GetNadLabel(nad *nadv1.NetworkAttachmentDefinition, key string) string {
+	if nad == nil || nad.Labels == nil {
+		return ""
+	}
+	return nad.Labels[key]
+}
+
+func SetNadLabel(nad *nadv1.NetworkAttachmentDefinition, key, value string) {
+	if nad == nil {
+		return
+	}
+	if nad.Labels == nil {
+		nad.Labels = make(map[string]string)
+	}
+	nad.Labels[key] = value
+}
+
+func GetNadAnnotation(nad *nadv1.NetworkAttachmentDefinition, key string) string {
+	if nad == nil || nad.Annotations == nil {
+		return ""
+	}
+	return nad.Annotations[key]
+}
+func SetNadAnnotation(nad *nadv1.NetworkAttachmentDefinition, key, value string) {
+	if nad == nil {
+		return
+	}
+	if nad.Annotations == nil {
+		nad.Annotations = make(map[string]string)
+	}
+	nad.Annotations[key] = value
+}
+
 func (c *Layer3NetworkConf) ToString() (string, error) {
 	bytes, err := json.Marshal(c)
 	if err != nil {
@@ -255,7 +288,10 @@ func SetDHCPInfo2JobLabels(lb map[string]string, l2netconf *NetConf, l3netconf *
 	}
 }
 
-func IsDHCPInfoSameOnJobLabels(lb map[string]string, l2netconf *NetConf, l3netconf *Layer3NetworkConf) bool {
+func AreJobLabelsDHCPInfoUnchanged(lb map[string]string, l2netconf *NetConf, l3netconf *Layer3NetworkConf) bool {
+	if lb == nil {
+		return false
+	}
 	if l2netconf != nil && l3netconf != nil {
 		return lb[KeyVlanLabel] == l2netconf.GetVlanString() && lb[KeyVlanDHCPServerIP] == l3netconf.GetDHCPServerIPAddr()
 	}

@@ -189,7 +189,7 @@ func (m *Mutator) patchMTU(nad *cniv1.NetworkAttachmentDefinition) (admission.Pa
 		return nil, err
 	}
 
-	if netConf.Type == utils.CNITypeKubeOVN {
+	if netConf.IsKubeOVNCNI() {
 		return nil, nil
 	}
 
