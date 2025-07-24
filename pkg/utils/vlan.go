@@ -1,0 +1,217 @@
+package utils
+
+import (
+	"crypto/sha256"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+const (
+	MaxVlanID      = 4094
+	MinVlanID      = 0
+	MinTrunkVlanID = 1
+
+	DefaultVlanID = 1
+
+	VlanIDCount = 4096
+
+	VlanIDStringJoinChar = ","
+)
+
+type VlanIDSet struct {
+	clusterNetwork string   `json:"clusterNetwork"`
+	vlanCount      uint32   `json:"vlanCount"`
+	vidSetHash     string   `json:"vidSetHash,omitempty"`
+	vidSet         []bool   `json:"vidSet,omitempty"`  // store vlan list
+	cidrSet        []string `json:"cidrSet,omitempty"` // store vlan cidr
+	vlan           int      `json:"vlan"`
+}
+
+// moved from pkg/network/vlan to here
+type LocalArea struct {
+	Vid  uint16
+	Cidr string
+}
+
+func (vis *VlanIDSet) SetVIDCidr(vid int, cidr string) error {
+	if vid < MinVlanID || vid > MaxVlanID {
+		return fmt.Errorf("vlan %v is out of range [%v .. %v]", vid, MinVlanID, MaxVlanID)
+	}
+	// 0 is always skipped, Harvester UI allows to fill 1..4094
+	if vid == 0 {
+		return nil
+	}
+
+	if len(vis.vidSet) < (vid + 1) {
+		return fmt.Errorf("vlan set length is %v, there is not enough space to store vid %v", len(vis.vidSet), vid)
+	}
+	if vis.vidSet[vid] == false {
+		vis.vidSet[vid] = true
+		vis.cidrSet[vid] = cidr
+		vis.vlanCount++
+	}
+	return nil
+}
+
+func (vis *VlanIDSet) SetVID(vid int) error {
+	if vid < MinVlanID || vid > MaxVlanID {
+		return fmt.Errorf("vlan %v is out of range [%v .. %v]", vid, MinVlanID, MaxVlanID)
+	}
+	// 0 is always skipped
+	if vid == 0 {
+		return nil
+	}
+
+	if len(vis.vidSet) < (vid + 1) {
+		return fmt.Errorf("vlan set length is %v, there is not enough space to store vid %v", len(vis.vidSet), vid)
+	}
+	if vis.vidSet[vid] == false {
+		vis.vidSet[vid] = true
+		vis.vlanCount++
+	}
+	return nil
+}
+
+// caller has ensured the vid is in range
+func (vis *VlanIDSet) safelySetVIDCidr(vid int, cidr string) {
+	if vis.vidSet[vid] == false {
+		vis.vidSet[vid] = true
+		vis.cidrSet[vid] = cidr
+		vis.vlanCount++
+	}
+}
+
+func (vis *VlanIDSet) safelyUnsetVID(vid int) {
+	if vis.vidSet[vid] == true {
+		vis.vidSet[vid] = false
+		vis.cidrSet[vid] = ""
+		vis.vlanCount--
+	}
+}
+
+func (vis *VlanIDSet) SetUint16VID(vid uint16) error {
+	return vis.SetVID(int(vid))
+}
+
+// merge another VlandIDSet to current
+func (vis *VlanIDSet) Append(other *VlanIDSet) *VlanIDSet {
+	if other == nil || len(other.vidSet) == 0 {
+		return vis
+	}
+
+	upper := len(other.vidSet)
+	if upper > VlanIDCount {
+		upper = VlanIDCount
+	}
+	for i := range upper {
+		if other.vidSet[i] {
+			if !vis.vidSet[i] {
+				vis.vidSet[i] = true
+				vis.cidrSet[i] = other.cidrSet[i]
+				vis.vlanCount++
+			} else if vis.cidrSet[i] == "" {
+				// only copy cidr from another, e.g. vid 100 is first added as a trunk vid, then as an access vid with cidr
+				vis.cidrSet[i] = other.cidrSet[i]
+			}
+		}
+	}
+	return vis
+}
+
+func (vis *VlanIDSet) VidSetToString() string {
+	if vis == nil || len(vis.vidSet) == 0 || vis.vlanCount == 0 {
+		return ""
+	}
+	tgt := make([]string, vis.vlanCount)
+	k := 0
+
+	for i := range vis.vidSet {
+		if vis.vidSet[i] {
+			tgt[k] = strconv.Itoa(i)
+			k++
+		}
+	}
+	return strings.Join(tgt, VlanIDStringJoinChar)
+}
+
+// according to current and the existing vlandidset, compute the to be added and removed vidset
+func (vis *VlanIDSet) Diff(existing *VlanIDSet) (added, removed *VlanIDSet, err error) {
+	if existing == nil {
+		return vis, nil, nil
+	}
+	if len(vis.vidSet) != VlanIDCount || len(existing.vidSet) != VlanIDCount {
+		return nil, nil, fmt.Errorf("the input vidsets are not valid current length %v, existing length %v", len(vis.vidSet), len(existing.vidSet))
+	}
+	added = NewVlanIDSet()
+	removed = NewVlanIDSet()
+	for i := DefaultVlanID; i <= MaxVlanID; i++ {
+		if vis.vidSet[i] != existing.vidSet[i] {
+			if vis.vidSet[i] {
+				added.safelySetVIDCidr(i, vis.cidrSet[i])
+			} else {
+				removed.safelySetVIDCidr(i, existing.cidrSet[i])
+			}
+		}
+	}
+
+	added.safelyUnsetVID(DefaultVlanID)   // added list should skip default vid
+	removed.safelyUnsetVID(DefaultVlanID) // removed list should skip default vid
+	err = nil
+	return
+}
+
+func (vis *VlanIDSet) ToLocalAreas() []LocalArea {
+	if vis == nil || len(vis.vidSet) == 0 || vis.vlanCount == 0 {
+		return nil
+	}
+	tgt := make([]LocalArea, vis.vlanCount)
+	k := 0
+
+	for i := range vis.vidSet {
+		if vis.vidSet[i] {
+			tgt[k].Vid = uint16(i) // nolint: gosec
+			tgt[k].Cidr = vis.cidrSet[i]
+			k++
+		}
+	}
+	return tgt
+}
+
+// strip CIDR
+func (vis *VlanIDSet) ToLocalAreasWitoutCIDR() []LocalArea {
+	if vis == nil || len(vis.vidSet) == 0 || vis.vlanCount == 0 {
+		return nil
+	}
+	tgt := make([]LocalArea, vis.vlanCount)
+	k := 0
+	for i := range vis.vidSet {
+		if vis.vidSet[i] {
+			tgt[k].Vid = uint16(i) // nolint: gosec
+			k++
+		}
+	}
+	return tgt
+}
+
+func (vis *VlanIDSet) VidSetToStringHash() (str, hash string) {
+	str = vis.VidSetToString()
+	bs := sha256.Sum256([]byte(str))
+	hash = fmt.Sprintf("%x", bs)
+	return
+}
+
+func (vis *VlanIDSet) GetVlanCount() uint32 {
+	return vis.vlanCount
+}
+
+func NewVlanIDSet() *VlanIDSet {
+	vis := &VlanIDSet{
+		vidSet:  make([]bool, VlanIDCount),
+		cidrSet: make([]string, VlanIDCount),
+	}
+	// vid 1 is always set
+	vis.vidSet[DefaultVlanID] = true
+	vis.vlanCount = 1
+	return vis
+}

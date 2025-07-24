@@ -83,6 +83,26 @@ func (l *Link) ListBridgeVlan() ([]uint16, error) {
 	return vids, nil
 }
 
+func (l *Link) ToVlanIDSet() (*utils.VlanIDSet, error) {
+	m, err := netlink.BridgeVlanList()
+	if err != nil {
+		return nil, err
+	}
+
+	vlanInfo, ok := m[int32(l.Attrs().Index)] //nolint:gosec
+	if !ok {
+		return nil, nil
+	}
+
+	vis := utils.NewVlanIDSet()
+
+	for i := range vlanInfo {
+		vis.SetUint16VID(vlanInfo[i].Vid)
+	}
+
+	return vis, nil
+}
+
 // clearMacvlan to delete all the macvlan interfaces whose parent index equals l.Index()
 func (l *Link) clearMacVlan() error {
 	links, err := netlink.LinkList()
@@ -209,32 +229,39 @@ func (l *Link) Remove() error {
 	return netlink.LinkDel(l)
 }
 
-func GetMgmtVlan() (vlanID int, err error) {
-	links, err := netlink.LinkList()
-	if err != nil {
-		return vlanID, err
-	}
-
-	mgmtBrIntf := utils.ManagementClusterNetworkName + "-" + BridgeSuffix + "."
+func getMgmtVlan(links []netlink.Link) (int, error) {
 	for _, link := range links {
-		if !strings.HasPrefix(link.Attrs().Name, mgmtBrIntf) {
+		if !utils.HasMgmtClusterNetworkDevicePrefix(link.Attrs().Name) {
 			continue
 		}
-
 		result := strings.Split(link.Attrs().Name, ".")
-		if len(result) < 2 {
-			return vlanID, fmt.Errorf("invalid link name format: %s", link.Attrs().Name)
+		if len(result) != 2 {
+			// TODO: review this error, maybe we should just skip and continue
+			return 0, fmt.Errorf("invalid link name format: %s", link.Attrs().Name)
 		}
+		vid, err := strconv.Atoi(result[1])
+		if err != nil {
+			return 0, fmt.Errorf("invalid link name format: %s, cannot convert %s to vlan, error %w", link.Attrs().Name, result[1], err)
+		}
+		return vid, nil
+	}
+	return 0, nil
+}
 
-		if vlanID, err = strconv.Atoi(result[1]); err != nil {
-			return vlanID, err
-		}
+func GetMgmtVlan() (int, error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return 0, err
 	}
 
-	if vlanID != 0 {
-		return vlanID, nil
+	vid, err := getMgmtVlan(links)
+	if err != nil {
+		return 0, err
 	}
 
-	//return default vid=1
-	return 1, nil
+	//return default vid 1 if 0 is get
+	if vid == 0 {
+		vid = 1
+	}
+	return vid, nil
 }

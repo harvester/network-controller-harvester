@@ -13,7 +13,6 @@ import (
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
-	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
@@ -21,8 +20,6 @@ const (
 	createErr = "can't create cluster network %s because %w"
 	updateErr = "can't update cluster network %s because %w"
 	deleteErr = "can't delete cluster network %s because %w"
-
-	maxClusterNetworkNameLen = iface.MaxDeviceNameLen - len(iface.BridgeSuffix)
 )
 
 type CnValidator struct {
@@ -47,8 +44,8 @@ func NewCnValidator(nadCache ctlcniv1.NetworkAttachmentDefinitionCache, vmiCache
 func (c *CnValidator) Create(_ *admission.Request, newObj runtime.Object) error {
 	cn := newObj.(*networkv1.ClusterNetwork)
 
-	if len(cn.Name) > maxClusterNetworkNameLen {
-		return fmt.Errorf(createErr, cn.Name, fmt.Errorf("the length of name is more than %d", maxClusterNetworkNameLen))
+	if _, err := utils.IsClusterNetworkNameValid(cn.Name); err != nil {
+		return fmt.Errorf(createErr, cn.Name, err)
 	}
 
 	if err := checkMTUOfNewClusterNetwork(cn); err != nil {
@@ -61,6 +58,11 @@ func (c *CnValidator) Create(_ *admission.Request, newObj runtime.Object) error 
 func (c *CnValidator) Update(_ *admission.Request, oldObj, newObj runtime.Object) error {
 	oldCn := oldObj.(*networkv1.ClusterNetwork)
 	newCn := newObj.(*networkv1.ClusterNetwork)
+
+	// ignore the update if the resource is being deleted
+	if newCn.DeletionTimestamp != nil {
+		return nil
+	}
 
 	if err := c.checkMTUOfUpdatedClusterNetwork(oldCn, newCn); err != nil {
 		return fmt.Errorf(updateErr, newCn.Name, err)
