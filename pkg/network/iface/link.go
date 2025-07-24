@@ -229,32 +229,39 @@ func (l *Link) Remove() error {
 	return netlink.LinkDel(l)
 }
 
-func GetMgmtVlan() (vlanID int, err error) {
-	links, err := netlink.LinkList()
-	if err != nil {
-		return vlanID, err
-	}
-
+func getMgmtVlan(links []netlink.Link) (int, error) {
 	for _, link := range links {
-		if !strings.HasPrefix(link.Attrs().Name, utils.ManagementClusterNetworkDevicePrefix) {
+		if !utils.HasMgmtClusterNetworkDevicePrefix(link.Attrs().Name) {
 			continue
 		}
-
 		result := strings.Split(link.Attrs().Name, ".")
-		if len(result) < 2 {
+		if len(result) != 2 {
 			// TODO: review this error, maybe we should just skip and continue
-			return vlanID, fmt.Errorf("invalid link name format: %s", link.Attrs().Name)
+			return 0, fmt.Errorf("invalid link name format: %s", link.Attrs().Name)
 		}
+		vid, err := strconv.Atoi(result[1])
+		if err != nil {
+			return 0, fmt.Errorf("invalid link name format: %s, cannot convert %s to vlan, error %w", link.Attrs().Name, result[1], err)
+		}
+		return vid, nil
+	}
+	return 0, nil
+}
 
-		if vlanID, err = strconv.Atoi(result[1]); err != nil {
-			return vlanID, err
-		}
+func GetMgmtVlan() (int, error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return 0, err
 	}
 
-	if vlanID != 0 {
-		return vlanID, nil
+	vid, err := getMgmtVlan(links)
+	if err != nil {
+		return 0, err
 	}
 
-	//return default vid=1
-	return 1, nil
+	//return default vid 1 if 0 is get
+	if vid == 0 {
+		vid = 1
+	}
+	return vid, nil
 }

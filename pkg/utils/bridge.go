@@ -14,8 +14,13 @@ const (
 
 	MaxDeviceNameLen = 15
 
-	ManagementClusterNetworkDevicePrefix = ManagementClusterNetworkName + "-" + BridgeSuffix + "."
+	// format: e.g. mgmt-br.2021
+	ManagementClusterNetworkDevicePrefix = ManagementClusterNetworkName + BridgeSuffix + "."
 )
+
+func HasMgmtClusterNetworkDevicePrefix(link string) bool {
+	return strings.HasPrefix(link, ManagementClusterNetworkDevicePrefix)
+}
 
 func IsBridgeNameValid(brName string) (bool, error) {
 	lenOfBrName := len(brName)
