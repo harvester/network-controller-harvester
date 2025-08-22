@@ -215,7 +215,7 @@ func GetMgmtVlan() (vlanID int, err error) {
 		return vlanID, err
 	}
 
-	mgmtBrIntf := utils.ManagementClusterNetworkName + "-" + BridgeSuffix + "."
+	mgmtBrIntf := utils.ManagementClusterNetworkName + BridgeSuffix + "."
 	for _, link := range links {
 		if !strings.HasPrefix(link.Attrs().Name, mgmtBrIntf) {
 			continue
