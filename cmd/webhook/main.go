@@ -293,5 +293,5 @@ func watchAndTriggerReload(ctx context.Context, initalBootStatus bool, cfg *rest
 	}
 	logrus.Info("change in crd states, triggering shutdown of webhook server")
 	// send interrupt to self to trigger shutdown and restart
-	syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+	syscall.Kill(syscall.Getpid(), syscall.SIGINT) //nolint:errcheck
 }

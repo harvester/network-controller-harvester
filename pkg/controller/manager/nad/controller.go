@@ -16,7 +16,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
@@ -281,7 +280,7 @@ func (h Handler) EnsureJob2GetLayer3NetworkInfo(nad *cniv1.NetworkAttachmentDefi
 
 func (h Handler) clearJob(nad *cniv1.NetworkAttachmentDefinition) error {
 	name := utils.Name(nad.Namespace, nad.Name)
-	if _, err := h.jobCache.Get(h.namespace, name); err != nil && !apierrors.IsNotFound(err) {
+	if _, err := h.jobCache.Get(h.namespace, name); err != nil && !errors.IsNotFound(err) {
 		return err
 	} else if err == nil {
 		propagationPolicy := metav1.DeletePropagationBackground
