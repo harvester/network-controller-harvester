@@ -88,10 +88,12 @@ func TestCreateClusterNetwork(t *testing.T) {
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
 
 			if tc.currentVC != nil {
-				vcClient.Create(tc.currentVC)
+				_, err := vcClient.Create(tc.currentVC)
+				assert.NoError(t, err)
 			}
 			if tc.currentCN != nil {
-				cnClient.Create(tc.currentCN)
+				_, err := cnClient.Create(tc.currentCN)
+				assert.NoError(t, err)
 			}
 			validator := NewCnValidator(nadCache, vmiCache, vcCache)
 			err := validator.Create(nil, tc.newCN)
@@ -216,10 +218,12 @@ func TestUpdateClusterNetwork(t *testing.T) {
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
 
 			if tc.currentVC != nil {
-				vcClient.Create(tc.currentVC)
+				_, err := vcClient.Create(tc.currentVC)
+				assert.NoError(t, err)
 			}
 			if tc.currentCN != nil {
-				cnClient.Create(tc.currentCN)
+				_, err := cnClient.Create(tc.currentCN)
+				assert.NoError(t, err)
 			}
 			validator := NewCnValidator(nadCache, vmiCache, vcCache)
 			err := validator.Update(nil, tc.currentCN, tc.newCN)
@@ -565,10 +569,12 @@ func TestDeleteClusterNetwork(t *testing.T) {
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
 
 			if tc.currentVC != nil {
-				vcClient.Create(tc.currentVC)
+				_, err := vcClient.Create(tc.currentVC)
+				assert.NoError(t, err)
 			}
 			if tc.currentCN != nil {
-				cnClient.Create(tc.currentCN)
+				_, err := cnClient.Create(tc.currentCN)
+				assert.NoError(t, err)
 			}
 
 			if tc.currentNAD != nil {

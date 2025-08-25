@@ -331,7 +331,7 @@ func getNadClusterNetworkLabel(nad *cniv1.NetworkAttachmentDefinition) string {
 
 func (v *Validator) checkStorageNetwork(nad *cniv1.NetworkAttachmentDefinition) error {
 	if utils.IsStorageNetworkNad(nad) {
-		return fmt.Errorf(storageNetworkErr)
+		return fmt.Errorf("%s", storageNetworkErr)
 	}
 
 	return nil

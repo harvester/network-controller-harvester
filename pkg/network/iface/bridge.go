@@ -49,7 +49,7 @@ func (br *Bridge) Ensure() error {
 		}
 	}
 
-	if br.VlanFiltering != nil && *br.VlanFiltering == false {
+	if br.VlanFiltering != nil && !*br.VlanFiltering {
 		if err := netlink.BridgeSetVlanFiltering(br.Bridge, true); err != nil {
 			return fmt.Errorf("set vlan filtering failed, error: %w, iface: %v", err, br)
 		}

@@ -434,10 +434,12 @@ func TestCreateNAD(t *testing.T) {
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
 
 			if tc.currentVC != nil {
-				vcClient.Create(tc.currentVC)
+				_, err := vcClient.Create(tc.currentVC)
+				assert.NoError(t, err)
 			}
 			if tc.currentCN != nil {
-				cnClient.Create(tc.currentCN)
+				_, err := cnClient.Create(tc.currentCN)
+				assert.NoError(t, err)
 			}
 
 			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true)
