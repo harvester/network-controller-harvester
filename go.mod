@@ -11,7 +11,7 @@ replace (
 	k8s.io/client-go => k8s.io/client-go v0.18.0
 	k8s.io/code-generator => k8s.io/code-generator v0.18.3
 	kubevirt.io/client-go => github.com/cnrancher/kubevirt-client-go v0.31.1-0.20200715061104-844cb60487e4
-	kubevirt.io/containerized-data-importer => github.com/cnrancher/kubevirt-containerized-data-importer v1.22.0-apis-only
+	kubevirt.io/containerized-data-importer => github.com/cnrancher/kubevirt-containerized-data-importer v1.26.1
 )
 
 require (
