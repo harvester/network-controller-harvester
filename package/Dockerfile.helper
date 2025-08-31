@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1.7.0
+# syntax=docker/dockerfile:1.17.1
 
-FROM registry.suse.com/bci/bci-minimal:15.6
+FROM registry.suse.com/bci/bci-minimal:15.7
 
 ARG TARGETPLATFORM
 

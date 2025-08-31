@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1.7.0
+# syntax=docker/dockerfile:1.17.1
 
-FROM registry.suse.com/bci/bci-base:15.6
+FROM registry.suse.com/bci/bci-base:15.7
 RUN zypper -n rm container-suseconnect && \
     zypper install -y iptables=1.8.7 && \
     zypper -n clean -a && rm -rf /tmp/* /var/tmp/* /usr/share/doc/packages/*
