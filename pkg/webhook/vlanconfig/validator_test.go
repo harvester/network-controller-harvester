@@ -278,13 +278,16 @@ func TestCreateVlanConfig(t *testing.T) {
 			vsClient := fakeclients.VlanStatusClient(nchclientset.NetworkV1beta1().VlanStatuses)
 
 			if tc.currentVC != nil {
-				vcClient.Create(tc.currentVC)
+				_, err := vcClient.Create(tc.currentVC)
+				assert.NoError(t, err)
 			}
 			if tc.currentCN != nil {
-				cnClient.Create(tc.currentCN)
+				_, err := cnClient.Create(tc.currentCN)
+				assert.NoError(t, err)
 			}
 			if tc.currentVS != nil {
-				vsClient.Create(tc.currentVS)
+				_, err := vsClient.Create(tc.currentVS)
+				assert.NoError(t, err)
 			}
 			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
 
@@ -538,17 +541,21 @@ func TestUpdateVlanConfig(t *testing.T) {
 			vsClient := fakeclients.VlanStatusClient(nchclientset.NetworkV1beta1().VlanStatuses)
 
 			if tc.otherVC != nil {
-				vcClient.Create(tc.otherVC)
+				_, err := vcClient.Create(tc.otherVC)
+				assert.NoError(t, err)
 			}
 
 			if tc.oldVC != nil {
-				vcClient.Create(tc.oldVC)
+				_, err := vcClient.Create(tc.oldVC)
+				assert.NoError(t, err)
 			}
 			if tc.currentCN != nil {
-				cnClient.Create(tc.currentCN)
+				_, err := cnClient.Create(tc.currentCN)
+				assert.NoError(t, err)
 			}
 			if tc.currentVS != nil {
-				vsClient.Create(tc.currentVS)
+				_, err := vsClient.Create(tc.currentVS)
+				assert.NoError(t, err)
 			}
 
 			if tc.currentNAD != nil {
@@ -745,13 +752,16 @@ func TestDeleteVlanConfig(t *testing.T) {
 			vsClient := fakeclients.VlanStatusClient(nchclientset.NetworkV1beta1().VlanStatuses)
 
 			if tc.currentVC != nil {
-				vcClient.Create(tc.currentVC)
+				_, err := vcClient.Create(tc.currentVC)
+				assert.NoError(t, err)
 			}
 			if tc.currentCN != nil {
-				cnClient.Create(tc.currentCN)
+				_, err := cnClient.Create(tc.currentCN)
+				assert.NoError(t, err)
 			}
 			if tc.currentVS != nil {
-				vsClient.Create(tc.currentVS)
+				_, err := vsClient.Create(tc.currentVS)
+				assert.NoError(t, err)
 			}
 			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
 

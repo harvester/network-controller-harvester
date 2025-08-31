@@ -1,0 +1,35 @@
+version: 2
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - gosec
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - prealloc
+  formatters:
+    enable:
+      - gofmt
+  settings:
+    goimports:
+      local-prefixes: "github.com/harvester/harvester-network-controller"
+  exclude-files:
+    - /zz_generated_
+  exclude-dirs:
+    - generated
+  exclusions:
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - staticcheck
+        text: "QF1008:" # could remove embedded field from selector (staticcheck)
+run:
+  timeout: 5m
+  tests: true
