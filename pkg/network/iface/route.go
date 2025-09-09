@@ -10,6 +10,8 @@ import (
 	"k8s.io/klog"
 )
 
+const defaultIPv4Route = "0.0.0.0/0"
+
 func Route2String(route netlink.Route) (string, error) {
 	bytes, err := json.Marshal(route)
 	if err != nil {
@@ -37,7 +39,8 @@ func getGateway() (gateway net.IP, linkIndex int, err error) {
 	}
 
 	for _, route := range routes {
-		if route.Gw != nil && route.Dst == nil {
+		//Find the default route with gateway
+		if route.Gw != nil && route.Dst == nil || route.Dst.String() == defaultIPv4Route {
 			linkIndex = route.LinkIndex
 			gateway = route.Gw
 			break
