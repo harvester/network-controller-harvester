@@ -1,19 +1,24 @@
 package schemas
 
+import (
+	"github.com/rancher/wrangler/v3/pkg/data/convert"
+)
+
 type Schema struct {
-	ID                string                 `json:"-"`
-	Description       string                 `json:"description,omitempty"`
-	CodeName          string                 `json:"-"`
-	CodeNamePlural    string                 `json:"-"`
-	PkgName           string                 `json:"-"`
-	PluralName        string                 `json:"pluralName,omitempty"`
-	ResourceMethods   []string               `json:"resourceMethods,omitempty"`
-	ResourceFields    map[string]Field       `json:"resourceFields"`
-	ResourceActions   map[string]Action      `json:"resourceActions,omitempty"`
-	CollectionMethods []string               `json:"collectionMethods,omitempty"`
-	CollectionFields  map[string]Field       `json:"collectionFields,omitempty"`
-	CollectionActions map[string]Action      `json:"collectionActions,omitempty"`
-	Attributes        map[string]interface{} `json:"attributes,omitempty"`
+	ID                  string                 `json:"-"`
+	Description         string                 `json:"description,omitempty"`
+	CodeName            string                 `json:"-"`
+	CodeNamePlural      string                 `json:"-"`
+	PkgName             string                 `json:"-"`
+	PluralName          string                 `json:"pluralName,omitempty"`
+	ResourceMethods     []string               `json:"resourceMethods,omitempty"`
+	ResourceFields      map[string]Field       `json:"resourceFields"`
+	ResourceActions     map[string]Action      `json:"resourceActions,omitempty"`
+	CollectionMethods   []string               `json:"collectionMethods,omitempty"`
+	CollectionFields    map[string]Field       `json:"collectionFields,omitempty"`
+	CollectionActions   map[string]Action      `json:"collectionActions,omitempty"`
+	Attributes          map[string]interface{} `json:"attributes,omitempty"`
+	ResourcePermissions ResourcePermissions    `json:"resourcePermissions,omitempty"`
 
 	InternalSchema *Schema `json:"-"`
 	Mapper         Mapper  `json:"-"`
@@ -57,11 +62,39 @@ func (s *Schema) DeepCopy() *Schema {
 		}
 	}
 
+	if s.ResourcePermissions != nil {
+		r.ResourcePermissions = make(ResourcePermissions)
+		for res, perms := range s.ResourcePermissions {
+			permCopy := make(ResourceVerbs)
+			for verb, url := range perms {
+				permCopy[verb] = url
+			}
+			r.ResourcePermissions[res] = permCopy
+		}
+	}
+
 	if s.InternalSchema != nil {
 		r.InternalSchema = r.InternalSchema.DeepCopy()
 	}
 
 	return &r
+}
+
+func SetHasObservedGeneration(s *Schema, value bool) {
+	if s == nil {
+		return
+	}
+	if s.Attributes == nil {
+		s.Attributes = map[string]interface{}{}
+	}
+	s.Attributes["hasObservedGeneration"] = value
+}
+
+func HasObservedGeneration(s *Schema) bool {
+	if s == nil || s.Attributes == nil {
+		return false
+	}
+	return convert.ToBool(s.Attributes["hasObservedGeneration"])
 }
 
 type Field struct {
@@ -87,3 +120,7 @@ type Action struct {
 	Input  string `json:"input,omitempty"`
 	Output string `json:"output,omitempty"`
 }
+
+type ResourcePermissions map[string]ResourceVerbs
+
+type ResourceVerbs map[string]string

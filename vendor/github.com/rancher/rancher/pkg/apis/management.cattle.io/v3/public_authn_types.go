@@ -13,7 +13,10 @@ type AuthProvider struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Type string `json:"type"`
+	Type               string `json:"type"`
+	LogoutAllSupported bool   `json:"logoutAllSupported"`
+	LogoutAllEnabled   bool   `json:"logoutAllEnabled"`
+	LogoutAllForced    bool   `json:"logoutAllForced"`
 }
 
 func (a *AuthProvider) GetType() string {
@@ -247,4 +250,18 @@ type GenericOIDCProvider struct {
 type GenericOIDCLogin struct {
 	GenericLogin `json:",inline"`
 	Code         string `json:"code" norman:"type=string,required"`
+}
+
+// +genclient
+// +kubebuilder:skipversion
+// +genclient:nonNamespaced
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type CognitoProvider struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	AuthProvider      `json:",inline"`
+
+	RedirectURL string `json:"redirectUrl"`
+	Scopes      string `json:"scopes"`
 }
