@@ -55,14 +55,6 @@ func GetVlan(name string) (*Vlan, error) {
 	return v, nil
 }
 
-// by default, each clusternetwork (L2 type) is mapped to a bridge
-// when one node is not selected on the clusternetwork, then it does not have the bridge
-// mgmt is populated to all nodes
-func IsClusterNetworkBridgeSetup(cnName string) bool {
-	_, err := GetVlan(cnName)
-	return err == nil
-}
-
 func (v *Vlan) Setup(l *iface.Link) error {
 	// ensure bridge and get NIC
 	if err := v.bridge.Ensure(); err != nil {

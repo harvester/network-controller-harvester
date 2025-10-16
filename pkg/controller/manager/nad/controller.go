@@ -20,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
@@ -29,8 +30,8 @@ import (
 )
 
 const (
-	ControllerName = "harvester-network-manager-nad-controller"
-
+	ControllerName        = "harvester-network-manager-nad-controller"
+	DeprecatedFinalizer   = "wrangler.cattle.io/harvester-network-nad-controller"
 	jobContainerName      = "network-helper"
 	jobServiceAccountName = "harvester-network-helper"
 	JobEnvNadNetwork      = "NAD_NETWORKS"
@@ -212,6 +213,13 @@ func (h Handler) OnRemove(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 	// due to the existing of trunk mode nad, deleting any nad might not cause changes on the birdge's vlan
 	if err := h.UpdateClusterNetworkVlanSet(nad); err != nil {
 		return nil, err
+	}
+
+	nadCopy := nad.DeepCopy()
+	// check and remove DeprecatedFinalizer which was added by NAD controller available in agent
+	updated := controllerutil.RemoveFinalizer(nadCopy, DeprecatedFinalizer)
+	if updated {
+		return h.nadClient.Update(nadCopy)
 	}
 
 	return nad, nil
