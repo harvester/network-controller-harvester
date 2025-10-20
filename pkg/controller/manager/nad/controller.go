@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/go-ping/ping"
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -19,7 +21,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
@@ -112,7 +113,7 @@ func (h Handler) OnCNChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.
 	MTU, err := utils.GetMTUFromAnnotation(curMTU)
 	// skip if MTU is invalid
 	if err != nil {
-		klog.Infof("cluster network %v has MTU annotation %v/%v with invalid value, skip to sync with nad %s", cn.Name, utils.KeyUplinkMTU, curMTU, err.Error())
+		logrus.Infof("cluster network %v has MTU annotation %v/%v with invalid value, skip to sync with nad %s", cn.Name, utils.KeyUplinkMTU, curMTU, err.Error())
 		return nil, nil
 	}
 
@@ -144,7 +145,7 @@ func (h Handler) OnCNChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.
 		if _, err := h.nadClient.Update(nadCopy); err != nil {
 			return nil, err
 		}
-		klog.Infof("sync cluster network %v annotation mtu %v/%v to nad %v", cn.Name, utils.KeyUplinkMTU, curMTU, nad.Name)
+		logrus.Infof("sync cluster network %v annotation mtu %v/%v to nad %v", cn.Name, utils.KeyUplinkMTU, curMTU, nad.Name)
 	}
 
 	return nil, nil
@@ -156,7 +157,7 @@ func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 		return nil, nil
 	}
 
-	klog.Infof("nad configuration %s/%s has been changed: %s", nad.Namespace, nad.Name, nad.Spec.Config)
+	logrus.Infof("nad configuration %s/%s has been changed: %s", nad.Namespace, nad.Name, nad.Spec.Config)
 
 	netconf, updated, err := h.ensureLabels(nad)
 	if err != nil {
@@ -197,7 +198,7 @@ func (h Handler) OnRemove(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 		return nil, nil
 	}
 
-	klog.Infof("nad configuration %s/%s has been removed", nad.Namespace, nad.Name)
+	logrus.Infof("nad configuration %s/%s has been removed", nad.Namespace, nad.Name)
 
 	// overlay nad does not trigger following steps
 	if utils.IsOverlayNad(nad) {
@@ -279,7 +280,7 @@ func (h Handler) UpdateClusterNetworkVlanSet(nad *cniv1.NetworkAttachmentDefinit
 
 	vids, err := utils.GeVlanIDSetFromClusterNetwork(cn.Name, h.nadCache)
 	if err != nil {
-		klog.Infof("cluster network %s failed to get vlanset %s", cn.Name, err.Error())
+		logrus.Infof("cluster network %s failed to get vlanset %s", cn.Name, err.Error())
 		return err
 	}
 	vidstr, vidhash := vids.VidSetToStringHash()
@@ -287,7 +288,7 @@ func (h Handler) UpdateClusterNetworkVlanSet(nad *cniv1.NetworkAttachmentDefinit
 	if utils.AreClusterNetworkVlanAnnotationsUnchanged(cn, vidstr, vidhash) {
 		return nil
 	}
-	klog.Infof("update cn %v annotations %v:%v", cnname, utils.KeyVlanIDSetStrHash, vidhash)
+	logrus.Infof("update cn %v annotations %v:%v", cnname, utils.KeyVlanIDSetStrHash, vidhash)
 	// update new vid and hash to cluster network
 	cnCopy := cn.DeepCopy()
 	utils.SetClusterNetworkVlanAnnotations(cnCopy, vidstr, vidhash)
@@ -316,7 +317,7 @@ func (h Handler) EnsureJob2GetLayer3NetworkInfo(nad *cniv1.NetworkAttachmentDefi
 		return fmt.Errorf("invalid layer 3 network configure %v: %w", routeStr, err)
 	}
 
-	klog.Infof("EnsureJob2GetLayer3NetworkInfo netconf: %+v", networkConf)
+	logrus.Infof("EnsureJob2GetLayer3NetworkInfo netconf: %+v", networkConf)
 
 	// when nad's vlan is changed, the nad is marked as outdated
 	// the outdated is updated by the following created new job
@@ -336,9 +337,9 @@ func (h Handler) EnsureJob2GetLayer3NetworkInfo(nad *cniv1.NetworkAttachmentDefi
 		// initialize connectivity
 		if networkConf.Connectivity == "" {
 			if err := h.initializeConnectivity(nad, networkConf); err != nil {
-				klog.Errorf("initialize connectivity of nad %s/%s failed, error: %v", nad.Namespace, nad.Name, err)
+				logrus.Errorf("initialize connectivity of nad %s/%s failed, error: %v", nad.Namespace, nad.Name, err)
 			} else {
-				klog.Infof("initialize connectivity of nad %s/%s successfully", nad.Namespace, nad.Name)
+				logrus.Infof("initialize connectivity of nad %s/%s successfully", nad.Namespace, nad.Name)
 			}
 		}
 		h.addItem(nad.Namespace, nad.Name, networkConf.Gateway)
@@ -364,7 +365,7 @@ func (h Handler) clearJob(nad *cniv1.NetworkAttachmentDefinition) error {
 			return nil
 		}
 
-		klog.Infof("Clear nad helper job %v, vid %v", name, job.Labels[utils.KeyVlanLabel])
+		logrus.Infof("Clear nad helper job %v, vid %v", name, job.Labels[utils.KeyVlanLabel])
 		propagationPolicy := metav1.DeletePropagationBackground
 		if err := h.jobClient.Delete(h.namespace, name, &metav1.DeleteOptions{
 			PropagationPolicy: &propagationPolicy,
@@ -400,7 +401,7 @@ func (h Handler) clearOutdatedJob(nad *cniv1.NetworkAttachmentDefinition, netcon
 			return nil
 		}
 
-		klog.Infof("Clear nad helper job %v, vid %v", name, job.Labels[utils.KeyVlanLabel])
+		logrus.Infof("Clear nad helper job %v, vid %v", name, job.Labels[utils.KeyVlanLabel])
 		propagationPolicy := metav1.DeletePropagationBackground
 		if err := h.jobClient.Delete(h.namespace, name, &metav1.DeleteOptions{
 			PropagationPolicy: &propagationPolicy,
@@ -434,7 +435,7 @@ func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition, l2net
 		if _, err := h.jobClient.Create(job); err != nil {
 			return err
 		}
-		klog.Infof("Created nad helper job %v, dhcpServer %v, vid %v", job.Name, l3netconf.GetDHCPServerIPAddr(), l2netconf.GetVlanString())
+		logrus.Infof("Created nad helper job %v, dhcpServer %v, vid %v", job.Name, l3netconf.GetDHCPServerIPAddr(), l2netconf.GetVlanString())
 	}
 
 	// in case the nad's vlan is changed from e.g. 100 to 200, the old job is deleted and new job is created
@@ -456,7 +457,7 @@ func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition, l2net
 	}
 
 	// normally, this should not happen
-	klog.Infof("Updated nad helper job %v, dhcpServer %v, vid %v", jobCopy.Name, l3netconf.GetDHCPServerIPAddr(), l2netconf.GetVlanString())
+	logrus.Infof("Updated nad helper job %v, dhcpServer %v, vid %v", jobCopy.Name, l3netconf.GetDHCPServerIPAddr(), l2netconf.GetVlanString())
 
 	return nil
 }
@@ -553,7 +554,7 @@ func (h Handler) CheckConnectivityPeriodically() {
 		for nn, gw := range h.items {
 			go func(nn nameWithNamespace, gw string) {
 				if err := h.checkConnectivity(nn.namespace, nn.name, gw); err != nil {
-					klog.Error(err)
+					logrus.Error(err)
 					return
 				}
 			}(nn, gw)

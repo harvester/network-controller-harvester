@@ -3,8 +3,8 @@ package vlan
 import (
 	"fmt"
 
+	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
-	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
@@ -71,7 +71,7 @@ func (v *Vlan) Setup(l *iface.Link) error {
 }
 
 func (v *Vlan) Teardown() error {
-	klog.Info("start to tear down VLAN network")
+	logrus.Info("start to tear down VLAN network")
 	if v.uplink == nil {
 		return fmt.Errorf("bridge %s hasn't attached an uplink", v.bridge.Name)
 	}
@@ -89,7 +89,7 @@ func (v *Vlan) Teardown() error {
 		return fmt.Errorf("delete bridge %s failed, error: %w", v.bridge.Name, err)
 	}
 
-	klog.Info("tear down VLAN network successfully")
+	logrus.Info("tear down VLAN network successfully")
 	return nil
 }
 

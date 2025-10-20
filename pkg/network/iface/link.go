@@ -5,9 +5,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
-	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
@@ -117,7 +118,7 @@ func (l *Link) clearMacVlan() error {
 			if err := netlink.LinkDel(link); err != nil {
 				return err
 			}
-			klog.Infof("delete macvlan interface %s", link.Attrs().Name)
+			logrus.Infof("delete macvlan interface %s", link.Attrs().Name)
 		}
 	}
 
@@ -144,7 +145,7 @@ func (l *Link) SetNoMaster() error {
 		return nil
 	}
 
-	klog.Infof("%s set no master", l.Attrs().Name)
+	logrus.Infof("%s set no master", l.Attrs().Name)
 
 	return netlink.LinkSetNoMaster(l)
 }

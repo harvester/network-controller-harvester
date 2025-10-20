@@ -3,11 +3,12 @@ package helper
 import (
 	"net"
 
+	"github.com/sirupsen/logrus"
+
 	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
@@ -32,7 +33,7 @@ func (n *NetHelper) GetVLANLayer3Network(selectedNetwork *nadv1.NetworkSelection
 		networkConf.CIDR = cidr.String()
 		networkConf.Gateway = gw.String()
 	} else {
-		klog.Errorf("obtain CIDR and gw using DHCP protocol failed, error: %v", err)
+		logrus.Errorf("obtain CIDR and gw using DHCP protocol failed, error: %v", err)
 		networkConf.Connectivity = utils.DHCPFailed
 	}
 

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
-	"k8s.io/klog/v2"
 
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 )
@@ -57,11 +57,11 @@ func (m *Monitor) Start(ctx context.Context) {
 }
 
 func (m *Monitor) start(ctx context.Context) {
-	klog.Info("Start Monitor")
+	logrus.Info("Start link monitor")
 	linkCh := make(chan netlink.LinkUpdate)
 
 	if err := netlink.LinkSubscribe(linkCh, ctx.Done()); err != nil {
-		klog.Errorf("subscribe link failed, error: %s", err.Error())
+		logrus.Errorf("subscribe link failed, error: %s", err.Error())
 		return
 	}
 
@@ -69,7 +69,7 @@ func (m *Monitor) start(ctx context.Context) {
 		select {
 		case l := <-linkCh:
 			if err := m.handleLink(&l); err != nil {
-				klog.Errorf("monitor handles link %s failed, error: %s", l.Link.Attrs().Name, err.Error())
+				logrus.Errorf("monitor handles link %s failed, error: %s", l.Link.Attrs().Name, err.Error())
 			}
 		case <-ctx.Done():
 			return
@@ -78,7 +78,7 @@ func (m *Monitor) start(ctx context.Context) {
 }
 
 func (m *Monitor) handleLink(update *netlink.LinkUpdate) error {
-	klog.V(5).Infof("netlink event: %+v", update)
+	logrus.Debugf("netlink event: %+v", update)
 
 	ok, key, err := m.match(update.Link)
 	if err != nil {

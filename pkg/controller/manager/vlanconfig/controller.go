@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sirupsen/logrus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/klog/v2"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
@@ -48,7 +48,7 @@ func (h Handler) EnsureClusterNetwork(_ string, vc *networkv1.VlanConfig) (*netw
 		return nil, nil
 	}
 
-	klog.Infof("vlan config %s has been changed, spec: %+v", vc.Name, vc.Spec)
+	logrus.Infof("vlan config %s has been changed, spec: %+v", vc.Name, vc.Spec)
 
 	if err := h.ensureClusterNetwork(vc); err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func (h Handler) SetClusterNetworkReady(_ string, vs *networkv1.VlanStatus) (*ne
 		return nil, nil
 	}
 
-	klog.Infof("vlan status %s has been changed, node: %s, clusterNetwork: %s, vc: %s", vs.Name, vs.Status.Node,
+	logrus.Infof("vlan status %s has been changed, node: %s, clusterNetwork: %s, vc: %s", vs.Name, vs.Status.Node,
 		vs.Status.ClusterNetwork, vs.Status.VlanConfig)
 
 	if err := h.setClusterNetworkReady(vs); err != nil {
@@ -114,7 +114,7 @@ func (h Handler) ensureClusterNetwork(vc *networkv1.VlanConfig) error {
 		if _, err := h.cnClient.Update(cnCopy); err != nil {
 			return fmt.Errorf("failed to update cluster network %s annotation %s with MTU %s error %w", name, utils.KeyUplinkMTU, targetMTU, err)
 		}
-		klog.Infof("update cluster network %s annotation %s to %s", name, utils.KeyUplinkMTU, targetMTU)
+		logrus.Infof("update cluster network %s annotation %s to %s", name, utils.KeyUplinkMTU, targetMTU)
 		return nil
 	}
 
