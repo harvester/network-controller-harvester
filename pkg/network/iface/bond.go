@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/vishvananda/netlink"
+	"k8s.io/klog/v2"
 )
 
 type Bond struct {
@@ -30,7 +31,7 @@ func (b *Bond) EnsureBond() error {
 }
 
 func (b *Bond) ensureBond() error {
-	// add or update
+	// add or update bond
 	if oldBond, err := netlink.LinkByName(b.Name); errors.As(err, &netlink.LinkNotFoundError{}) {
 		if err := netlink.LinkAdd(b.Bond); err != nil {
 			return fmt.Errorf("add bond %s failed, error: %w", b.Name, err)
@@ -68,7 +69,8 @@ func (b *Bond) ensureBondSlaves() error {
 	for _, l := range links {
 		slaveMap[l.Attrs().Name] = l
 	}
-	// add slaves
+	
+	// add slaves to bond
 	for _, slave := range b.slaves {
 		l := slaveMap[slave]
 		if l == nil {
@@ -76,11 +78,21 @@ func (b *Bond) ensureBondSlaves() error {
 			if err != nil {
 				return fmt.Errorf("get link %s failed, error: %w", slave, err)
 			}
-			// return error if the link has been enslaved
+			// return error if the link has been enslaved by another master
 			if l.Attrs().MasterIndex != 0 && l.Attrs().MasterIndex != b.Index {
 				return fmt.Errorf("%s has been enslaved by the link with index %d", l.Attrs().Name, l.Attrs().MasterIndex)
 			}
-			// The slave link should be down before enslaved, otherwise, there will be error like `operation not permitted`.
+			
+			// Check NIC physical state, if DOWN try to bring it up
+			if l.Attrs().OperState == netlink.OperDown || (l.Attrs().Flags&net.FlagUp) == 0 {
+				klog.Infof("NIC %s is down, attempting to bring it up before adding to bond", slave)
+				if err := netlink.LinkSetUp(l); err != nil {
+					klog.Warningf("Failed to bring up NIC %s: %v", slave, err)
+					// Don't return error immediately, continue to try adding
+				}
+			}
+			
+			// The slave link should be down before enslaved
 			if err := netlink.LinkSetDown(l); err != nil {
 				return fmt.Errorf("set slave %s down failed, error: %w", slave, err)
 			}
@@ -89,19 +101,29 @@ func (b *Bond) ensureBondSlaves() error {
 			}
 		}
 
+		// Ensure slave is in UP state after being added to bond
 		if l.Attrs().Flags&net.FlagUp == 0 {
 			if err := netlink.LinkSetUp(l); err != nil {
 				return err
 			}
 		}
 
-		// delete the handled slave
+		// Remove the handled slave from the map
 		delete(slaveMap, slave)
 	}
-	// delete slaves which still remain in the map
+	
+	// Remove slaves that are no longer in the desired configuration
 	for name, l := range slaveMap {
+		// First remove from bond
 		if err := netlink.LinkSetNoMaster(l); err != nil {
 			return fmt.Errorf("delete slave %s from %s failed, error: %w", name, b.Name, err)
+		}
+		
+		if err := netlink.LinkSetUp(l); err != nil {
+			klog.Warningf("Failed to set NIC %s up after removing from bond: %v", name, err)
+			// Don't return error, continue processing other NICs
+		} else {
+			klog.Infof("NIC %s removed from bond %s and set to UP state", name, b.Name)
 		}
 	}
 
@@ -119,15 +141,16 @@ func (b *Bond) remove() error {
 	}
 
 	for _, slave := range slaves {
+		// Ensure slave is in UP state after bond deletion
 		if err := netlink.LinkSetUp(slave); err != nil {
-			return err
+			klog.Warningf("Failed to set NIC %s up after bond deletion: %v", slave.Attrs().Name, err)
 		}
 	}
 
 	return nil
 }
 
-// delete the original bond and create new one
+// modifyBond deletes the original bond and creates a new one
 func (b *Bond) modifyBond(oldBond *netlink.Bond) error {
 	if compareBond(oldBond, b.Bond) {
 		return nil
