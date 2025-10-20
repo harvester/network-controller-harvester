@@ -52,7 +52,7 @@ var (
 
 func main() {
 	var options config.Options
-	var logLevel string
+	logLevel := "info"
 
 	flags := []cli.Flag{
 		cli.StringFlag{
@@ -111,7 +111,7 @@ func main() {
 	app := cli.NewApp()
 	app.Flags = flags
 	app.Action = func(_ *cli.Context) {
-		setLogLevel(logLevel)
+		utils.SetLogLevel(logLevel)
 		if err := run(ctx, cfg, &options); err != nil {
 			logrus.Fatalf("run webhook server failed: %v", err)
 		}
@@ -220,15 +220,6 @@ func newCaches(ctx context.Context, cfg *rest.Config, threadiness int, crdExists
 	}
 
 	return c, nil
-}
-
-func setLogLevel(level string) {
-	ll, err := logrus.ParseLevel(level)
-	if err != nil {
-		ll = logrus.DebugLevel
-	}
-	// set global log level
-	logrus.SetLevel(ll)
 }
 
 func vmiByNetwork(obj *kubevirtv1.VirtualMachineInstance) ([]string, error) {

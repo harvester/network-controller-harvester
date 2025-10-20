@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/cenk/backoff"
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/klog/v2"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
@@ -163,11 +164,11 @@ func (h Handler) setNadReadyLabel(cn *networkv1.ClusterNetwork) error {
 func (h Handler) initialize() error {
 	return backoff.Retry(func() error {
 		if err := h.initializeClusterNetwork(); err != nil {
-			klog.V(5).Info(err)
+			logrus.Info(err)
 			return err
 		}
 		if err := h.initializeLinkMonitor(); err != nil {
-			klog.V(5).Info(err)
+			logrus.Info(err)
 			return err
 		}
 		return nil

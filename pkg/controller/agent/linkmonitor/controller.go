@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	ctlcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
+	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/klog/v2"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
@@ -67,7 +67,7 @@ func (h Handler) OnChange(_ string, lm *networkv1.LinkMonitor) (*networkv1.LinkM
 		return lm, nil
 	}
 
-	klog.V(5).Infof("link monitor %s has been changed, spec: %+v", lm.Name, lm.Spec)
+	logrus.Infof("link monitor %s has been changed, spec: %+v", lm.Name, lm.Spec)
 
 	if h.isRuleChange(lm) {
 		h.AddPattern(lm)
@@ -85,7 +85,7 @@ func (h Handler) OnRemove(_ string, lm *networkv1.LinkMonitor) (*networkv1.LinkM
 		return nil, nil
 	}
 
-	klog.V(5).Infof("link monitor %s has been removed", lm.Name)
+	logrus.Infof("link monitor %s has been removed", lm.Name)
 
 	h.DeletePattern(lm)
 
@@ -101,7 +101,7 @@ func (h Handler) isMatchCurrentNode(lm *networkv1.LinkMonitor) (bool, error) {
 	for _, node := range nodes {
 		// ignore the node to be deleted
 		if node.Name == h.nodeName && node.DeletionTimestamp == nil {
-			klog.Infof("lm %s matches node %s", lm.Name, node.Name)
+			logrus.Debugf("lm %s matches node %s", lm.Name, node.Name)
 			return true, nil
 		}
 	}

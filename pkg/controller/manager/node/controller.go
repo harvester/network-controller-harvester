@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sirupsen/logrus"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/klog"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
@@ -84,7 +85,7 @@ func (h Handler) OnRemove(_ string, node *corev1.Node) (*corev1.Node, error) {
 		return nil, nil
 	}
 
-	klog.Infof("node %s is removed", node.Name)
+	logrus.Infof("node %s is removed", node.Name)
 
 	if err := h.removeNodeFromVlanConfig(node.Name); err != nil {
 		return nil, err

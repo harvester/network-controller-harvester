@@ -7,13 +7,14 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/sirupsen/logrus"
+
 	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	ctlcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
 	"github.com/vishvananda/netlink"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/klog/v2"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
@@ -76,7 +77,7 @@ func (h Handler) OnChange(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanCo
 	if vc == nil || vc.DeletionTimestamp != nil {
 		return nil, nil
 	}
-	klog.Infof("vlan config %s has been changed, spec: %+v", vc.Name, vc.Spec)
+	logrus.Infof("vlan config %s has been changed, spec: %+v", vc.Name, vc.Spec)
 
 	isMatched, err := h.MatchNode(vc)
 	if err != nil {
@@ -90,7 +91,7 @@ func (h Handler) OnChange(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanCo
 
 	// vlanconfig can be migrated from one cn to another, the vs helps to clean the bridge on source cn
 	if (!isMatched && vs != nil) || (isMatched && vs != nil && !matchClusterNetwork(vc, vs)) {
-		klog.Infof("the staled vs %s on cn %s is to be removed", vs.Name, vs.Status.ClusterNetwork)
+		logrus.Infof("the staled vs %s on cn %s is to be removed", vs.Name, vs.Status.ClusterNetwork)
 		if err := h.removeVLAN(vs); err != nil {
 			return nil, err
 		}
@@ -111,7 +112,7 @@ func (h Handler) OnRemove(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanCo
 		return nil, nil
 	}
 
-	klog.Infof("vlan config %s has been removed", vc.Name)
+	logrus.Infof("vlan config %s has been removed", vc.Name)
 
 	vs, err := h.getVlanStatus(vc)
 	if err != nil {
@@ -147,7 +148,7 @@ func (h Handler) MatchNode(vc *networkv1.VlanConfig) (bool, error) {
 
 	for _, n := range matchedNodes {
 		if n == h.nodeName {
-			klog.Infof("vc %v matchedNodes: %+v, include this node: %s", vc.Name, matchedNodes, h.nodeName)
+			logrus.Infof("vc %v matchedNodes: %+v, include this node: %s", vc.Name, matchedNodes, h.nodeName)
 			return true, nil
 		}
 	}

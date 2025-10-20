@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/sirupsen/logrus"
+
 	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
 	"github.com/urfave/cli"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/controller/manager/nad"
 	"github.com/harvester/harvester-network-controller/pkg/helper"
@@ -59,10 +60,10 @@ func main() {
 		}
 	}
 
-	klog.Infof("Starting %v version %v", name, VERSION)
+	logrus.Infof("Starting %v version %v", name, VERSION)
 
 	if err := app.Run(os.Args); err != nil {
-		klog.Error(err)
+		logrus.Error(err)
 	}
 }
 

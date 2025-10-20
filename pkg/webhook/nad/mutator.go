@@ -3,13 +3,14 @@ package nad
 import (
 	"fmt"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/harvester/webhook/pkg/server/admission"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/tidwall/sjson"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	k8slabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/klog"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
@@ -144,7 +145,7 @@ func tagRouteOutdated(oldNad, newNad *cniv1.NetworkAttachmentDefinition, oldConf
 	}
 
 	if oldConf.Vlan != newConf.Vlan {
-		klog.Infof("nad %s/%s has new config, route is updated: %+v", newNad.Namespace, newNad.Name, newConf)
+		logrus.Infof("nad %s/%s has new config, route is updated: %+v", newNad.Namespace, newNad.Name, newConf)
 		annotations, err := utils.OutdateNadLayer3NetworkConf(newNad, newConf)
 		if err != nil {
 			return nil, err
@@ -168,7 +169,7 @@ func tagRouteOutdated(oldNad, newNad *cniv1.NetworkAttachmentDefinition, oldConf
 	if annotations == nil {
 		return nil, nil
 	}
-	klog.Infof("nad %s/%s has new route mode, route is updated: %s", newNad.Namespace, newNad.Name, newNad.Annotations[utils.KeyNetworkRoute])
+	logrus.Infof("nad %s/%s has new route mode, route is updated: %s", newNad.Namespace, newNad.Name, newNad.Annotations[utils.KeyNetworkRoute])
 	return admission.Patch{
 		admission.PatchOp{
 			Op:    admission.PatchOpReplace,
@@ -237,7 +238,7 @@ func (m *Mutator) patchMTU(nad *cniv1.NetworkAttachmentDefinition) (admission.Pa
 		return nil, nil
 	}
 
-	klog.Infof("nad %s/%s MTU is patched from %v to %v", nad.Namespace, nad.Name, netConf.MTU, targetMTU)
+	logrus.Infof("nad %s/%s MTU is patched from %v to %v", nad.Namespace, nad.Name, netConf.MTU, targetMTU)
 	// Don't modify the unmarshalled structure and marshal it again because some fields may be lost during unmarshalling.
 	newConfig, err := sjson.Set(config, "mtu", targetMTU)
 	if err != nil {

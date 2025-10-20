@@ -7,14 +7,15 @@ import (
 
 	"github.com/rancher/wrangler/v3/pkg/leader"
 	"github.com/rancher/wrangler/v3/pkg/signals"
+	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog"
 
 	"github.com/harvester/harvester-network-controller/pkg/config"
 	"github.com/harvester/harvester-network-controller/pkg/controller/agent"
 	"github.com/harvester/harvester-network-controller/pkg/controller/manager"
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 const (
@@ -27,11 +28,19 @@ var (
 )
 
 func main() {
+	logLevel := "info"
 	app := cli.NewApp()
 	app.Name = name
 	app.Version = VERSION
 	app.Usage = "Harvester Network Controller, to help with cluster network configuration. Options kubeconfig or masterurl are required."
 	commonFlags := []cli.Flag{
+		cli.StringFlag{
+			Name:        "loglevel",
+			Usage:       "Specify log level",
+			EnvVar:      "LOGLEVEL",
+			Value:       "info",
+			Destination: &logLevel,
+		},
 		cli.StringFlag{
 			Name:   "node-name",
 			EnvVar: "NODENAME",
@@ -90,10 +99,12 @@ func main() {
 		},
 	}
 
-	klog.Infof("Starting %v version %v", app.Name, app.Version)
+	logrus.Infof("Starting %v version %v", app.Name, app.Version)
+
+	utils.SetLogLevel(logLevel)
 
 	if err := app.Run(os.Args); err != nil {
-		klog.Fatal(err)
+		logrus.Fatal(err)
 	}
 }
 
@@ -106,22 +117,22 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 	helperImage := c.String("helper-image")
 
 	if threadiness <= 0 {
-		klog.Infof("Thread count of %d is invalid, fallback to default value %v.", threadiness, defaultThreadCount)
+		logrus.Infof("Thread count of %d is invalid, fallback to default value %v.", threadiness, defaultThreadCount)
 		threadiness = defaultThreadCount
 	}
 
-	klog.Infof("namespace %v threadiness %v nodeName %v helper-image %v", namespace, threadiness, nodeName, helperImage)
+	logrus.Infof("namespace %v threadiness %v nodeName %v helper-image %v", namespace, threadiness, nodeName, helperImage)
 
 	ctx := signals.SetupSignalContext()
 
 	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
 	if err != nil {
-		klog.Fatalf("Error building config from flags: %s", err.Error())
+		logrus.Fatalf("Error building config from flags: %s", err.Error())
 	}
 
 	client, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		klog.Fatalf("Error get client from kubeconfig: %s", err.Error())
+		logrus.Fatalf("Error get client from kubeconfig: %s", err.Error())
 	}
 
 	options := &config.Options{
@@ -132,7 +143,7 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 
 	management, err := config.SetupManagement(ctx, cfg, options)
 	if err != nil {
-		klog.Fatalf("Error building harvester controllers: %s", err.Error())
+		logrus.Fatalf("Error building harvester controllers: %s", err.Error())
 	}
 
 	callback := func(ctx context.Context) {
