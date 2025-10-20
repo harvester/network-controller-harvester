@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/harvester/harvester-network-controller/pkg/utils"
+	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 )
 
@@ -21,6 +22,33 @@ func NewBond(bond *netlink.Bond, slaves []string) *Bond {
 	}
 }
 
+// setLinkUp safely sets a network link to UP state with proper checks and logs
+// It automatically refetches the link to get current state before operation
+func setLinkUp(ifName string) error {
+	// Always refetch the link to get current state
+	link, err := netlink.LinkByName(ifName)
+	if err != nil {
+		return fmt.Errorf("get link %s failed: %w", ifName, err)
+	}
+
+	currentState := link.Attrs().OperState
+	currentFlags := link.Attrs().Flags
+
+	// Check if already UP
+	if currentState == netlink.OperUp || (currentFlags&net.FlagUp) != 0 {
+		logrus.Debugf("NIC %s is already UP, skipping", ifName)
+		return nil
+	}
+
+	logrus.Infof("Setting NIC %s to UP state (current: %s)", ifName, currentState)
+	if err := netlink.LinkSetUp(link); err != nil {
+		return fmt.Errorf("failed to set NIC %s up: %w", ifName, err)
+	}
+
+	logrus.Infof("NIC %s successfully set to UP state", ifName)
+	return nil
+}
+
 // EnsureBond cares about the bond attributes excluding the master index and the slaves
 func (b *Bond) EnsureBond() error {
 	if err := b.ensureBond(); err != nil {
@@ -31,7 +59,7 @@ func (b *Bond) EnsureBond() error {
 }
 
 func (b *Bond) ensureBond() error {
-	// add or update
+	// add or update bond
 	if oldBond, err := netlink.LinkByName(b.Name); errors.As(err, &netlink.LinkNotFoundError{}) {
 		if err := netlink.LinkAdd(b.Bond); err != nil {
 			return fmt.Errorf("add bond %s failed, error: %w", b.Name, err)
@@ -69,7 +97,8 @@ func (b *Bond) ensureBondSlaves() error {
 	for _, l := range links {
 		slaveMap[l.Attrs().Name] = l
 	}
-	// add slaves
+
+	// add slaves to bond
 	for _, slave := range b.slaves {
 		l := slaveMap[slave]
 		if l == nil {
@@ -77,33 +106,55 @@ func (b *Bond) ensureBondSlaves() error {
 			if err != nil {
 				return fmt.Errorf("get link %s failed, error: %w", slave, err)
 			}
-			// return error if the link has been enslaved
+			// return error if the link has been enslaved by another master
 			if l.Attrs().MasterIndex != 0 && l.Attrs().MasterIndex != b.Index {
 				return fmt.Errorf("%s has been enslaved by the link with index %d", l.Attrs().Name, l.Attrs().MasterIndex)
 			}
-			// The slave link should be down before enslaved, otherwise, there will be error like `operation not permitted`.
+
+			// The slave link should be down before enslaved
 			if err := netlink.LinkSetDown(l); err != nil {
 				return fmt.Errorf("set slave %s down failed, error: %w", slave, err)
 			}
+
 			if err := netlink.LinkSetBondSlave(l, b.Bond); err != nil {
+				if upErr := setLinkUp(slave); upErr != nil {
+					logrus.Warnf("Failed to set NIC %s up after bond operation failed: %v", slave, upErr)
+				}
 				return fmt.Errorf("add slave %s to bond %s failed, error: %w", slave, b.Name, err)
 			}
 		}
 
-		if l.Attrs().Flags&net.FlagUp == 0 {
-			if err := netlink.LinkSetUp(l); err != nil {
-				return err
-			}
+		// Ensure slave is in UP state after being added to bond
+		if err := setLinkUp(slave); err != nil {
+			return err
 		}
 
-		// delete the handled slave
+		// Remove the handled slave from the map
 		delete(slaveMap, slave)
 	}
-	// delete slaves which still remain in the map
+
+	// Remove slaves that are no longer in the desired configuration
+	// Collect all removal errors to provide comprehensive status
+	var removalErrors []error
 	for name, l := range slaveMap {
+		// First remove from bond
 		if err := netlink.LinkSetNoMaster(l); err != nil {
-			return fmt.Errorf("delete slave %s from %s failed, error: %w", name, b.Name, err)
+			removalErrors = append(removalErrors,
+				fmt.Errorf("delete slave %s from %s failed: %w", name, b.Name, err))
+			continue
 		}
+
+		if err := setLinkUp(name); err != nil {
+			removalErrors = append(removalErrors,
+				fmt.Errorf("set NIC %s up after removal failed: %w", name, err))
+		} else {
+			logrus.Infof("NIC %s removed from bond %s and set to UP state", name, b.Name)
+		}
+	}
+
+	// If any removal operations failed, return aggregated error
+	if len(removalErrors) > 0 {
+		return fmt.Errorf("failed to clean up %d slave(s): %v", len(removalErrors), removalErrors)
 	}
 
 	return nil
@@ -119,16 +170,26 @@ func (b *Bond) remove() error {
 		return err
 	}
 
+	// Collect all slave recovery errors
+	var recoveryErrors []error
 	for _, slave := range slaves {
-		if err := netlink.LinkSetUp(slave); err != nil {
-			return err
+		// Ensure slave is in UP state after bond deletion
+		if err := setLinkUp(slave.Attrs().Name); err != nil {
+			recoveryErrors = append(recoveryErrors,
+				fmt.Errorf("failed to set NIC %s up after bond deletion: %w", slave.Attrs().Name, err))
 		}
+	}
+
+	// Return aggregated error if any slave recovery failed
+	if len(recoveryErrors) > 0 {
+		return fmt.Errorf("bond deletion incomplete: %d NIC(s) failed to recover: %v",
+			len(recoveryErrors), recoveryErrors)
 	}
 
 	return nil
 }
 
-// delete the original bond and create new one
+// modifyBond deletes the original bond and creates a new one
 func (b *Bond) modifyBond(oldBond *netlink.Bond) error {
 	if compareBond(oldBond, b.Bond) {
 		return nil
