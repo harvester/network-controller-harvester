@@ -76,7 +76,6 @@ func TestCreateClusterNetwork(t *testing.T) {
 			}
 
 			nchclientset := fake.NewSimpleClientset()
-			//harvesterclientset := harvesterfake.NewSimpleClientset()
 			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
@@ -207,7 +206,6 @@ func TestUpdateClusterNetwork(t *testing.T) {
 			}
 
 			nchclientset := fake.NewSimpleClientset()
-			//harvesterclientset := harvesterfake.NewSimpleClientset()
 			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
@@ -405,7 +403,6 @@ func TestUpdateMgmtClusterNetwork(t *testing.T) {
 			}
 
 			nchclientset := fake.NewSimpleClientset()
-			//harvesterclientset := harvesterfake.NewSimpleClientset()
 			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
 
@@ -558,7 +555,6 @@ func TestDeleteClusterNetwork(t *testing.T) {
 			}
 
 			nchclientset := fake.NewSimpleClientset()
-			//harvesterclientset := harvesterfake.NewSimpleClientset()
 			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)

@@ -14,8 +14,6 @@ import (
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 
-	harvesterfake "github.com/harvester/harvester/pkg/generated/clientset/versioned/fake"
-
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/fake"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/harvester/harvester-network-controller/pkg/utils/fakeclients"
@@ -575,10 +573,8 @@ func TestCreateNAD(t *testing.T) {
 			}
 
 			nchclientset := fake.NewSimpleClientset()
-			harvesterclientset := harvesterfake.NewSimpleClientset()
-
-			vmCache := fakeclients.VirtualMachineCache(harvesterclientset.KubevirtV1().VirtualMachines)
-			vmiCache := fakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
+			vmCache := fakeclients.VirtualMachineCache(nchclientset.KubevirtV1().VirtualMachines)
+			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
 
 			// client to inject test data
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
@@ -667,9 +663,8 @@ func TestUpdateNAD(t *testing.T) {
 			}
 
 			nchclientset := fake.NewSimpleClientset()
-			harvesterclientset := harvesterfake.NewSimpleClientset()
-			vmCache := fakeclients.VirtualMachineCache(harvesterclientset.KubevirtV1().VirtualMachines)
-			vmiCache := fakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
+			vmCache := fakeclients.VirtualMachineCache(nchclientset.KubevirtV1().VirtualMachines)
+			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
 			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
@@ -681,7 +676,7 @@ func TestUpdateNAD(t *testing.T) {
 				Resource: "network-attachment-definitions",
 			}
 
-			if err := harvesterclientset.Tracker().Create(nadGvr, oldNad.DeepCopy(), oldNad.Namespace); err != nil {
+			if err := nchclientset.Tracker().Create(nadGvr, oldNad.DeepCopy(), oldNad.Namespace); err != nil {
 				t.Fatalf("failed to add nad %+v", oldNad)
 			}
 
@@ -848,21 +843,20 @@ func TestDeleteNAD(t *testing.T) {
 			}
 
 			nchclientset := fake.NewSimpleClientset()
-			harvesterclientset := harvesterfake.NewSimpleClientset()
-			vmCache := fakeclients.VirtualMachineCache(harvesterclientset.KubevirtV1().VirtualMachines)
-			vmiCache := fakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
+			vmCache := fakeclients.VirtualMachineCache(nchclientset.KubevirtV1().VirtualMachines)
+			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
 			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
 			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true)
 
 			if tc.currentVM != nil {
-				err := harvesterclientset.Tracker().Add(tc.currentVM)
+				err := nchclientset.Tracker().Add(tc.currentVM)
 				assert.Nil(t, err, "mock resource vm should add into fake controller tracker")
 			}
 
 			if tc.currentVmi != nil {
-				err := harvesterclientset.Tracker().Add(tc.currentVmi)
+				err := nchclientset.Tracker().Add(tc.currentVmi)
 				assert.Nil(t, err, "mock resource vmi should add into fake controller tracker")
 			}
 

@@ -9,7 +9,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	harvesterfake "github.com/harvester/harvester/pkg/generated/clientset/versioned/fake"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/fake"
@@ -277,9 +276,7 @@ func TestCreateSubnet(t *testing.T) {
 			}
 
 			nchclientset := fake.NewSimpleClientset()
-			harvesterclientset := harvesterfake.NewSimpleClientset()
-
-			nadCache := fakeclients.NetworkAttachmentDefinitionCache(harvesterclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
+			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			vpcCache := fakeclients.VpcCache(nchclientset.KubeovnV1().Vpcs)
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
 
@@ -289,19 +286,19 @@ func TestCreateSubnet(t *testing.T) {
 				Resource: "network-attachment-definitions",
 			}
 
-			if err := harvesterclientset.Tracker().Create(nadGvr, currentNAD.DeepCopy(), currentNAD.Namespace); err != nil {
+			if err := nchclientset.Tracker().Create(nadGvr, currentNAD.DeepCopy(), currentNAD.Namespace); err != nil {
 				t.Fatalf("failed to add nad %+v", currentNAD)
 			}
 
-			if err := harvesterclientset.Tracker().Create(nadGvr, currentNAD2.DeepCopy(), currentNAD2.Namespace); err != nil {
+			if err := nchclientset.Tracker().Create(nadGvr, currentNAD2.DeepCopy(), currentNAD2.Namespace); err != nil {
 				t.Fatalf("failed to add nad %+v", currentNAD2)
 			}
 
-			if err := harvesterclientset.Tracker().Create(nadGvr, currentNAD3.DeepCopy(), currentNAD3.Namespace); err != nil {
+			if err := nchclientset.Tracker().Create(nadGvr, currentNAD3.DeepCopy(), currentNAD3.Namespace); err != nil {
 				t.Fatalf("failed to add nad %+v", currentNAD3)
 			}
 
-			if err := harvesterclientset.Tracker().Create(nadGvr, bridgeNAD.DeepCopy(), bridgeNAD.Namespace); err != nil {
+			if err := nchclientset.Tracker().Create(nadGvr, bridgeNAD.DeepCopy(), bridgeNAD.Namespace); err != nil {
 				t.Fatalf("failed to add nad %+v", bridgeNAD)
 			}
 
@@ -427,9 +424,7 @@ func TestUpdateSubnet(t *testing.T) {
 			}
 
 			nchclientset := fake.NewSimpleClientset()
-			harvesterclientset := harvesterfake.NewSimpleClientset()
-
-			nadCache := fakeclients.NetworkAttachmentDefinitionCache(harvesterclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
+			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			vpcCache := fakeclients.VpcCache(nchclientset.KubeovnV1().Vpcs)
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
 
@@ -439,7 +434,7 @@ func TestUpdateSubnet(t *testing.T) {
 				Resource: "network-attachment-definitions",
 			}
 
-			if err := harvesterclientset.Tracker().Create(nadGvr, currentNAD.DeepCopy(), currentNAD.Namespace); err != nil {
+			if err := nchclientset.Tracker().Create(nadGvr, currentNAD.DeepCopy(), currentNAD.Namespace); err != nil {
 				t.Fatalf("failed to add nad %+v", currentNAD)
 			}
 
