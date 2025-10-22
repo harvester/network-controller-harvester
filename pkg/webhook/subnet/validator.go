@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"reflect"
 
-	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	"github.com/harvester/webhook/pkg/server/admission"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
@@ -12,6 +11,7 @@ import (
 	k8slabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	ctlcniv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	kubeovnnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io/v1"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
