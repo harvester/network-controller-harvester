@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
-	cnitype "github.com/harvester/harvester/pkg/generated/clientset/versioned/typed/k8s.cni.cncf.io/v1"
+	cnitype "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/k8s.cni.cncf.io/v1"
 )
 
 type NetworkAttachmentDefinitionCache func(namespace string) cnitype.NetworkAttachmentDefinitionInterface
