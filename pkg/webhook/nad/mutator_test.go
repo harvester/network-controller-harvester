@@ -10,8 +10,6 @@ import (
 
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 
-	harvesterfake "github.com/harvester/harvester/pkg/generated/clientset/versioned/fake"
-
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/fake"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
@@ -477,13 +475,9 @@ func TestMutatorUpdateNAD(t *testing.T) {
 			}
 
 			nchclientset := fake.NewSimpleClientset()
-			harvesterclientset := harvesterfake.NewSimpleClientset()
-			//vmCache := fakeclients.VirtualMachineCache(harvesterclientset.KubevirtV1().VirtualMachines)
-			//vmiCache := fakeclients.VirtualMachineInstanceCache(harvesterclientset.KubevirtV1().VirtualMachineInstances)
 			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
 			cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
-			//subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
 			mutator := NewNadMutator(cnCache, vcCache)
 
 			nadGvr := schema.GroupVersionResource{
@@ -492,7 +486,7 @@ func TestMutatorUpdateNAD(t *testing.T) {
 				Resource: "network-attachment-definitions",
 			}
 
-			if err := harvesterclientset.Tracker().Create(nadGvr, tc.oldNAD, tc.oldNAD.Namespace); err != nil {
+			if err := nchclientset.Tracker().Create(nadGvr, tc.oldNAD, tc.oldNAD.Namespace); err != nil {
 				t.Fatalf("failed to add nad %+v", tc.oldNAD)
 			}
 			if tc.currentCN != nil {
