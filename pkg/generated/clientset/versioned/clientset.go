@@ -22,7 +22,9 @@ import (
 	"fmt"
 	"net/http"
 
+	k8scnicncfiov1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/k8s.cni.cncf.io/v1"
 	kubeovnv1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/kubeovn.io/v1"
+	kubevirtv1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/kubevirt.io/v1"
 	networkv1beta1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
@@ -31,20 +33,34 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
+	K8sCniCncfIoV1() k8scnicncfiov1.K8sCniCncfIoV1Interface
 	KubeovnV1() kubeovnv1.KubeovnV1Interface
+	KubevirtV1() kubevirtv1.KubevirtV1Interface
 	NetworkV1beta1() networkv1beta1.NetworkV1beta1Interface
 }
 
 // Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
+	k8sCniCncfIoV1 *k8scnicncfiov1.K8sCniCncfIoV1Client
 	kubeovnV1      *kubeovnv1.KubeovnV1Client
+	kubevirtV1     *kubevirtv1.KubevirtV1Client
 	networkV1beta1 *networkv1beta1.NetworkV1beta1Client
+}
+
+// K8sCniCncfIoV1 retrieves the K8sCniCncfIoV1Client
+func (c *Clientset) K8sCniCncfIoV1() k8scnicncfiov1.K8sCniCncfIoV1Interface {
+	return c.k8sCniCncfIoV1
 }
 
 // KubeovnV1 retrieves the KubeovnV1Client
 func (c *Clientset) KubeovnV1() kubeovnv1.KubeovnV1Interface {
 	return c.kubeovnV1
+}
+
+// KubevirtV1 retrieves the KubevirtV1Client
+func (c *Clientset) KubevirtV1() kubevirtv1.KubevirtV1Interface {
+	return c.kubevirtV1
 }
 
 // NetworkV1beta1 retrieves the NetworkV1beta1Client
@@ -96,7 +112,15 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 
 	var cs Clientset
 	var err error
+	cs.k8sCniCncfIoV1, err = k8scnicncfiov1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 	cs.kubeovnV1, err = kubeovnv1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
+	cs.kubevirtV1, err = kubevirtv1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +149,9 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
+	cs.k8sCniCncfIoV1 = k8scnicncfiov1.New(c)
 	cs.kubeovnV1 = kubeovnv1.New(c)
+	cs.kubevirtV1 = kubevirtv1.New(c)
 	cs.networkV1beta1 = networkv1beta1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)

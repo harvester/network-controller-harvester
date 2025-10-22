@@ -90,12 +90,12 @@ require (
 	github.com/vishvananda/netlink v1.3.0
 	k8s.io/api v0.33.0
 	k8s.io/apiextensions-apiserver v0.33.0
-	k8s.io/apimachinery v0.32.3
+	k8s.io/apimachinery v0.32.5
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.130.1
 	kubevirt.io/api v1.4.0
-	sigs.k8s.io/controller-runtime v0.19.7
+	sigs.k8s.io/controller-runtime v0.20.2
 )
 
 require (
@@ -197,6 +197,7 @@ require (
 	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979 // indirect
 	kubevirt.io/containerized-data-importer-api v1.61.0 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 // indirect
+	kubevirt.io/kubevirt v1.6.0 // indirect
 	sigs.k8s.io/cli-utils v0.37.2 // indirect
 	sigs.k8s.io/cluster-api v1.7.3 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
