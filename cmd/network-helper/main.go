@@ -6,11 +6,11 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
 	"github.com/urfave/cli"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/harvester/harvester-network-controller/pkg/controller/manager/nad"
+	ctlcni "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io"
 	"github.com/harvester/harvester-network-controller/pkg/helper"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )

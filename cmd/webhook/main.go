@@ -19,18 +19,17 @@ import (
 	"k8s.io/client-go/rest"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
-	ctlcni "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io"
-	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
-	ctlkubevirt "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io"
-	ctlkubevirtv1 "github.com/harvester/harvester/pkg/generated/controllers/kubevirt.io/v1"
-
 	"github.com/harvester/webhook/pkg/server/admission"
 	apiextensionsClient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	ctlcni "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io"
+	ctlcniv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	kubeovnnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io"
 	kubeovnnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io/v1"
+	ctlkubevirt "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubevirt.io"
+	ctlkubevirtv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubevirt.io/v1"
 	ctlnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/utils"

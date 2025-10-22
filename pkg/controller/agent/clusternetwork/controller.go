@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	ctlcniv1 "github.com/harvester/harvester/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	"github.com/vishvananda/netlink"
 
 	"github.com/sirupsen/logrus"
@@ -13,6 +12,7 @@ import (
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
+	ctlcniv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/network/vlan"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
