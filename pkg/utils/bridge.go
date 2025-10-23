@@ -6,8 +6,9 @@ import (
 )
 
 const (
-	BridgeSuffix = "-br"
-	BondSuffix   = "-bo"
+	BridgeSuffix       = "-br"
+	BondSuffix         = "-bo"
+	DefaultValueMiimon = 100
 
 	LenOfBridgeSuffix = 3 // length of BridgeSuffix
 	LenOfBondSuffix   = 3 // length of BondSuffix

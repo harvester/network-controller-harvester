@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/vishvananda/netlink"
 )
 
@@ -184,9 +185,13 @@ func compareBond(old, new *netlink.Bond) bool { //nolint
 		return false
 	}
 
-	// skip if Miimon is omitted, default value -1
-	// Same logic with TxQLen
-	if new.Miimon != -1 && old.Miimon != new.Miimon {
+	//handle change for any value of miimon including default (-1)
+	newMiimon := new.Miimon
+	if newMiimon == -1 {
+		newMiimon = utils.DefaultValueMiimon
+	}
+
+	if old.Miimon != newMiimon {
 		return false
 	}
 

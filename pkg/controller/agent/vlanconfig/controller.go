@@ -281,11 +281,14 @@ func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 		mode = netlink.StringToBondMode(string(vc.Spec.Uplink.BondOptions.Mode))
 	}
 	bond.Mode = mode
+
+	miimon := utils.DefaultValueMiimon
 	// set bonding miimon
-	if vc.Spec.Uplink.BondOptions != nil {
-		bond.Miimon = vc.Spec.Uplink.BondOptions.Miimon
+	if vc.Spec.Uplink.BondOptions != nil && vc.Spec.Uplink.BondOptions.Miimon != -1 {
+		miimon = vc.Spec.Uplink.BondOptions.Miimon
 	}
 
+	bond.Miimon = miimon
 	b := iface.NewBond(bond, vc.Spec.Uplink.NICs)
 	if err := b.EnsureBond(); err != nil {
 		return nil, err
