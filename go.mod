@@ -2,69 +2,69 @@ module github.com/harvester/harvester-network-controller
 
 go 1.24.0
 
-toolchain go1.24.3
+toolchain go1.25.1
 
 replace (
-	github.com/containerd/containerd => github.com/containerd/containerd v1.6.18
+	github.com/containerd/containerd => github.com/containerd/containerd v1.7.28
 	github.com/docker/distribution => github.com/docker/distribution v2.8.0+incompatible // oras dep requires a replace is set
 	github.com/docker/docker => github.com/docker/docker v20.10.9+incompatible // oras dep requires a replace is set
-	github.com/gin-gonic/gin => github.com/gin-gonic/gin v1.7.7
+	github.com/gin-gonic/gin => github.com/gin-gonic/gin v1.10.1
 	github.com/knative/pkg => github.com/rancher/pkg v0.0.0-20190514055449-b30ab9de040e
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20200521150516-05eb9880269c
-	github.com/operator-framework/operator-lifecycle-manager => github.com/operator-framework/operator-lifecycle-manager v0.0.0-20190128024246-5eb7ae5bdb7a
-	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring => github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.72.0
-	github.com/rancher/lasso => github.com/rancher/lasso v0.0.0-20240705194423-b2a060d103c1
+	github.com/operator-framework/operator-lifecycle-manager => github.com/operator-framework/operator-lifecycle-manager v0.35.0
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring => github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.85.0
+	github.com/rancher/lasso => github.com/rancher/lasso v0.2.4
 
-	github.com/rancher/rancher => github.com/rancher/rancher v0.0.0-20240919204204-3da2ae0cabd1
+	github.com/rancher/rancher => github.com/rancher/rancher v0.63.1
 	github.com/rancher/rancher/pkg/apis => github.com/rancher/rancher/pkg/apis v0.0.0-20240919204204-3da2ae0cabd1
 	github.com/rancher/rancher/pkg/client => github.com/rancher/rancher/pkg/client v0.0.0-20240919204204-3da2ae0cabd1
 
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc => go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.20.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp => go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.53.0
-	go.opentelemetry.io/otel => go.opentelemetry.io/otel v1.33.0
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc => go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.63.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp => go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0
+	go.opentelemetry.io/otel => go.opentelemetry.io/otel v1.38.0
 	go.opentelemetry.io/otel/exporters/otlp => go.opentelemetry.io/otel/exporters/otlp v0.20.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace => go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.28.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc => go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.27.0
-	go.opentelemetry.io/otel/metric => go.opentelemetry.io/otel/metric v1.33.0
-	go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.31.0
-	go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v1.33.0
-	go.opentelemetry.io/proto/otlp => go.opentelemetry.io/proto/otlp v1.3.1
-	golang.org/x/net => golang.org/x/net v0.38.0
-	google.golang.org/grpc => google.golang.org/grpc v1.69.4
-	helm.sh/helm/v3 => github.com/rancher/helm/v3 v3.9.0-rancher1
-	k8s.io/api => k8s.io/api v0.31.5
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.31.5
-	k8s.io/apimachinery => k8s.io/apimachinery v0.31.5
-	k8s.io/apiserver => k8s.io/apiserver v0.32.3
-	k8s.io/cli-runtime => k8s.io/cli-runtime v0.24.10
-	k8s.io/client-go => k8s.io/client-go v0.31.5
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.24.10
-	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.24.10
-	k8s.io/code-generator => k8s.io/code-generator v0.31.5
-	k8s.io/component-base => k8s.io/component-base v0.31.5
-	k8s.io/component-helpers => k8s.io/component-helpers v0.24.10
-	k8s.io/controller-manager => k8s.io/controller-manager v0.24.10
-	k8s.io/cri-api => k8s.io/cri-api v0.24.10
-	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.24.10
-	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.24.10
-	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.24.10
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace => go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.38.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc => go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.38.0
+	go.opentelemetry.io/otel/metric => go.opentelemetry.io/otel/metric v1.38.0
+	go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.38.0
+	go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v1.38.0
+	go.opentelemetry.io/proto/otlp => go.opentelemetry.io/proto/otlp v1.8.0
+	golang.org/x/net => golang.org/x/net v0.44.0
+	google.golang.org/grpc => google.golang.org/grpc v1.75.1
+	helm.sh/helm/v3 => github.com/rancher/helm/v3 v3.11.3
+	k8s.io/api => k8s.io/api v0.34.1
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.34.1
+	k8s.io/apimachinery => k8s.io/apimachinery v0.34.1
+	k8s.io/apiserver => k8s.io/apiserver v0.34.1
+	k8s.io/cli-runtime => k8s.io/cli-runtime v0.34.1
+	k8s.io/client-go => k8s.io/client-go v0.34.1
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.34.1
+	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.34.1
+	k8s.io/code-generator => k8s.io/code-generator v0.34.1
+	k8s.io/component-base => k8s.io/component-base v0.34.1
+	k8s.io/component-helpers => k8s.io/component-helpers v0.34.1
+	k8s.io/controller-manager => k8s.io/controller-manager v0.34.1
+	k8s.io/cri-api => k8s.io/cri-api v0.34.1
+	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.34.1
+	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.34.1
+	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.34.1
 	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20250318190949-c8a335a9a2ff // indirect
-	k8s.io/kube-proxy => k8s.io/kube-proxy v0.24.10
-	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.24.10
-	k8s.io/kubectl => k8s.io/kubectl v0.24.2
-	k8s.io/kubelet => k8s.io/kubelet v0.24.10
+	k8s.io/kube-proxy => k8s.io/kube-proxy v0.34.1
+	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.34.1
+	k8s.io/kubectl => k8s.io/kubectl v0.34.1
+	k8s.io/kubelet => k8s.io/kubelet v0.34.1
 	k8s.io/kubernetes => k8s.io/kubernetes v1.24.10
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.24.10
-	k8s.io/metrics => k8s.io/metrics v0.24.10
-	k8s.io/mount-utils => k8s.io/mount-utils v0.31.1
-	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.10
-	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.10
-	kubevirt.io/api => github.com/kubevirt/api v1.4.0
-	kubevirt.io/client-go => github.com/kubevirt/client-go v1.4.0
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.14
+	k8s.io/metrics => k8s.io/metrics v0.34.1
+	k8s.io/mount-utils => k8s.io/mount-utils v0.34.1
+	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.34.1
+	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.34.1
+	kubevirt.io/api => github.com/kubevirt/api v1.6.0
+	kubevirt.io/client-go => github.com/kubevirt/client-go v1.6.0
 	launchpad.net/gocheck v0.0.0-20140225173054-000000000087 => github.com/go-check/check v0.0.0-20180628173108-788fd7840127
-	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.7.3
-	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.19.7
+	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.11.1
+	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.22.1
 	sigs.k8s.io/structured-merge-diff => sigs.k8s.io/structured-merge-diff v0.0.0-20190302045857-e85c7b244fd2
 )
 
@@ -72,28 +72,28 @@ require (
 	github.com/achanda/go-sysctl v0.0.0-20160222034550-6be7678c45d2
 	github.com/cenk/backoff v2.2.1+incompatible
 	github.com/containernetworking/cni v1.3.0
-	github.com/coreos/go-iptables v0.6.0
-	github.com/deckarep/golang-set/v2 v2.6.0
+	github.com/coreos/go-iptables v0.8.0
+	github.com/deckarep/golang-set/v2 v2.8.0
 	github.com/go-ping/ping v0.0.0-20211014180314-6e2b003bffdd
-	github.com/harvester/harvester v1.5.0
+	github.com/harvester/harvester v1.6.0
 	github.com/harvester/webhook v0.1.5
 	github.com/insomniacslk/dhcp v0.0.0-20240710054256-ddd8a41251c9
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.5
-	github.com/kubeovn/kube-ovn v1.13.13
+	github.com/kubeovn/kube-ovn v1.14.6
 	github.com/rancher/lasso v0.2.2
 	github.com/rancher/wrangler v1.1.2
-	github.com/rancher/wrangler/v3 v3.1.0
+	github.com/rancher/wrangler/v3 v3.2.3
 	github.com/sirupsen/logrus v1.9.3
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/sjson v1.2.5
 	github.com/urfave/cli v1.22.16
 	github.com/vishvananda/netlink v1.3.0
-	k8s.io/api v0.33.0
-	k8s.io/apimachinery v0.32.3
+	k8s.io/api v0.34.1
+	k8s.io/apimachinery v0.34.1
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.130.1
-	kubevirt.io/api v1.4.0
+	kubevirt.io/api v1.6.0
 )
 
 require (
