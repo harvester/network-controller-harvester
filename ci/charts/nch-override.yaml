@@ -1,0 +1,17 @@
+image:
+  repository: rancher/harvester-network-controller
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+webhook:
+  repository: rancher/harvester-network-webhook
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+autoProvisionFilter: [/dev/sd*]
+debug: true
+
+# we only manually inject udev monitor error once, so we can test it in CI.
+injectUdevMonitorError: true
