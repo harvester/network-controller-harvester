@@ -60,8 +60,8 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.31.1
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.10
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.10
-	kubevirt.io/api => github.com/kubevirt/api v1.4.0
-	kubevirt.io/client-go => github.com/kubevirt/client-go v1.4.0
+	kubevirt.io/api => github.com/kubevirt/api v1.6.0
+	kubevirt.io/client-go => github.com/kubevirt/client-go v1.6.0
 	launchpad.net/gocheck v0.0.0-20140225173054-000000000087 => github.com/go-check/check v0.0.0-20180628173108-788fd7840127
 	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.7.3
 	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.19.7
@@ -91,7 +91,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.33.0
 	k8s.io/apimachinery v0.33.5
 	k8s.io/client-go v12.0.0+incompatible
-	kubevirt.io/api v1.4.0
+	kubevirt.io/api v1.6.0
 	sigs.k8s.io/controller-runtime v0.20.2
 )
 
@@ -110,14 +110,10 @@ require (
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
-	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
-	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -137,7 +133,6 @@ require (
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rancher/dynamiclistener v0.6.1 // indirect
-	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/tidwall/gjson v1.14.2 // indirect
@@ -161,9 +156,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiserver v0.33.5 // indirect
 	k8s.io/code-generator v0.33.5 // indirect
-	k8s.io/component-base v0.33.5 // indirect
 	k8s.io/gengo v0.0.0-20250130153323-76c5745d3511 // indirect
 	k8s.io/gengo/v2 v2.0.0-20250207200755-1244d31929d7 // indirect
 	k8s.io/klog v1.0.0 // indirect
