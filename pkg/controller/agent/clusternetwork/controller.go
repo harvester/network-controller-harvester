@@ -72,14 +72,14 @@ func (h Handler) OnChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.Cl
 	// try to keep them as more as possbile, and log errors if failed to list or add
 	manualVlans, err := iface.GetManuallyConfiguredVlans(cn.Name)
 	if err != nil {
-		logrus.Infof("cluster network %s failed to get manually configured vlans from link, error: %s, skip", cn.Name, err.Error())
-	} else {
-		for i := range manualVlans {
-			err := cnVlans.SetUint16VID(manualVlans[i])
-			if err != nil {
-				logrus.Infof("cluster network %s failed to add the manually configured vid %v to vlanset, error %s, skip", cn.Name, manualVlans[i], err.Error())
-				continue
-			}
+		logrus.Infof("cluster network %s failed to get manually configured vlans from link, error: %s", cn.Name, err.Error())
+		return nil, err
+	}
+
+	for i := range manualVlans {
+		err := cnVlans.SetUint16VID(manualVlans[i])
+		if err != nil {
+			logrus.Infof("cluster network %s failed to add the manually configured vid %v to vlanset, error %s, skip", cn.Name, manualVlans[i], err.Error())
 		}
 	}
 
