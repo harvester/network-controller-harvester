@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sirupsen/logrus"
-
+	"github.com/containernetworking/plugins/pkg/netlinksafe"
 	"github.com/coreos/go-iptables/iptables"
+	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 
 	"github.com/harvester/harvester-network-controller/pkg/utils"
@@ -109,7 +109,7 @@ func (l *Link) ToVlanIDSet() (*utils.VlanIDSet, error) {
 
 // clearMacvlan to delete all the macvlan interfaces whose parent index equals l.Index()
 func (l *Link) clearMacVlan() error {
-	links, err := netlink.LinkList()
+	links, err := netlinksafe.LinkList()
 	if err != nil {
 		return err
 	}
@@ -205,7 +205,7 @@ func (l *Link) Fetch() error {
 }
 
 func ListLinks(typeSelector map[string]bool) ([]*Link, error) {
-	links, err := netlink.LinkList()
+	links, err := netlinksafe.LinkList()
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +262,7 @@ func getManuallyConfiguredVlans(cnName string, links []netlink.Link) []uint16 {
 // user might configure sub vlan interface on a bridge directly, should always keep them
 func GetManuallyConfiguredVlans(cnName string) ([]uint16, error) {
 	// similar to `ip link`
-	links, err := netlink.LinkList()
+	links, err := netlinksafe.LinkList()
 	if err != nil {
 		return nil, err
 	}
