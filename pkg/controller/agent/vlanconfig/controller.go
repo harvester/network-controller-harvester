@@ -29,17 +29,19 @@ const (
 )
 
 type Handler struct {
-	nodeName     string
-	nodeClient   ctlcorev1.NodeClient
-	nodeCache    ctlcorev1.NodeCache
-	nadCache     ctlcniv1.NetworkAttachmentDefinitionCache
-	vcClient     ctlnetworkv1.VlanConfigClient
-	vcCache      ctlnetworkv1.VlanConfigCache
-	vsClient     ctlnetworkv1.VlanStatusClient
-	vsCache      ctlnetworkv1.VlanStatusCache
-	cnClient     ctlnetworkv1.ClusterNetworkClient
-	cnCache      ctlnetworkv1.ClusterNetworkCache
-	cnController ctlnetworkv1.ClusterNetworkController
+	nodeName                    string
+	nodeClient                  ctlcorev1.NodeClient
+	nodeCache                   ctlcorev1.NodeCache
+	nadCache                    ctlcniv1.NetworkAttachmentDefinitionCache
+	vcClient                    ctlnetworkv1.VlanConfigClient
+	vcCache                     ctlnetworkv1.VlanConfigCache
+	vsClient                    ctlnetworkv1.VlanStatusClient
+	vsCache                     ctlnetworkv1.VlanStatusCache
+	cnClient                    ctlnetworkv1.ClusterNetworkClient
+	cnCache                     ctlnetworkv1.ClusterNetworkCache
+	cnController                ctlnetworkv1.ClusterNetworkController
+	hostNetworkConfigCache      ctlnetworkv1.HostNetworkConfigCache
+	hostNetworkConfigController ctlnetworkv1.HostNetworkConfigController
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -48,19 +50,22 @@ func Register(ctx context.Context, management *config.Management) error {
 	cns := management.HarvesterNetworkFactory.Network().V1beta1().ClusterNetwork()
 	nodes := management.CoreFactory.Core().V1().Node()
 	nads := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
+	hns := management.HarvesterNetworkFactory.Network().V1beta1().HostNetworkConfig()
 
 	handler := &Handler{
-		nodeName:     management.Options.NodeName,
-		nodeClient:   nodes,
-		nodeCache:    nodes.Cache(),
-		nadCache:     nads.Cache(),
-		vcClient:     vcs,
-		vcCache:      vcs.Cache(),
-		vsClient:     vss,
-		vsCache:      vss.Cache(),
-		cnClient:     cns,
-		cnCache:      cns.Cache(),
-		cnController: cns,
+		nodeName:                    management.Options.NodeName,
+		nodeClient:                  nodes,
+		nodeCache:                   nodes.Cache(),
+		nadCache:                    nads.Cache(),
+		vcClient:                    vcs,
+		vcCache:                     vcs.Cache(),
+		vsClient:                    vss,
+		vsCache:                     vss.Cache(),
+		cnClient:                    cns,
+		cnCache:                     cns.Cache(),
+		cnController:                cns,
+		hostNetworkConfigCache:      hns.Cache(),
+		hostNetworkConfigController: hns,
 	}
 
 	if err := handler.initialize(); err != nil {
@@ -215,6 +220,10 @@ updateStatus:
 		return fmt.Errorf("wake up cluster network %s for vlanconfig %s failed, error: %w", vc.Spec.ClusterNetwork, vc.Name, err)
 	}
 
+	if err := h.reconcileHostNetwork(vc.Spec.ClusterNetwork); err != nil {
+		return fmt.Errorf("reconcile hostnetwork %s for vlanconfig %s failed, error: %w", vc.Spec.ClusterNetwork, vc.Name, err)
+	}
+
 	return nil
 }
 
@@ -224,6 +233,28 @@ func (h Handler) wakeUpClusterNetwork(vc *networkv1.VlanConfig) error {
 	if err == nil {
 		h.cnController.Enqueue(vc.Spec.ClusterNetwork)
 		return nil
+	}
+
+	return err
+}
+
+// any change to vlanconfig should trigger hostnetworkconfig reconciliation
+func (h Handler) reconcileHostNetwork(clusterNetwork string) error {
+	hostnetworkconfigs, err := h.hostNetworkConfigCache.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	for _, hostnetworkconfig := range hostnetworkconfigs {
+		if hostnetworkconfig.Spec.ClusterNetwork != clusterNetwork {
+			continue
+		}
+
+		if hostnetworkconfig.DeletionTimestamp != nil {
+			continue
+		}
+
+		h.hostNetworkConfigController.Enqueue(hostnetworkconfig.Name)
 	}
 
 	return err
@@ -257,6 +288,11 @@ updateStatus:
 	}
 	if teardownErr != nil {
 		return fmt.Errorf("tear down VLAN failed, vlanconfig: %s, node: %s, error: %w", vs.Status.VlanConfig, h.nodeName, teardownErr)
+	}
+
+	//reconcile hostnetworkconfig to stop DHCP lease managers associated with the removed uplink
+	if err := h.reconcileHostNetwork(vs.Status.ClusterNetwork); err != nil {
+		return fmt.Errorf("reconcile hostnetwork %s for vlanconfig %s failed, error: %w", vs.Status.ClusterNetwork, vs.Status.VlanConfig, err)
 	}
 
 	return nil

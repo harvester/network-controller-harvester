@@ -2,6 +2,7 @@ package clusternetwork
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -10,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
@@ -17,6 +19,7 @@ import (
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
+	ctlcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
 )
 
 const (
@@ -25,24 +28,32 @@ const (
 )
 
 type Handler struct {
-	lmClient  ctlnetworkv1.LinkMonitorClient
-	lmCache   ctlnetworkv1.LinkMonitorCache
-	cnClient  ctlnetworkv1.ClusterNetworkClient
-	nadClient ctlcniv1.NetworkAttachmentDefinitionClient
-	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
+	lmClient          ctlnetworkv1.LinkMonitorClient
+	lmCache           ctlnetworkv1.LinkMonitorCache
+	cnClient          ctlnetworkv1.ClusterNetworkClient
+	nadClient         ctlcniv1.NetworkAttachmentDefinitionClient
+	nadCache          ctlcniv1.NetworkAttachmentDefinitionCache
+	hostNetworkCache  ctlnetworkv1.HostNetworkConfigCache
+	hostNetworkClient ctlnetworkv1.HostNetworkConfigClient
+	nodeCache         ctlcorev1.NodeCache
 }
 
 func Register(ctx context.Context, management *config.Management) error {
 	cns := management.HarvesterNetworkFactory.Network().V1beta1().ClusterNetwork()
 	lms := management.HarvesterNetworkFactory.Network().V1beta1().LinkMonitor()
 	nads := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
+	hns := management.HarvesterNetworkFactory.Network().V1beta1().HostNetworkConfig()
+	nodes := management.CoreFactory.Core().V1().Node()
 
 	h := Handler{
-		lmClient:  lms,
-		lmCache:   lms.Cache(),
-		cnClient:  cns,
-		nadClient: nads,
-		nadCache:  nads.Cache(),
+		lmClient:          lms,
+		lmCache:           lms.Cache(),
+		cnClient:          cns,
+		nadClient:         nads,
+		nadCache:          nads.Cache(),
+		hostNetworkCache:  hns.Cache(),
+		hostNetworkClient: hns,
+		nodeCache:         nodes.Cache(),
 	}
 
 	if err := h.initialize(); err != nil {
@@ -51,6 +62,7 @@ func Register(ctx context.Context, management *config.Management) error {
 
 	cns.OnChange(ctx, controllerName, h.EnsureLinkMonitor)
 	cns.OnChange(ctx, controllerName, h.SetNadReadyLabel)
+	cns.OnChange(ctx, controllerName, h.SetHostNetworkStatus)
 	cns.OnRemove(ctx, controllerName, h.DeleteLinkMonitor)
 
 	return nil
@@ -156,6 +168,147 @@ func (h Handler) setNadReadyLabel(cn *networkv1.ClusterNetwork) error {
 		if _, err := h.nadClient.Update(nadCopy); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (h Handler) setHNNodeStatusUnready(hnCopy *networkv1.HostNetworkConfig) error {
+	nodes, err := h.nodeCache.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	for _, node := range nodes {
+		if node.DeletionTimestamp != nil {
+			continue
+		}
+
+		if hnCopy.Status.NodeStatus == nil {
+			continue
+		}
+
+		if _, exists := hnCopy.Status.NodeStatus[node.Name]; !exists {
+			continue
+		}
+
+		patchPayload := map[string]interface{}{
+			"status": map[string]interface{}{
+				"nodeStatus": map[string]interface{}{
+					node.Name: map[string]interface{}{
+						"clusterNetwork": hnCopy.Spec.ClusterNetwork,
+						"vlanID":         hnCopy.Spec.VlanID,
+						"mode":           hnCopy.Spec.Mode,
+						"conditions": []map[string]interface{}{
+							{
+								"type":    networkv1.Ready,
+								"status":  "False",
+								"message": "cluster network is down, setup l3 connectivity failed",
+							},
+						},
+					},
+				},
+			},
+		}
+
+		patchBytes, err := json.Marshal(patchPayload)
+		if err != nil {
+			return fmt.Errorf("failed to marshal patch: %w", err)
+		}
+
+		_, err = h.hostNetworkClient.Patch(
+			hnCopy.Name,
+			types.MergePatchType,
+			patchBytes,
+			"status",
+		)
+
+		if err != nil {
+			return fmt.Errorf("failed to patch HostNetworkConfig status for node %s: %w", node.Name, err)
+		}
+	}
+
+	return nil
+}
+
+func (h Handler) SetHostNetworkStatus(_ string, cn *networkv1.ClusterNetwork) (*networkv1.ClusterNetwork, error) {
+	if cn == nil {
+		return nil, nil
+	}
+
+	if err := h.setHostNetworkStatus(cn); err != nil {
+		return nil, err
+	}
+
+	return cn, nil
+}
+
+func (h Handler) setHostNetworkStatus(cn *networkv1.ClusterNetwork) error {
+	isReady := utils.ValueFalse
+
+	if cn.DeletionTimestamp == nil && networkv1.Ready.IsTrue(cn.Status) {
+		isReady = utils.ValueTrue
+	}
+
+	hostnetworkconfigs, err := h.hostNetworkCache.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	updateFunc := h.setHostNetworkUnready
+	if isReady == utils.ValueTrue {
+		updateFunc = h.setHostNetworkReady
+	}
+
+	for _, hostnetworkconfig := range hostnetworkconfigs {
+		if hostnetworkconfig.Spec.ClusterNetwork != cn.Name {
+			continue
+		}
+
+		if hostnetworkconfig.DeletionTimestamp != nil {
+			continue
+		}
+
+		if err := updateFunc(hostnetworkconfig); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *Handler) setHostNetworkReady(hn *networkv1.HostNetworkConfig) error {
+	if networkv1.Ready.IsTrue(hn.Status) {
+		return nil
+	}
+
+	hnCopy := hn.DeepCopy()
+	networkv1.Ready.True(&hnCopy.Status)
+	//empty message is needed to trigger the status update when the status is already false before
+	networkv1.Ready.Message(hnCopy.Status, "")
+
+	//hostnetworkconfig controller will set all hostnetworkconfig per node status to ready
+	//set only the global status as ready here
+	if _, err := h.hostNetworkClient.Update(hnCopy); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (h *Handler) setHostNetworkUnready(hn *networkv1.HostNetworkConfig) error {
+	if networkv1.Ready.IsFalse(hn.Status) {
+		return nil
+	}
+
+	hnCopy := hn.DeepCopy()
+	networkv1.Ready.False(&hnCopy.Status)
+	networkv1.Ready.Message(hnCopy.Status, "cluster network is down, global host network status is unready")
+
+	//set all hostnetworkconfig per node status to unready
+	err := h.setHNNodeStatusUnready(hnCopy)
+	if err != nil {
+		return err
 	}
 
 	return nil

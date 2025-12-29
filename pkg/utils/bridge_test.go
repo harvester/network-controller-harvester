@@ -25,9 +25,9 @@ func TestBridgeRelatedFunctions(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.True(t, HasMgmtClusterNetworkDevicePrefix("mgmt-br.2025"))
-			assert.False(t, HasMgmtClusterNetworkDevicePrefix("mgmt-b0.2025"))
-			assert.False(t, HasMgmtClusterNetworkDevicePrefix("ens0.2025"))
+			assert.True(t, HasMgmtClusterNetworkVlanDevicePrefix("mgmt-br.2025"))
+			assert.False(t, HasMgmtClusterNetworkVlanDevicePrefix("mgmt-b0.2025"))
+			assert.False(t, HasMgmtClusterNetworkVlanDevicePrefix("ens0.2025"))
 			assert.True(t, GetClusterNetworkDevicePrefix(ManagementClusterNetworkName) == "mgmt-br.")
 
 			prefix := GetClusterNetworkDevicePrefix(cn2)

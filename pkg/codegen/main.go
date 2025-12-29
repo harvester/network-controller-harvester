@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	corev1 "k8s.io/api/core/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnsubnetv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -28,6 +29,7 @@ func main() {
 					networkv1.VlanConfig{},
 					networkv1.VlanStatus{},
 					networkv1.LinkMonitor{},
+					networkv1.HostNetworkConfig{},
 				},
 				GenerateTypes:   true,
 				GenerateClients: true,
@@ -51,6 +53,13 @@ func main() {
 				Types: []interface{}{
 					kubevirtv1.VirtualMachine{},
 					kubevirtv1.VirtualMachineInstance{},
+				},
+				GenerateTypes:   false,
+				GenerateClients: true,
+			},
+			corev1.SchemeGroupVersion.Group: {
+				Types: []interface{}{
+					corev1.Node{},
 				},
 				GenerateTypes:   false,
 				GenerateClients: true,

@@ -18,16 +18,33 @@ const (
 	VlanSubInterfaceSpliter = "."
 
 	// format: e.g. mgmt-br.2025
-	ManagementClusterNetworkDevicePrefix = ManagementClusterNetworkName + BridgeSuffix + VlanSubInterfaceSpliter
+	ManagementClusterNetworkVlanDevicePrefix = ManagementClusterNetworkName + BridgeSuffix + VlanSubInterfaceSpliter
+
+	// format: e.g. mgmt-br
+	ManagementClusterNetworkDevicePrefix = ManagementClusterNetworkName + BridgeSuffix
 )
 
-func HasMgmtClusterNetworkDevicePrefix(link string) bool {
+func HasMgmtClusterNetworkVlanDevicePrefix(link string) bool {
+	return strings.HasPrefix(link, ManagementClusterNetworkVlanDevicePrefix)
+}
+
+func HasMgmtClusterNetworkBridgePrefix(link string) bool {
 	return strings.HasPrefix(link, ManagementClusterNetworkDevicePrefix)
 }
 
 // e.g. cn2-br.2025 is a valid vlan sub interface, and the device prefix is `cn2-br.`
 func GetClusterNetworkDevicePrefix(cnName string) string {
 	return fmt.Sprintf("%s%s%s", cnName, BridgeSuffix, VlanSubInterfaceSpliter)
+}
+
+// e.g. cn2-br.2025
+func GetClusterNetworkBrVlanDevice(cnBrName string, vlanId uint16) string {
+	return fmt.Sprintf("%s%s%s", cnBrName, VlanSubInterfaceSpliter, fmt.Sprint(vlanId))
+}
+
+// e.g. cn2-br.2025
+func GetClusterNetworkVlanDevice(cnName string, vlanId uint16) string {
+	return fmt.Sprintf("%s%s", GetClusterNetworkDevicePrefix(cnName), fmt.Sprint(vlanId))
 }
 
 func HasClusterNetworkDevicePrefix(link, prefix string) bool {

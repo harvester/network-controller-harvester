@@ -40,6 +40,15 @@ func (v *Vlan) getUplink() (*iface.Link, error) {
 	return iface.NewLink(l), nil
 }
 
+func (v *Vlan) GetBridgelink() (*iface.Link, error) {
+	l, err := netlink.LinkByName(utils.GenerateBridgeName(v.name))
+	if err != nil {
+		return nil, err
+	}
+
+	return iface.NewLink(l), nil
+}
+
 func GetVlan(name string) (*Vlan, error) {
 	v := NewVlan(name)
 	if err := v.bridge.Fetch(); err != nil {

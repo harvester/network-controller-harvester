@@ -487,6 +487,13 @@ func (nc *NetConf) IsKubeOVNCNI() bool {
 	return nc.Type == CNITypeKubeOVN
 }
 
+func (nc *NetConf) GetVlanID() int {
+	if nc.IsVlanAccessMode() {
+		return nc.Vlan
+	}
+	return 0
+}
+
 func (nc *NetConf) GetNetworkType() (NetworkType, error) {
 	switch nc.Type {
 	case CNITypeKubeOVN:
@@ -660,6 +667,20 @@ type NadGetter struct {
 
 func NewNadGetter(nadCache ctlcniv1.NetworkAttachmentDefinitionCache) *NadGetter {
 	return &NadGetter{nadCache: nadCache}
+}
+
+// list all nads
+func (n *NadGetter) ListAllNads() ([]*nadv1.NetworkAttachmentDefinition, error) {
+	nads, err := n.nadCache.List(corev1.NamespaceAll, labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	if len(nads) == 0 {
+		return nil, nil
+	}
+
+	return nads, nil
 }
 
 // list all nads attached to a cluster network

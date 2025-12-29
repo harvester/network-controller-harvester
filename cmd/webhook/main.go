@@ -34,6 +34,7 @@ import (
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/harvester/harvester-network-controller/pkg/webhook/clusternetwork"
+	"github.com/harvester/harvester-network-controller/pkg/webhook/hostnetworkconfig"
 	"github.com/harvester/harvester-network-controller/pkg/webhook/nad"
 	"github.com/harvester/harvester-network-controller/pkg/webhook/subnet"
 	"github.com/harvester/harvester-network-controller/pkg/webhook/vlanconfig"
@@ -144,8 +145,9 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 
 	validators := []admission.Validator{
 		clusternetwork.NewCnValidator(c.nadCache, c.vmiCache, c.vcCache),
-		nad.NewNadValidator(c.vmCache, c.vmiCache, c.cnCache, c.vcCache, c.kubeovnsubnetCache, crdExists),
+		nad.NewNadValidator(c.vmCache, c.vmiCache, c.cnCache, c.vcCache, c.kubeovnsubnetCache, crdExists, c.hostNetworkConfigCache, c.nadCache),
 		vlanconfig.NewVlanConfigValidator(c.nadCache, c.vcCache, c.vsCache, c.vmiCache, c.cnCache),
+		hostnetworkconfig.NewHostNetworkConfigValidator(c.nadCache, c.cnCache, c.hostNetworkConfigCache, c.vcCache, c.vsCache, c.nodeCache, c.vmCache),
 	}
 
 	if crdExists {
@@ -170,15 +172,16 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 }
 
 type caches struct {
-	nadCache           ctlcniv1.NetworkAttachmentDefinitionCache
-	vmCache            ctlkubevirtv1.VirtualMachineCache
-	vmiCache           ctlkubevirtv1.VirtualMachineInstanceCache
-	vcCache            ctlnetworkv1.VlanConfigCache
-	vsCache            ctlnetworkv1.VlanStatusCache
-	cnCache            ctlnetworkv1.ClusterNetworkCache
-	nodeCache          ctlcorev1.NodeCache
-	kubeovnsubnetCache kubeovnnetworkv1.SubnetCache
-	kubeovnvpcCache    kubeovnnetworkv1.VpcCache
+	nadCache               ctlcniv1.NetworkAttachmentDefinitionCache
+	vmCache                ctlkubevirtv1.VirtualMachineCache
+	vmiCache               ctlkubevirtv1.VirtualMachineInstanceCache
+	vcCache                ctlnetworkv1.VlanConfigCache
+	vsCache                ctlnetworkv1.VlanStatusCache
+	cnCache                ctlnetworkv1.ClusterNetworkCache
+	nodeCache              ctlcorev1.NodeCache
+	kubeovnsubnetCache     kubeovnnetworkv1.SubnetCache
+	kubeovnvpcCache        kubeovnnetworkv1.VpcCache
+	hostNetworkConfigCache ctlnetworkv1.HostNetworkConfigCache
 }
 
 func newCaches(ctx context.Context, cfg *rest.Config, threadiness int, crdExists bool) (*caches, error) {
@@ -195,13 +198,14 @@ func newCaches(ctx context.Context, cfg *rest.Config, threadiness int, crdExists
 
 	// must declare cache before starting informers
 	c := &caches{
-		nadCache:  cniFactory.K8s().V1().NetworkAttachmentDefinition().Cache(),
-		vmCache:   kubevirtFactory.Kubevirt().V1().VirtualMachine().Cache(),
-		vmiCache:  kubevirtFactory.Kubevirt().V1().VirtualMachineInstance().Cache(),
-		vcCache:   harvesterNetworkFactory.Network().V1beta1().VlanConfig().Cache(),
-		vsCache:   harvesterNetworkFactory.Network().V1beta1().VlanStatus().Cache(),
-		cnCache:   harvesterNetworkFactory.Network().V1beta1().ClusterNetwork().Cache(),
-		nodeCache: coreFactory.Core().V1().Node().Cache(),
+		nadCache:               cniFactory.K8s().V1().NetworkAttachmentDefinition().Cache(),
+		vmCache:                kubevirtFactory.Kubevirt().V1().VirtualMachine().Cache(),
+		vmiCache:               kubevirtFactory.Kubevirt().V1().VirtualMachineInstance().Cache(),
+		vcCache:                harvesterNetworkFactory.Network().V1beta1().VlanConfig().Cache(),
+		vsCache:                harvesterNetworkFactory.Network().V1beta1().VlanStatus().Cache(),
+		cnCache:                harvesterNetworkFactory.Network().V1beta1().ClusterNetwork().Cache(),
+		nodeCache:              coreFactory.Core().V1().Node().Cache(),
+		hostNetworkConfigCache: harvesterNetworkFactory.Network().V1beta1().HostNetworkConfig().Cache(),
 	}
 
 	if crdExists {
