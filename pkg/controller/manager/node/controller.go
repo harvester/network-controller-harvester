@@ -21,13 +21,15 @@ import (
 const controllerName = "harvester-network-manager-node-controller"
 
 type Handler struct {
-	nodeClient ctlcorev1.NodeClient
-	vcCache    ctlnetworkv1.VlanConfigCache
-	vcClient   ctlnetworkv1.VlanConfigClient
-	vsCache    ctlnetworkv1.VlanStatusCache
-	vsClient   ctlnetworkv1.VlanStatusClient
-	lmCache    ctlnetworkv1.LinkMonitorCache
-	lmClient   ctlnetworkv1.LinkMonitorClient
+	nodeClient              ctlcorev1.NodeClient
+	vcCache                 ctlnetworkv1.VlanConfigCache
+	vcClient                ctlnetworkv1.VlanConfigClient
+	vsCache                 ctlnetworkv1.VlanStatusCache
+	vsClient                ctlnetworkv1.VlanStatusClient
+	lmCache                 ctlnetworkv1.LinkMonitorCache
+	lmClient                ctlnetworkv1.LinkMonitorClient
+	hostNetworkConfigClient ctlnetworkv1.HostNetworkConfigClient
+	hostNetworkConfigCache  ctlnetworkv1.HostNetworkConfigCache
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -35,15 +37,18 @@ func Register(ctx context.Context, management *config.Management) error {
 	vcs := management.HarvesterNetworkFactory.Network().V1beta1().VlanConfig()
 	vss := management.HarvesterNetworkFactory.Network().V1beta1().VlanStatus()
 	lms := management.HarvesterNetworkFactory.Network().V1beta1().LinkMonitor()
+	hns := management.HarvesterNetworkFactory.Network().V1beta1().HostNetworkConfig()
 
 	h := Handler{
-		nodeClient: nodes,
-		vcCache:    vcs.Cache(),
-		vcClient:   vcs,
-		vsCache:    vss.Cache(),
-		vsClient:   vss,
-		lmCache:    lms.Cache(),
-		lmClient:   lms,
+		nodeClient:              nodes,
+		vcCache:                 vcs.Cache(),
+		vcClient:                vcs,
+		vsCache:                 vss.Cache(),
+		vsClient:                vss,
+		lmCache:                 lms.Cache(),
+		lmClient:                lms,
+		hostNetworkConfigClient: hns,
+		hostNetworkConfigCache:  hns.Cache(),
 	}
 
 	nodes.OnChange(ctx, controllerName, h.OnChange)
@@ -77,6 +82,10 @@ func (h Handler) OnChange(_ string, node *corev1.Node) (*corev1.Node, error) {
 		}
 	}
 
+	if err := h.updateHostNetworkAnnotation(node); err != nil {
+		return nil, fmt.Errorf("failed to update host network annotations, node: %s, error: %w", node.Name, err)
+	}
+
 	return node, nil
 }
 
@@ -95,6 +104,46 @@ func (h Handler) OnRemove(_ string, node *corev1.Node) (*corev1.Node, error) {
 	}
 
 	return node, nil
+}
+
+func (h Handler) updateHostNetworkConfigMatchedNodeAnnotation(hnc *networkv1.HostNetworkConfig, node *corev1.Node) error {
+	selector, err := metav1.LabelSelectorAsSelector(hnc.Spec.NodeSelector)
+	if err != nil {
+		return fmt.Errorf("failed to convert label selector, hnc: %s, error: %w", hnc.Name, err)
+	}
+
+	s := mapset.NewSet[string]()
+	if hnc.Annotations != nil && hnc.Annotations[utils.KeyMatchedNodes] != "" {
+		if err := s.UnmarshalJSON([]byte(hnc.Annotations[utils.KeyMatchedNodes])); err != nil {
+			return err
+		}
+	}
+
+	newSet := s.Clone()
+	if ok := selector.Matches(labels.Set(node.Labels)); ok {
+		newSet.Add(node.Name)
+	} else {
+		newSet.Remove(node.Name)
+	}
+
+	if newSet.Equal(s) {
+		return nil
+	}
+
+	hncCopy := hnc.DeepCopy()
+	if hncCopy.Annotations == nil {
+		hncCopy.Annotations = map[string]string{}
+	}
+	bytes, err := newSet.MarshalJSON()
+	if err != nil {
+		return err
+	}
+	hncCopy.Annotations[utils.KeyMatchedNodes] = string(bytes)
+	if _, err := h.hostNetworkConfigClient.Update(hncCopy); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (h Handler) updateMatchedNodeAnnotation(vc *networkv1.VlanConfig, node *corev1.Node) error {
@@ -224,6 +273,33 @@ func (h Handler) removeNodeFromOneVlanConfig(vc *networkv1.VlanConfig, nodeName 
 		}
 		if err := h.vsClient.Delete(vss[0].Name, &metav1.DeleteOptions{}); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+// update the matched node annotation of hostnetworkconfig to trigger hostnetworkconfig reconciliation
+func (h Handler) updateHostNetworkAnnotation(node *corev1.Node) error {
+	hostnetworkconfigs, err := h.hostNetworkConfigCache.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("failed to list hostnetworkconfigs, error: %w", err)
+	}
+
+	for _, hostnetworkconfig := range hostnetworkconfigs {
+		if hostnetworkconfig.DeletionTimestamp != nil {
+			continue
+		}
+
+		//matches all nodes
+		if hostnetworkconfig.Spec.NodeSelector == nil {
+			continue
+		}
+
+		err := h.updateHostNetworkConfigMatchedNodeAnnotation(hostnetworkconfig, node)
+		if err != nil {
+			return fmt.Errorf("failed to update hostnetworkconfig matched node annotation, hostnetworkconfig: %s, node: %s, error: %w",
+				hostnetworkconfig.Name, node.Name, err)
 		}
 	}
 

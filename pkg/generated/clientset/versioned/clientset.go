@@ -19,13 +19,14 @@ limitations under the License.
 package versioned
 
 import (
-	"fmt"
-	"net/http"
+	fmt "fmt"
+	http "net/http"
 
 	k8scnicncfiov1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/k8s.cni.cncf.io/v1"
 	kubeovnv1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/kubeovn.io/v1"
 	kubevirtv1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/kubevirt.io/v1"
 	networkv1beta1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/network.harvesterhci.io/v1beta1"
+	corev1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/v1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -33,6 +34,7 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
+	CoreV1() corev1.CoreV1Interface
 	K8sCniCncfIoV1() k8scnicncfiov1.K8sCniCncfIoV1Interface
 	KubeovnV1() kubeovnv1.KubeovnV1Interface
 	KubevirtV1() kubevirtv1.KubevirtV1Interface
@@ -42,10 +44,16 @@ type Interface interface {
 // Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
+	coreV1         *corev1.CoreV1Client
 	k8sCniCncfIoV1 *k8scnicncfiov1.K8sCniCncfIoV1Client
 	kubeovnV1      *kubeovnv1.KubeovnV1Client
 	kubevirtV1     *kubevirtv1.KubevirtV1Client
 	networkV1beta1 *networkv1beta1.NetworkV1beta1Client
+}
+
+// CoreV1 retrieves the CoreV1Client
+func (c *Clientset) CoreV1() corev1.CoreV1Interface {
+	return c.coreV1
 }
 
 // K8sCniCncfIoV1 retrieves the K8sCniCncfIoV1Client
@@ -112,6 +120,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 
 	var cs Clientset
 	var err error
+	cs.coreV1, err = corev1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 	cs.k8sCniCncfIoV1, err = k8scnicncfiov1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
@@ -149,6 +161,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
+	cs.coreV1 = corev1.New(c)
 	cs.k8sCniCncfIoV1 = k8scnicncfiov1.New(c)
 	cs.kubeovnV1 = kubeovnv1.New(c)
 	cs.kubevirtV1 = kubevirtv1.New(c)

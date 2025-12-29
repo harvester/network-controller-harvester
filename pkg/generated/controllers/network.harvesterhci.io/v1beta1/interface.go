@@ -32,6 +32,7 @@ func init() {
 
 type Interface interface {
 	ClusterNetwork() ClusterNetworkController
+	HostNetworkConfig() HostNetworkConfigController
 	LinkMonitor() LinkMonitorController
 	VlanConfig() VlanConfigController
 	VlanStatus() VlanStatusController
@@ -49,6 +50,10 @@ type version struct {
 
 func (v *version) ClusterNetwork() ClusterNetworkController {
 	return generic.NewNonNamespacedController[*v1beta1.ClusterNetwork, *v1beta1.ClusterNetworkList](schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "ClusterNetwork"}, "clusternetworks", v.controllerFactory)
+}
+
+func (v *version) HostNetworkConfig() HostNetworkConfigController {
+	return generic.NewNonNamespacedController[*v1beta1.HostNetworkConfig, *v1beta1.HostNetworkConfigList](schema.GroupVersionKind{Group: "network.harvesterhci.io", Version: "v1beta1", Kind: "HostNetworkConfig"}, "hostnetworkconfigs", v.controllerFactory)
 }
 
 func (v *version) LinkMonitor() LinkMonitorController {

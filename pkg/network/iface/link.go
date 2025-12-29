@@ -52,7 +52,7 @@ func (l *Link) AddBridgeVlan(vid uint16) error {
 	return nil
 }
 
-// DelBridgeVlan adds a new vlan filter entry
+// DelBridgeVlan dels the vlan filter entry
 // Equivalent to: `bridge vlan del dev DEV vid VID master`
 func (l *Link) DelBridgeVlan(vid uint16) error {
 	if vid == defaultPVID || vid == minVlanID {
@@ -60,6 +60,35 @@ func (l *Link) DelBridgeVlan(vid uint16) error {
 	}
 
 	if err := netlink.BridgeVlanDel(l, vid, false, false, false, true); err != nil {
+		return fmt.Errorf("delete iface vlan failed, error: %v, link: %s, vid: %d", err, l.Attrs().Name, vid)
+	}
+
+	return nil
+}
+
+// AddBridgeVlanSelf adds a new vlan filter entry to -br interface
+// Equivalent to: `bridge vlan add dev DEV vid VID self`
+func (l *Link) AddBridgeVlanSelf(vid uint16) error {
+	// The command to configure PVID is not `bridge vlan add dev DEV vid VID master`
+	if vid == defaultPVID || vid == minVlanID {
+		return nil
+	}
+
+	if err := netlink.BridgeVlanAdd(l, vid, false, false, true, false); err != nil {
+		return fmt.Errorf("add iface vlan failed, error: %v, link: %s, vid: %d", err, l.Attrs().Name, vid)
+	}
+
+	return nil
+}
+
+// DelBridgeVlan deletes a vlan filter entry from -br interface
+// Equivalent to: `bridge vlan del dev DEV vid VID self`
+func (l *Link) DelBridgeVlanSelf(vid uint16) error {
+	if vid == defaultPVID || vid == minVlanID {
+		return nil
+	}
+
+	if err := netlink.BridgeVlanDel(l, vid, false, false, true, false); err != nil {
 		return fmt.Errorf("delete iface vlan failed, error: %v, link: %s, vid: %d", err, l.Attrs().Name, vid)
 	}
 
@@ -268,4 +297,43 @@ func GetManuallyConfiguredVlans(cnName string) ([]uint16, error) {
 	}
 
 	return getManuallyConfiguredVlans(cnName, links), nil
+}
+
+func addrExists(link netlink.Link) (bool, error) {
+	addrs, err := netlink.AddrList(link, netlink.FAMILY_V4)
+	if err != nil {
+		return false, err
+	}
+	if len(addrs) != 0 {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func GetMgmtInterface() (vlanSubInterface string, err error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return "", err
+	}
+
+	for _, link := range links {
+		if utils.HasMgmtClusterNetworkVlanDevicePrefix(link.Attrs().Name) {
+			//check if the link mgmt-br.vlan-id has ip address configured
+			if exists, err := addrExists(link); err != nil {
+				return "", err
+			} else if exists {
+				return link.Attrs().Name, nil
+			}
+		} else if utils.HasMgmtClusterNetworkBridgePrefix(link.Attrs().Name) {
+			//check if the link mgmt-br has ip address configured
+			if exists, err := addrExists(link); err != nil {
+				return "", err
+			} else if exists {
+				return link.Attrs().Name, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no management interface found")
 }

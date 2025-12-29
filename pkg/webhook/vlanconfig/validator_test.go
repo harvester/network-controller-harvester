@@ -23,6 +23,7 @@ const (
 	testVMName    = "vm1"
 	testNamespace = "test"
 	testNewVCName = "newVC"
+	testNadConfig = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
 )
 
 func TestCreateVlanConfig(t *testing.T) {
@@ -303,16 +304,18 @@ func TestCreateVlanConfig(t *testing.T) {
 
 func TestUpdateVlanConfig(t *testing.T) {
 	tests := []struct {
-		name       string
-		returnErr  bool
-		errKey     string
-		currentCN  *networkv1.ClusterNetwork
-		otherVC    *networkv1.VlanConfig // other VCs under same cluster network
-		currentVS  *networkv1.VlanStatus
-		oldVC      *networkv1.VlanConfig // onChange, old
-		newVC      *networkv1.VlanConfig // onChange, new
-		currentNAD *cniv1.NetworkAttachmentDefinition
-		currentVmi *kubevirtv1.VirtualMachineInstance
+		name                     string
+		returnErr                bool
+		errKey                   string
+		currentCN                *networkv1.ClusterNetwork
+		otherVC                  *networkv1.VlanConfig // other VCs under same cluster network
+		currentVS                *networkv1.VlanStatus
+		oldVC                    *networkv1.VlanConfig // onChange, old
+		newVC                    *networkv1.VlanConfig // onChange, new
+		currentNAD               *cniv1.NetworkAttachmentDefinition
+		currentVmi               *kubevirtv1.VirtualMachineInstance
+		currentVm                *kubevirtv1.VirtualMachine
+		currentHostNetworkConfig *networkv1.HostNetworkConfig
 	}{
 		{
 			name:      "VlanConfig can be updated as no erros are detected",
@@ -564,6 +567,16 @@ func TestUpdateVlanConfig(t *testing.T) {
 				assert.Nil(t, err, "mock resource vmi should add into fake controller tracker")
 			}
 
+			if tc.currentVm != nil {
+				err := nchclientset.Tracker().Add(tc.currentVm)
+				assert.Nil(t, err, "mock resource vm should add into fake controller tracker")
+			}
+			if tc.currentHostNetworkConfig != nil {
+				hncClient := fakeclients.HostNetworkConfigClient(nchclientset.NetworkV1beta1().HostNetworkConfigs)
+				_, err := hncClient.Create(tc.currentHostNetworkConfig)
+				assert.NoError(t, err)
+			}
+
 			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
 
 			err := validator.Update(nil, tc.oldVC, tc.newVC)
@@ -582,12 +595,15 @@ func TestUpdateVlanConfig(t *testing.T) {
 
 func TestDeleteVlanConfig(t *testing.T) {
 	tests := []struct {
-		name      string
-		returnErr bool
-		errKey    string
-		currentCN *networkv1.ClusterNetwork
-		currentVC *networkv1.VlanConfig // delete this one
-		currentVS *networkv1.VlanStatus
+		name                     string
+		returnErr                bool
+		errKey                   string
+		currentCN                *networkv1.ClusterNetwork
+		currentVC                *networkv1.VlanConfig // delete this one
+		currentVS                *networkv1.VlanStatus
+		currentNAD               *cniv1.NetworkAttachmentDefinition
+		currentVm                *kubevirtv1.VirtualMachine
+		currentHostNetworkConfig *networkv1.HostNetworkConfig
 	}{
 		{
 			name:      "VlanConfig can be deleted as it has no matched nodes",
@@ -755,6 +771,25 @@ func TestDeleteVlanConfig(t *testing.T) {
 			}
 			if tc.currentVS != nil {
 				_, err := vsClient.Create(tc.currentVS)
+				assert.NoError(t, err)
+			}
+			if tc.currentNAD != nil {
+				nadGvr := schema.GroupVersionResource{
+					Group:    "k8s.cni.cncf.io",
+					Version:  "v1",
+					Resource: "network-attachment-definitions",
+				}
+				if err := nchclientset.Tracker().Create(nadGvr, tc.currentNAD.DeepCopy(), tc.currentNAD.Namespace); err != nil {
+					t.Fatalf("failed to add nad %+v", tc.currentNAD)
+				}
+			}
+			if tc.currentVm != nil {
+				err := nchclientset.Tracker().Add(tc.currentVm)
+				assert.Nil(t, err, "mock resource vm should add into fake controller tracker")
+			}
+			if tc.currentHostNetworkConfig != nil {
+				hncClient := fakeclients.HostNetworkConfigClient(nchclientset.NetworkV1beta1().HostNetworkConfigs)
+				_, err := hncClient.Create(tc.currentHostNetworkConfig)
 				assert.NoError(t, err)
 			}
 			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)

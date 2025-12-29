@@ -8,9 +8,10 @@ import (
 	"github.com/harvester/webhook/pkg/server/admission"
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
-	k8slabels "k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	ctlcniv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	kubeovnnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io/v1"
 	ctlkubevirtv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubevirt.io/v1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
@@ -33,11 +34,13 @@ type Validator struct {
 	vcCache       ctlnetworkv1.VlanConfigCache
 	subnetCache   kubeovnnetworkv1.SubnetCache
 	subnetEnabled bool
+	hncCache      ctlnetworkv1.HostNetworkConfigCache
+	nadCache      ctlcniv1.NetworkAttachmentDefinitionCache
 }
 
 var _ admission.Validator = &Validator{}
 
-func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkubevirtv1.VirtualMachineInstanceCache, cnCache ctlnetworkv1.ClusterNetworkCache, vcCache ctlnetworkv1.VlanConfigCache, subnetCache kubeovnnetworkv1.SubnetCache, subnetEnabled bool) *Validator {
+func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkubevirtv1.VirtualMachineInstanceCache, cnCache ctlnetworkv1.ClusterNetworkCache, vcCache ctlnetworkv1.VlanConfigCache, subnetCache kubeovnnetworkv1.SubnetCache, subnetEnabled bool, hncCache ctlnetworkv1.HostNetworkConfigCache, nadCache ctlcniv1.NetworkAttachmentDefinitionCache) *Validator {
 	return &Validator{
 		vmCache:       vmCache,
 		vmiCache:      vmiCache,
@@ -45,6 +48,8 @@ func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkube
 		vcCache:       vcCache,
 		subnetCache:   subnetCache,
 		subnetEnabled: subnetEnabled,
+		hncCache:      hncCache,
+		nadCache:      nadCache,
 	}
 }
 
@@ -145,11 +150,16 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 		return fmt.Errorf(deleteErr, nad.Namespace, nad.Name, err)
 	}
 
+	// check if any overlay vms exist on the cluster network used by the nad as underlay
+	if err := v.checkOverlayVMsUsingClusterNetwork(nad, nadConf.GetVlanID()); err != nil {
+		return fmt.Errorf(deleteErr, nad.Namespace, nad.Name, err)
+	}
+
 	return nil
 }
 
 func (v *Validator) checkSubnetsUsingNAD(nad *cniv1.NetworkAttachmentDefinition) error {
-	subnets, err := v.subnetCache.List(k8slabels.Everything())
+	subnets, err := v.subnetCache.List(labels.Everything())
 	if err != nil {
 		return fmt.Errorf("failed to retrieve subnets err=%v", err)
 	}
@@ -233,7 +243,7 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 
 	// get MTU value from vlanconfig
 	if !getMtu {
-		vcs, err := v.vcCache.List(k8slabels.Set(map[string]string{
+		vcs, err := v.vcCache.List(labels.Set(map[string]string{
 			utils.KeyClusterNetworkLabel: clusterNetwork,
 		}).AsSelector())
 		if err != nil {
@@ -322,6 +332,59 @@ func (v *Validator) checkVM(nad *cniv1.NetworkAttachmentDefinition) error {
 func (v *Validator) checkStorageNetwork(nad *cniv1.NetworkAttachmentDefinition) error {
 	if utils.IsStorageNetworkNad(nad) {
 		return fmt.Errorf("%s", storageNetworkErr)
+	}
+
+	return nil
+}
+
+// check if any vm exists for overlay nads (irrespective of clusternetwork)
+func (v *Validator) checkifVMExistsForOverlayNADs() (err error) {
+	// check if nad exists
+	var nadList []*cniv1.NetworkAttachmentDefinition
+	nadGetter := utils.NewNadGetter(v.nadCache)
+	if nadList, err = nadGetter.ListAllNads(); err != nil {
+		return fmt.Errorf("nad does not exist err %w", err)
+	}
+
+	for _, nad := range nadList {
+		if utils.IsOverlayNad(nad) {
+			if err := v.checkVM(nad); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// check if any overlay vm exists for the cluster network used by the nad as underlay
+func (v *Validator) checkOverlayVMsUsingClusterNetwork(nad *cniv1.NetworkAttachmentDefinition, vlanID int) error {
+	//vlanid 0 means it's not used as underlay, so skip the check
+	if vlanID == 0 {
+		return nil
+	}
+
+	clusterNetwork := utils.GetNadLabel(nad, utils.KeyClusterNetworkLabel)
+
+	hostnetworkconfigs, err := v.hncCache.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	for _, hostnetworkconfig := range hostnetworkconfigs {
+		if hostnetworkconfig.Spec.ClusterNetwork != clusterNetwork {
+			continue
+		}
+
+		if hostnetworkconfig.DeletionTimestamp != nil {
+			continue
+		}
+
+		if hostnetworkconfig.Spec.Underlay && int(hostnetworkconfig.Spec.VlanID) == vlanID {
+			if err := v.checkifVMExistsForOverlayNADs(); err != nil {
+				return fmt.Errorf("hostnetworkconfig %s is using nad %s vid %d as underlay on cluster network %s, %w", hostnetworkconfig.Name, nad.Name, vlanID, clusterNetwork, err)
+			}
+		}
 	}
 
 	return nil

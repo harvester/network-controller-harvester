@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -575,6 +576,8 @@ func TestCreateNAD(t *testing.T) {
 			nchclientset := fake.NewSimpleClientset()
 			vmCache := fakeclients.VirtualMachineCache(nchclientset.KubevirtV1().VirtualMachines)
 			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
+			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
+			hncCache := fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs)
 
 			// client to inject test data
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
@@ -592,7 +595,7 @@ func TestCreateNAD(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true, hncCache, nadCache)
 
 			err := validator.Create(nil, tc.newNAD)
 			assert.True(t, tc.returnErr == (err != nil))
@@ -668,7 +671,9 @@ func TestUpdateNAD(t *testing.T) {
 			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
-			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true)
+			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
+			hncCache := fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true, hncCache, nadCache)
 
 			nadGvr := schema.GroupVersionResource{
 				Group:    "k8s.cni.cncf.io",
@@ -694,12 +699,13 @@ func TestUpdateNAD(t *testing.T) {
 
 func TestDeleteNAD(t *testing.T) {
 	tests := []struct {
-		name       string
-		returnErr  bool
-		errKey     string
-		currentNAD *cniv1.NetworkAttachmentDefinition
-		currentVM  *kubevirtv1.VirtualMachine
-		currentVmi *kubevirtv1.VirtualMachineInstance
+		name                     string
+		returnErr                bool
+		errKey                   string
+		currentNAD               *cniv1.NetworkAttachmentDefinition
+		currentVM                *kubevirtv1.VirtualMachine
+		currentVmi               *kubevirtv1.VirtualMachineInstance
+		currentHostNetworkConfig *networkv1.HostNetworkConfig
 	}{
 		{
 			name:      "NAD can't be deleted as it has used VMIs",
@@ -821,6 +827,61 @@ func TestDeleteNAD(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:      "cannot delete nad when host network config is using it as underlay network",
+			returnErr: true,
+			errKey:    "still used by VM(s)",
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testNadName,
+					Namespace: testNamespace,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName, utils.KeyNetworkType: string(utils.OverlayNetwork)},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testNadConfig,
+				},
+			},
+			currentVM: &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testVMName,
+					Namespace: testNamespace,
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+						Spec: kubevirtv1.VirtualMachineInstanceSpec{
+							Networks: []kubevirtv1.Network{
+								{
+									Name: "nic-1",
+									NetworkSource: kubevirtv1.NetworkSource{
+										Multus: &kubevirtv1.MultusNetwork{
+											NetworkName: testNamespace + "/" + testNadName, // same with nad namesapce
+										},
+									},
+								},
+							},
+							Domain: kubevirtv1.DomainSpec{
+								Devices: kubevirtv1.Devices{
+									Interfaces: []kubevirtv1.Interface{
+										{
+											Name: "nic-1",
+										},
+									},
+								},
+							},
+						}, // vmi.spec
+					},
+				},
+			},
+			currentHostNetworkConfig: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					ClusterNetwork: testCnName,
+					VlanID:         300,
+					Mode:           "static",
+					HostIPs:        map[string]networkv1.IPAddr{"node1": "192.168.1.100/24"},
+					Underlay:       true,
+				},
+			},
+		},
 	}
 
 	currentSubnet := &kubeovnv1.Subnet{
@@ -848,7 +909,9 @@ func TestDeleteNAD(t *testing.T) {
 			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
-			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true)
+			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
+			hncCache := fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true, hncCache, nadCache)
 
 			if tc.currentVM != nil {
 				err := nchclientset.Tracker().Add(tc.currentVM)
@@ -865,7 +928,14 @@ func TestDeleteNAD(t *testing.T) {
 				assert.Nil(t, err, "mock resource subnet should add into fake controller tracker")
 			}
 
+			if tc.currentHostNetworkConfig != nil {
+				hncClient := fakeclients.HostNetworkConfigClient(nchclientset.NetworkV1beta1().HostNetworkConfigs)
+				_, err := hncClient.Create(tc.currentHostNetworkConfig)
+				assert.NoError(t, err)
+			}
+
 			err := validator.Delete(nil, tc.currentNAD)
+			logrus.Infof("Delete NAD test case '%s' result error: %v", tc.name, err)
 			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
