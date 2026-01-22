@@ -139,8 +139,7 @@ func TestL2NetConf(t *testing.T) {
 			}
 			assert.True(t, !l2conf.IsKubeOVNCNI())
 
-			var nads []*nadv1.NetworkAttachmentDefinition
-			nads = append(nads, tc.nad)
+			nads := []*nadv1.NetworkAttachmentDefinition{tc.nad}
 			vis, err := NewVlanIDSetFromNadList(nads)
 			assert.Nil(t, err)
 			assert.NotNil(t, vis)
