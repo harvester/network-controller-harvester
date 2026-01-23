@@ -145,10 +145,13 @@ func linkToLinkStatus(l netlink.Link) networkv1.LinkStatus {
 		MasterIndex: l.Attrs().MasterIndex,
 	}
 
-	if l.Attrs().OperState == netlink.OperUp {
+	switch l.Attrs().OperState {
+	case netlink.OperUp:
 		linkStatus.State = networkv1.LinkUp
-	} else {
+	case netlink.OperDown:
 		linkStatus.State = networkv1.LinkDown
+	default:
+		linkStatus.State = networkv1.LinkUnknown
 	}
 
 	return linkStatus
