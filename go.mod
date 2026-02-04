@@ -60,8 +60,8 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.31.1
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.10
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.10
-	kubevirt.io/api => github.com/kubevirt/api v1.6.0
-	kubevirt.io/client-go => github.com/kubevirt/client-go v1.6.0
+	kubevirt.io/api => github.com/kubevirt/api v1.7.0
+	kubevirt.io/client-go => github.com/kubevirt/client-go v1.7.0
 	launchpad.net/gocheck v0.0.0-20140225173054-000000000087 => github.com/go-check/check v0.0.0-20180628173108-788fd7840127
 	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.7.3
 	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.19.7
@@ -89,10 +89,10 @@ require (
 	github.com/urfave/cli v1.22.16
 	github.com/vishvananda/netlink v1.3.1
 	k8s.io/api v0.33.5
-	k8s.io/apiextensions-apiserver v0.33.0
+	k8s.io/apiextensions-apiserver v0.33.5
 	k8s.io/apimachinery v0.33.5
 	k8s.io/client-go v12.0.0+incompatible
-	kubevirt.io/api v1.6.0
+	kubevirt.io/api v1.7.0
 	sigs.k8s.io/controller-runtime v0.20.2
 )
 
@@ -166,7 +166,7 @@ require (
 	k8s.io/kube-aggregator v0.32.1 // indirect
 	k8s.io/kube-openapi v0.31.9 // indirect
 	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979 // indirect
-	kubevirt.io/containerized-data-importer-api v1.61.0 // indirect
+	kubevirt.io/containerized-data-importer-api v1.63.1 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
