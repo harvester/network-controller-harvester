@@ -17,7 +17,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -158,30 +157,6 @@ func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 		return nil, nil
 	}
 
-	cnName, ok := nad.Labels[utils.KeyClusterNetworkLabel]
-	if !ok || cnName == "" {
-		// not a managed NAD or uses default mgmt network, skip orphan check
-		return nad, nil
-	}
-
-	_, err := h.cnCache.Get(cnName)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			// only delete if it's a VLAN NAD
-			if !utils.IsVlanNad(nad) {
-				return nad, nil
-			}
-			// clusterNetwork is missing, so this NAD is orphaned, should be deleted
-			logrus.Infof("deleting orphaned NetworkAttachmentDefinition %s/%s as its cluster network %s is missing", nad.Namespace, nad.Name, cnName)
-			if err := h.nadClient.Delete(nad.Namespace, nad.Name, &metav1.DeleteOptions{}); err != nil {
-				return nad, fmt.Errorf("failed to delete orphaned nad %s/%s: %w", nad.Namespace, nad.Name, err)
-			}
-			return nil, nil
-		}
-
-		return nad, fmt.Errorf("failed to get cluster network %s from cache: %w", cnName, err)
-	}
-
 	logrus.Infof("nad configuration %s/%s has been changed: %s", nad.Namespace, nad.Name, nad.Spec.Config)
 
 	netconf, updated, err := h.ensureLabels(nad)
@@ -193,6 +168,12 @@ func (h Handler) OnChange(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 		// following IsVlanNad depends on those labels
 		// wait until it is updated and then go to below
 		return nad, nil
+	}
+
+	if deleted, err := h.deleteOrphanedNAD(nad); err != nil {
+		return nad, err
+	} else if deleted {
+		return nil, nil
 	}
 
 	// overlay nad does not trigger following steps
@@ -238,6 +219,10 @@ func (h Handler) OnRemove(_ string, nad *cniv1.NetworkAttachmentDefinition) (*cn
 	// nad change triggers the re-compute of cn's vlanset
 	// due to the existing of trunk mode nad, deleting any nad might not cause changes on the birdge's vlan
 	if err := h.UpdateClusterNetworkVlanSet(nad); err != nil {
+		if apierrors.IsNotFound(err) {
+			// ClusterNetwork already gone, nothing left to do
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -694,4 +679,29 @@ func (c *checkMap) removeItem(namespace, name string) {
 		delete(c.items, nn)
 		c.mutex.Unlock()
 	}
+}
+
+func (h Handler) deleteOrphanedNAD(nad *cniv1.NetworkAttachmentDefinition) (bool, error) {
+	cnName, ok := nad.Labels[utils.KeyClusterNetworkLabel]
+	if !ok || cnName == "" {
+		// unmanaged NAD, do not delete
+		return false, nil
+	}
+
+	_, err := h.cnCache.Get(cnName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			logrus.Infof(
+				"deleting orphaned NetworkAttachmentDefinition %s/%s as ClusterNetwork %s is missing",
+				nad.Namespace, nad.Name, cnName,
+			)
+			if err := h.nadClient.Delete(nad.Namespace, nad.Name, &metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+				return false, err
+			}
+			return true, nil
+		}
+		return false, err
+	}
+
+	return false, nil
 }
