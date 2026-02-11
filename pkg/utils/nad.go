@@ -622,8 +622,11 @@ func isMaskZero(ipnet *net.IPNet) bool {
 	return true
 }
 
-// if this nad is a storagenetwork nad
-func IsStorageNetworkNad(nad *nadv1.NetworkAttachmentDefinition) bool {
+// IsStorageNetworkNad Checks if the specified NAS is a `storagenetwork` NAD.
+// If the `detailed` parameter is set to true, it will perform additional
+// checks to ensure that the NAD is indeed a storage network NAD, even
+// if the specific annotation is missing.
+func IsStorageNetworkNad(nad *nadv1.NetworkAttachmentDefinition, detailed bool) bool {
 	if nad == nil || nad.Namespace != HarvesterSystemNamespaceName {
 		return false
 	}
@@ -633,9 +636,14 @@ func IsStorageNetworkNad(nad *nadv1.NetworkAttachmentDefinition) bool {
 		return true
 	}
 
-	// check name
-	if strings.HasPrefix(nad.Name, StorageNetworkNetAttachDefPrefix) {
-		return true
+	// Do some additional check to make sure the NAD is a storage network NAD
+	// when annotation is missing, as the annotation may be removed by mistake
+	// or intention.
+	if detailed {
+		// check name
+		if strings.HasPrefix(nad.Name, StorageNetworkNetAttachDefPrefix) {
+			return true
+		}
 	}
 
 	return false
@@ -647,7 +655,7 @@ func FilterFirstActiveStorageNetworkNad(nads []*nadv1.NetworkAttachmentDefinitio
 		return nil
 	}
 	for _, nad := range nads {
-		if IsStorageNetworkNad(nad) && nad.DeletionTimestamp == nil {
+		if IsStorageNetworkNad(nad, true) && nad.DeletionTimestamp == nil {
 			return nad
 		}
 	}

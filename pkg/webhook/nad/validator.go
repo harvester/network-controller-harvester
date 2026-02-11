@@ -112,7 +112,7 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 
 	// storagenetwork nad's params can't be changed, the only way is to clear & set storagenetwork
 	// then all storagenetwork related PODs will be replaced with new nad
-	if err := v.checkStorageNetwork(newNad); err != nil {
+	if err := v.checkStorageNetwork(newNad, true); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
@@ -122,7 +122,7 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	nad := oldObj.(*cniv1.NetworkAttachmentDefinition)
 
-	if err := v.checkStorageNetwork(nad); err != nil {
+	if err := v.checkStorageNetwork(nad, false); err != nil {
 		return fmt.Errorf(deleteErr, nad.Namespace, nad.Name, err)
 	}
 
@@ -323,8 +323,8 @@ func (v *Validator) checkVM(nad *cniv1.NetworkAttachmentDefinition) error {
 	return nil
 }
 
-func (v *Validator) checkStorageNetwork(nad *cniv1.NetworkAttachmentDefinition) error {
-	if utils.IsStorageNetworkNad(nad) {
+func (v *Validator) checkStorageNetwork(nad *cniv1.NetworkAttachmentDefinition, detailed bool) error {
+	if utils.IsStorageNetworkNad(nad, detailed) {
 		return fmt.Errorf("%s", storageNetworkErr)
 	}
 
