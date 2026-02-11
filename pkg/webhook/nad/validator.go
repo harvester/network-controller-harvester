@@ -122,9 +122,13 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	nad := oldObj.(*cniv1.NetworkAttachmentDefinition)
 
+	if err := v.checkStorageNetwork(nad); err != nil {
+		return fmt.Errorf(deleteErr, nad.Namespace, nad.Name, err)
+	}
+
 	nadConf, err := utils.DecodeNadConfigToNetConf(nad)
 	if err != nil {
-		return fmt.Errorf(updateErr, nad.Namespace, nad.Name, err)
+		return fmt.Errorf(deleteErr, nad.Namespace, nad.Name, err)
 	}
 
 	// do not delete nad when a subnet is using it

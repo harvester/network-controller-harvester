@@ -1,6 +1,7 @@
 package nad
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -818,6 +819,44 @@ func TestDeleteNAD(t *testing.T) {
 				},
 				Spec: cniv1.NetworkAttachmentDefinitionSpec{
 					Config: testKubeOVNNadConfig,
+				},
+			},
+		},
+		{
+			name:      "NAD cannot be deleted because it is used by storage-network (with annotation)",
+			returnErr: true,
+			errKey:    storageNetworkErr,
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        fmt.Sprintf("%s-aaaaa", utils.StorageNetworkNetAttachDefPrefix),
+					Namespace:   utils.HarvesterSystemNamespaceName,
+					Annotations: map[string]string{utils.StorageNetworkAnnotation: "true"},
+				},
+			},
+		},
+		{
+			name:      "NAD cannot be deleted because it is used by storage-network (w/o annotation)",
+			returnErr: true,
+			errKey:    storageNetworkErr,
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fmt.Sprintf("%s-bbbbb", utils.StorageNetworkNetAttachDefPrefix),
+					Namespace: utils.HarvesterSystemNamespaceName,
+				},
+			},
+		},
+		{
+			name:      "Failure because of invalid JSON",
+			returnErr: true,
+			errKey:    "can't delete nad test/net1-vlan because failed to unmarshal nad",
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testNadName,
+					Namespace: testNamespace,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\",\"name\":\"bad\"}", // intentionally invalid JSON
 				},
 			},
 		},
