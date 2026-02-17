@@ -253,7 +253,7 @@ func getManuallyConfiguredVlans(cnName string, links []netlink.Link) []uint16 {
 		}
 		// work on [2..4094]
 		if vid > utils.DefaultVlanID && vid <= utils.MaxVlanID {
-			vids = append(vids, uint16(vid))
+			vids = append(vids, uint16(vid)) // #nosec G115 -- vid within the expected range is safe to convert to uint16
 		}
 	}
 	return vids

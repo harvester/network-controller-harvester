@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 
@@ -17,6 +18,7 @@ import (
 )
 
 const (
+	testVMName                     = "vm1"
 	testSubnetName                 = "vswitch1"
 	testSubnetNamespace            = "default"
 	testKubeOVNNadName             = "vswitch1"
@@ -279,6 +281,7 @@ func TestCreateSubnet(t *testing.T) {
 			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			vpcCache := fakeclients.VpcCache(nchclientset.KubeovnV1().Vpcs)
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
+			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
 
 			nadGvr := schema.GroupVersionResource{
 				Group:    "k8s.cni.cncf.io",
@@ -312,7 +315,7 @@ func TestCreateSubnet(t *testing.T) {
 				assert.Nil(t, err, "mock resource subnet should add into fake controller tracker")
 			}
 
-			validator := NewSubnetValidator(nadCache, subnetCache, vpcCache)
+			validator := NewSubnetValidator(nadCache, subnetCache, vpcCache, vmiCache)
 
 			err := validator.Create(nil, tc.newSubnet)
 			assert.True(t, tc.returnErr == (err != nil))
@@ -326,11 +329,12 @@ func TestCreateSubnet(t *testing.T) {
 
 func TestUpdateSubnet(t *testing.T) {
 	tests := []struct {
-		name      string
-		returnErr bool
-		errKey    string
-		oldSubnet *kubeovnv1.Subnet
-		newSubnet *kubeovnv1.Subnet
+		name       string
+		returnErr  bool
+		errKey     string
+		oldSubnet  *kubeovnv1.Subnet
+		newSubnet  *kubeovnv1.Subnet
+		currentVmi *kubevirtv1.VirtualMachineInstance
 	}{
 		{
 			name:      "cannot update provider when VMs are using it, return error",
@@ -396,6 +400,99 @@ func TestUpdateSubnet(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:      "cannot update DHCP settings when VMs are using it",
+			returnErr: true,
+			errKey:    "cannot update DHCP setting",
+			oldSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSubnetName,
+					Namespace: testSubnetNamespace,
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:        "test1",
+					Protocol:   "IPv4",
+					Provider:   "vswitch1.default.ovn",
+					CIDRBlock:  "172.20.0.0/24",
+					Gateway:    "172.20.0.1",
+					EnableDHCP: true,
+				},
+			},
+			newSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSubnetName,
+					Namespace: testSubnetNamespace,
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:        "test1",
+					Protocol:   "IPv4",
+					Provider:   "vswitch1.default.ovn",
+					CIDRBlock:  "172.20.0.0/24",
+					Gateway:    "172.20.0.1",
+					EnableDHCP: false,
+				},
+			},
+			currentVmi: &kubevirtv1.VirtualMachineInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testVMName,
+					Namespace: testNamespace,
+				},
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					Networks: []kubevirtv1.Network{
+						{
+							Name: "nic-1",
+							NetworkSource: kubevirtv1.NetworkSource{
+								Multus: &kubevirtv1.MultusNetwork{
+									NetworkName: testNamespace + "/" + testKubeOVNNadName,
+								},
+							},
+						},
+					},
+					Domain: kubevirtv1.DomainSpec{
+						Devices: kubevirtv1.Devices{
+							Interfaces: []kubevirtv1.Interface{
+								{
+									Name: "nic-1",
+								},
+							},
+						},
+					},
+				}, // vmi.spec
+			}, // vmi
+		},
+		{
+			name:      "update DHCP settings without error when VMs are not using it",
+			returnErr: false,
+			errKey:    "",
+			oldSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSubnetName,
+					Namespace: testSubnetNamespace,
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:        "test1",
+					Protocol:   "IPv4",
+					Provider:   "vswitch1.default.ovn",
+					CIDRBlock:  "172.20.0.0/24",
+					Gateway:    "172.20.0.1",
+					EnableDHCP: true,
+				},
+			},
+			newSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSubnetName,
+					Namespace: testSubnetNamespace,
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:        "test1",
+					Protocol:   "IPv4",
+					Provider:   "vswitch1.default.ovn",
+					CIDRBlock:  "172.20.0.0/24",
+					Gateway:    "172.20.0.1",
+					EnableDHCP: false,
+				},
+			},
+		},
 	}
 
 	currentNAD := &cniv1.NetworkAttachmentDefinition{
@@ -411,7 +508,7 @@ func TestUpdateSubnet(t *testing.T) {
 
 	currentVpc := &kubeovnv1.Vpc{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test",
+			Name: "test1",
 		},
 	}
 
@@ -427,6 +524,7 @@ func TestUpdateSubnet(t *testing.T) {
 			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			vpcCache := fakeclients.VpcCache(nchclientset.KubeovnV1().Vpcs)
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
+			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
 
 			nadGvr := schema.GroupVersionResource{
 				Group:    "k8s.cni.cncf.io",
@@ -438,12 +536,17 @@ func TestUpdateSubnet(t *testing.T) {
 				t.Fatalf("failed to add nad %+v", currentNAD)
 			}
 
+			if tc.currentVmi != nil {
+				err := nchclientset.Tracker().Add(tc.currentVmi)
+				assert.Nil(t, err, "mock resource vmi should add into fake controller tracker")
+			}
+
 			if currentVpc != nil {
 				err := nchclientset.Tracker().Add(currentVpc)
 				assert.Nil(t, err, "mock resource vpc should add into fake controller tracker")
 			}
 
-			validator := NewSubnetValidator(nadCache, subnetCache, vpcCache)
+			validator := NewSubnetValidator(nadCache, subnetCache, vpcCache, vmiCache)
 
 			err := validator.Update(nil, tc.oldSubnet, tc.newSubnet)
 			assert.True(t, tc.returnErr == (err != nil))

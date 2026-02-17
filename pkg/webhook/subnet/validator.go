@@ -3,8 +3,10 @@ package subnet
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/harvester/webhook/pkg/server/admission"
+	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -13,6 +15,7 @@ import (
 
 	ctlcniv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	kubeovnnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io/v1"
+	ctlkubevirtv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubevirt.io/v1"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
@@ -21,15 +24,17 @@ type Validator struct {
 	nadCache    ctlcniv1.NetworkAttachmentDefinitionCache
 	subnetCache kubeovnnetworkv1.SubnetCache
 	vpcCache    kubeovnnetworkv1.VpcCache
+	vmiCache    ctlkubevirtv1.VirtualMachineInstanceCache
 }
 
 var _ admission.Validator = &Validator{}
 
-func NewSubnetValidator(nadCache ctlcniv1.NetworkAttachmentDefinitionCache, subnetCache kubeovnnetworkv1.SubnetCache, vpcCache kubeovnnetworkv1.VpcCache) *Validator {
+func NewSubnetValidator(nadCache ctlcniv1.NetworkAttachmentDefinitionCache, subnetCache kubeovnnetworkv1.SubnetCache, vpcCache kubeovnnetworkv1.VpcCache, vmiCache ctlkubevirtv1.VirtualMachineInstanceCache) *Validator {
 	return &Validator{
 		nadCache:    nadCache,
 		subnetCache: subnetCache,
 		vpcCache:    vpcCache,
+		vmiCache:    vmiCache,
 	}
 }
 
@@ -106,6 +111,46 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	err = v.checkIfVpcExists(newSubnetSpec.Vpc)
 	if err != nil {
 		return fmt.Errorf("vpc does not exist for subnet %s err=%v", newSubnet.Name, err)
+	}
+
+	//DHCP setting update is allowed when there is no VM using the subnet, otherwise the VMs must be stopped before update
+	//This will make sure to update the interface binding method on the VM from managedtap(dhcp enabled) to bridge(dhcp disabled) or vice versa.
+	err = v.canUpdateDHCPSetting(oldSubnet, newSubnet)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (v *Validator) canUpdateDHCPSetting(oldSubnet, newSubnet *kubeovnv1.Subnet) error {
+	if oldSubnet.Spec.EnableDHCP == newSubnet.Spec.EnableDHCP {
+		return nil
+	}
+
+	nadName, nadNamespace, err := utils.GetNadNameFromProvider(newSubnet.Spec.Provider)
+	if err != nil {
+		return err
+	}
+
+	subnetNad, err := v.nadCache.Get(nadNamespace, nadName)
+	if err != nil {
+		return fmt.Errorf("failed to get nad %s in namespace %s for subnet %s err=%v", nadName, nadNamespace, newSubnet.Name, err)
+	}
+	if err := v.checkVmi(subnetNad); err != nil {
+		return fmt.Errorf("cannot update DHCP setting for subnet %s as VMs are still using it, stop the VMs and update err:%w", newSubnet.Name, err)
+	}
+
+	return nil
+}
+
+func (v *Validator) checkVmi(nad *cniv1.NetworkAttachmentDefinition) error {
+	vmiGetter := utils.NewVmiGetter(v.vmiCache)
+	// get all, no filter
+	if vmiStrList, err := vmiGetter.VmiNamesWhoUseNad(nad, false, nil); err != nil {
+		return err
+	} else if len(vmiStrList) > 0 {
+		return fmt.Errorf("it's still used by VM(s) %s which must be stopped at first", strings.Join(vmiStrList, ", "))
 	}
 
 	return nil

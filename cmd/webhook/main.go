@@ -149,7 +149,7 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 	}
 
 	if crdExists {
-		validators = append(validators, subnet.NewSubnetValidator(c.nadCache, c.kubeovnsubnetCache, c.kubeovnvpcCache))
+		validators = append(validators, subnet.NewSubnetValidator(c.nadCache, c.kubeovnsubnetCache, c.kubeovnvpcCache, c.vmiCache))
 	}
 
 	if err := webhookServer.RegisterValidators(validators...); err != nil {
