@@ -23,6 +23,7 @@ type Handler struct {
 	cnClient ctlnetworkv1.ClusterNetworkClient
 	cnCache  ctlnetworkv1.ClusterNetworkCache
 	vsCache  ctlnetworkv1.VlanStatusCache
+	vcCache  ctlnetworkv1.VlanConfigCache
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -34,9 +35,11 @@ func Register(ctx context.Context, management *config.Management) error {
 		cnClient: cns,
 		cnCache:  cns.Cache(),
 		vsCache:  vss.Cache(),
+		vcCache:  vcs.Cache(),
 	}
 
 	vcs.OnChange(ctx, ControllerName, handler.EnsureClusterNetwork)
+	vcs.OnRemove(ctx, ControllerName, handler.OnVlanConfigRemove)
 	vss.OnChange(ctx, ControllerName, handler.SetClusterNetworkReady)
 	vss.OnRemove(ctx, ControllerName, handler.SetClusterNetworkUnready)
 
@@ -104,6 +107,7 @@ func (h Handler) ensureClusterNetwork(vc *networkv1.VlanConfig) error {
 			// do not compare KeyMTUSourceVlanConfig, which is only used for reference
 			return nil
 		}
+
 		// update the new MTU, e.g. a new MTU value is set on the vlanconfig
 		cnCopy := curCn.DeepCopy()
 		if cnCopy.Annotations == nil {
@@ -112,8 +116,9 @@ func (h Handler) ensureClusterNetwork(vc *networkv1.VlanConfig) error {
 		cnCopy.Annotations[utils.KeyUplinkMTU] = targetMTU
 		cnCopy.Annotations[utils.KeyMTUSourceVlanConfig] = vc.Name
 		if _, err := h.cnClient.Update(cnCopy); err != nil {
-			return fmt.Errorf("failed to update cluster network %s annotation %s with MTU %s error %w", name, utils.KeyUplinkMTU, targetMTU, err)
+			return fmt.Errorf("failed to update cluster network %s annotation %s with MTU %s: %w", name, utils.KeyUplinkMTU, targetMTU, err)
 		}
+
 		logrus.Infof("update cluster network %s annotation %s to %s", name, utils.KeyUplinkMTU, targetMTU)
 		return nil
 	}
@@ -182,4 +187,98 @@ func (h Handler) setClusterNetworkUnready(vs *networkv1.VlanStatus) error {
 	}
 
 	return nil
+}
+
+func (h Handler) OnVlanConfigRemove(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
+	if vc == nil {
+		return nil, nil
+	}
+
+	cnName := vc.Spec.ClusterNetwork
+	cn, err := h.cnCache.Get(cnName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// Abort if the deleted `VlanConfig` is not matching the annotated one.
+	if cn.Annotations[utils.KeyMTUSourceVlanConfig] != vc.Name {
+		return nil, nil
+	}
+
+	// Try to find another `VlanConfig` for this cluster network.
+	vcs, err := h.vcCache.List(labels.Set(map[string]string{
+		utils.KeyClusterNetworkLabel: cnName,
+	}).AsSelector())
+	if err != nil {
+		return nil, err
+	}
+
+	// Find a candidate (and ignore deleted `VlanConfig`s that are still
+	// present in the list). Prefer a candidate with a non-zero MTU, and only
+	// fall back to a zero-MTU candidate if no non-zero MTU candidates exist.
+	var (
+		vcCandidate     *networkv1.VlanConfig
+		vcCandidateZero *networkv1.VlanConfig
+	)
+	for _, item := range vcs {
+		if item.Name == vc.Name || item.DeletionTimestamp != nil {
+			continue
+		}
+		mtu := utils.GetMTUFromVlanConfig(item)
+		if !utils.IsValidMTU(mtu) {
+			continue
+		}
+		if mtu == 0 {
+			// Record the first found zero-MTU candidate as a fallback, but
+			// keep searching for a non-zero MTU candidate.
+			if vcCandidateZero == nil {
+				vcCandidateZero = item
+			}
+			continue
+		}
+		// Prefer the first found non-zero MTU candidate.
+		vcCandidate = item
+		break
+	}
+
+	// Choose the best available candidate: prefer non-zero MTU, otherwise
+	// fall back to a zero-MTU candidate (if any).
+	if vcCandidate == nil {
+		vcCandidate = vcCandidateZero
+	}
+
+	cnCopy := cn.DeepCopy()
+	if cnCopy.Annotations == nil {
+		cnCopy.Annotations = make(map[string]string)
+	}
+
+	if vcCandidate != nil {
+		mtu := utils.MTUDefaultTo(utils.GetMTUFromVlanConfig(vcCandidate))
+
+		// Please note that updating the MTU annotation here may be redundant,
+		// as all `VlanConfig`s should have the same MTU value. However, it is
+		// safer to update them in case the boundary conditions change in the
+		// future.
+		cnCopy.Annotations[utils.KeyUplinkMTU] = fmt.Sprintf("%v", mtu)
+		cnCopy.Annotations[utils.KeyMTUSourceVlanConfig] = vcCandidate.Name
+		if _, err := h.cnClient.Update(cnCopy); err != nil {
+			return nil, fmt.Errorf("failed to update cluster network %s after deleting source vlan config %s: %w", cnName, vc.Name, err)
+		}
+
+		logrus.Infof("Cluster network %s MTU source vlan config switched from %s to %s", cnName, vc.Name, vcCandidate.Name)
+		return nil, nil
+	}
+
+	// No candidate found, remove the annotations.
+	delete(cnCopy.Annotations, utils.KeyMTUSourceVlanConfig)
+	delete(cnCopy.Annotations, utils.KeyUplinkMTU)
+	if _, err := h.cnClient.Update(cnCopy); err != nil {
+		return nil, fmt.Errorf("failed to clear cluster network %s MTU annotations after deleting source vlan config %s: %w", cnName, vc.Name, err)
+	}
+
+	logrus.Infof("Cluster network %s MTU source vlan config %s removed as no remaining vlan config found", cnName, vc.Name)
+	return nil, nil
 }

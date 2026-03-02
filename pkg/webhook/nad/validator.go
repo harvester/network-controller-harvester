@@ -221,7 +221,7 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 
 	// get MTU from clusternetwork
 	if mtuStr, ok := cn.Annotations[utils.KeyUplinkMTU]; ok {
-		mtu, err := utils.GetMTUFromAnnotation(mtuStr)
+		mtu, err := utils.GetMTUFromString(mtuStr)
 		if err != nil {
 			return fmt.Errorf("nad's host cluster network %v has invalid MTU annotation %v/%v %w", cn.Name, utils.KeyUplinkMTU, mtuStr, err)
 		}

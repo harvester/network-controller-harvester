@@ -262,7 +262,7 @@ func (v *Validator) validateMTU(current *networkv1.VlanConfig) error {
 	}
 
 	for _, vc := range vcs {
-		if vc.Name == current.Name {
+		if vc.Name == current.Name || vc.DeletionTimestamp != nil {
 			continue
 		}
 		vcMtu := utils.GetMTUFromVlanConfig(vc)

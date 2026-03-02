@@ -149,7 +149,7 @@ func (c *CnValidator) checkMTUOfUpdatedClusterNetwork(oldCn, newCn *networkv1.Cl
 	newMtu := utils.DefaultMTU
 	var err error
 	if mtuStr, ok := newCn.Annotations[utils.KeyUplinkMTU]; ok {
-		if newMtu, err = utils.GetMTUFromAnnotation(mtuStr); err != nil {
+		if newMtu, err = utils.GetMTUFromString(mtuStr); err != nil {
 			return err
 		}
 	}
@@ -163,6 +163,10 @@ func (c *CnValidator) checkMTUOfUpdatedClusterNetwork(oldCn, newCn *networkv1.Cl
 	}
 
 	for _, vc := range vcs {
+		// Skip `VlanConfig` that are going to be deleted but still exist in the cache.
+		if vc.DeletionTimestamp != nil {
+			continue
+		}
 		vcMtu := utils.GetMTUFromVlanConfig(vc)
 		if !utils.AreEqualMTUs(vcMtu, newMtu) {
 			return fmt.Errorf("clusternetwork has MTU %v, but the vlanconfigs %v has another MTU %v", newMtu, vc.Name, vcMtu)
@@ -184,14 +188,14 @@ func (c *CnValidator) checkMTUOfUpdatedMgmtClusterNetwork(oldCn, newCn *networkv
 	newMtu := utils.DefaultMTU
 	var err error
 	if mtuStr, ok := newCn.Annotations[utils.KeyUplinkMTU]; ok {
-		if newMtu, err = utils.GetMTUFromAnnotation(mtuStr); err != nil {
+		if newMtu, err = utils.GetMTUFromString(mtuStr); err != nil {
 			return err
 		}
 	}
 
 	oldMtu := utils.DefaultMTU
 	if mtuStr, ok := oldCn.Annotations[utils.KeyUplinkMTU]; ok {
-		if oldMtu, err = utils.GetMTUFromAnnotation(mtuStr); err != nil {
+		if oldMtu, err = utils.GetMTUFromString(mtuStr); err != nil {
 			return err
 		}
 	}

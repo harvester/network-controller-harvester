@@ -110,7 +110,7 @@ func (h Handler) OnCNChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.
 		return nil, nil
 	}
 
-	MTU, err := utils.GetMTUFromAnnotation(curMTU)
+	MTU, err := utils.GetMTUFromString(curMTU)
 	// skip if MTU is invalid
 	if err != nil {
 		logrus.Infof("cluster network %v has MTU annotation %v/%v with invalid value, skip to sync with nad %s", cn.Name, utils.KeyUplinkMTU, curMTU, err.Error())

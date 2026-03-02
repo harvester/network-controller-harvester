@@ -206,7 +206,7 @@ func (m *Mutator) patchMTU(nad *cniv1.NetworkAttachmentDefinition) (admission.Pa
 
 	// get MTU from clusternetwork
 	if mtuStr, ok := cn.Annotations[utils.KeyUplinkMTU]; ok {
-		mtu, err := utils.GetMTUFromAnnotation(mtuStr)
+		mtu, err := utils.GetMTUFromString(mtuStr)
 		if err != nil {
 			return nil, fmt.Errorf("nad's host cluster network %v has invalid MTU annotation %v/%v %w", cn.Name, utils.KeyUplinkMTU, mtuStr, err)
 		}
