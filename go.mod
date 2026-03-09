@@ -1,8 +1,6 @@
 module github.com/harvester/harvester-network-controller
 
-go 1.25
-
-toolchain go1.25.3
+go 1.25.7
 
 replace (
 	github.com/containerd/containerd => github.com/containerd/containerd v1.6.18
@@ -33,16 +31,16 @@ replace (
 	golang.org/x/net => golang.org/x/net v0.38.0
 	google.golang.org/grpc => google.golang.org/grpc v1.69.4
 	helm.sh/helm/v3 => github.com/rancher/helm/v3 v3.9.0-rancher1
-	k8s.io/api => k8s.io/api v0.33.5
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.33.5
-	k8s.io/apimachinery => k8s.io/apimachinery v0.33.5
-	k8s.io/apiserver => k8s.io/apiserver v0.33.5
+	k8s.io/api => k8s.io/api v0.33.7
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.33.7
+	k8s.io/apimachinery => k8s.io/apimachinery v0.33.7
+	k8s.io/apiserver => k8s.io/apiserver v0.33.7
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.24.10
-	k8s.io/client-go => k8s.io/client-go v0.33.5
+	k8s.io/client-go => k8s.io/client-go v0.33.7
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.24.10
 	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.24.10
-	k8s.io/code-generator => k8s.io/code-generator v0.33.5
-	k8s.io/component-base => k8s.io/component-base v0.33.5
+	k8s.io/code-generator => k8s.io/code-generator v0.33.7
+	k8s.io/component-base => k8s.io/component-base v0.33.7
 	k8s.io/component-helpers => k8s.io/component-helpers v0.24.10
 	k8s.io/controller-manager => k8s.io/controller-manager v0.24.10
 	k8s.io/cri-api => k8s.io/cri-api v0.24.10
@@ -88,9 +86,10 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/urfave/cli v1.22.16
 	github.com/vishvananda/netlink v1.3.1
-	k8s.io/api v0.33.5
-	k8s.io/apiextensions-apiserver v0.33.5
-	k8s.io/apimachinery v0.33.5
+	golang.org/x/sys v0.35.0
+	k8s.io/api v0.34.0
+	k8s.io/apiextensions-apiserver v0.34.0
+	k8s.io/apimachinery v0.34.0
 	k8s.io/client-go v12.0.0+incompatible
 	kubevirt.io/api v1.7.0
 	sigs.k8s.io/controller-runtime v0.20.2
@@ -147,7 +146,6 @@ require (
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
@@ -158,7 +156,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/code-generator v0.33.5 // indirect
+	k8s.io/code-generator v0.33.7 // indirect
 	k8s.io/gengo v0.0.0-20250130153323-76c5745d3511 // indirect
 	k8s.io/gengo/v2 v2.0.0-20250207200755-1244d31929d7 // indirect
 	k8s.io/klog v1.0.0 // indirect
