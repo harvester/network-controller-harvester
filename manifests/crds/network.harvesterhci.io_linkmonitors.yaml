@@ -104,6 +104,7 @@ spec:
                         enum:
                         - up
                         - down
+                        - unknown
                         type: string
                       type:
                         type: string
