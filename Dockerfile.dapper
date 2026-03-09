@@ -19,7 +19,7 @@ RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@latest
 
 ENV DAPPER_ENV REPO TAG DRONE_TAG
 ENV DAPPER_SOURCE /go/src/github.com/harvester/harvester-network-controller/
-ENV DAPPER_OUTPUT ./bin ./pkg/apis ./pkg/generated
+ENV DAPPER_OUTPUT ./bin ./pkg/apis ./pkg/generated ./manifests
 ENV DAPPER_DOCKER_SOCKET true
 ENV HOME ${DAPPER_SOURCE}
 WORKDIR ${DAPPER_SOURCE}
