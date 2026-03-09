@@ -78,14 +78,14 @@ func main() {
 // `networkattachementdefinitions` that will raises crd not found exception of the NAD controller.
 func nadControllerInterfaceRefactor() {
 	absPath, _ := filepath.Abs("pkg/generated/controllers/k8s.cni.cncf.io/v1/interface.go")
-	input, err := os.ReadFile(absPath)
+	input, err := os.ReadFile(absPath) //nolint:gosec // path is a hardcoded constant, not user-controlled
 	if err != nil {
 		logrus.Fatalf("failed to read the network-attachment-definition file: %v", err)
 	}
 
 	output := bytes.ReplaceAll(input, []byte("networkattachmentdefinitions"), []byte("network-attachment-definitions"))
 
-	if err = os.WriteFile(absPath, output, 0600); err != nil {
+	if err = os.WriteFile(absPath, output, 0600); err != nil { //nolint:gosec // path is a hardcoded constant, not user-controlled
 		logrus.Fatalf("failed to update the network-attachment-definition file: %v", err)
 	}
 }
