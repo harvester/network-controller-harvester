@@ -22,8 +22,8 @@ import (
 
 const (
 	testCnName             = "test-cn"
-	testCnName11           = "test-cn-11"
-	testCNNewName          = "test-cn-new"
+	testCnName11           = "cn-11"
+	testCNNewName          = "cn-new"
 	currentHostNetworkName = "curr-host-network-config-test"
 	invalidCName           = "this-clusternetwork-name-is-way-too-long-to-be-valid"
 	testNadConfig          = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":2012,\"ipam\":{}}"
@@ -32,6 +32,7 @@ const (
 	testNadNameNew         = "net2-vlan"
 	testNamespace          = "test"
 	testVMName             = "vm1"
+	invalidHostNetworkName = "cluster-1"
 )
 
 func TestCreateHostNetworkConfig(t *testing.T) {
@@ -118,6 +119,18 @@ func TestCreateHostNetworkConfig(t *testing.T) {
 			newHostNetworkConfig: &networkv1.HostNetworkConfig{
 				Spec: networkv1.HostNetworkConfigSpec{
 					ClusterNetwork: invalidCName,
+					VlanID:         2012,
+					Mode:           "dhcp",
+				},
+			},
+		},
+		{
+			name:      "invalid host network interface name due to cluster network name and vlanid",
+			returnErr: true,
+			errKey:    "is more than",
+			newHostNetworkConfig: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					ClusterNetwork: invalidHostNetworkName,
 					VlanID:         2012,
 					Mode:           "dhcp",
 				},
