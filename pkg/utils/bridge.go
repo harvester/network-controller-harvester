@@ -98,3 +98,13 @@ func GenerateBridgeName(prefix string) string {
 func GenerateBondName(prefix string) string {
 	return generateName(prefix, BondSuffix, LenOfBondSuffix)
 }
+
+func IsHostNetworkIntfNameValid(cn string, vlanid uint16) error {
+	vlanIntfName := GetClusterNetworkVlanDevice(cn, vlanid)
+
+	if len(vlanIntfName) > MaxDeviceNameLen {
+		return fmt.Errorf("host network interface name %v length %d is more than %d", vlanIntfName, len(vlanIntfName), MaxDeviceNameLen)
+	}
+
+	return nil
+}

@@ -80,6 +80,11 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 		return fmt.Errorf(createErr, hnc.Name, err)
 	}
 
+	// ensure hostnetwork device name length does not exceed the Linux device name limit of 15 characters.
+	if err := utils.IsHostNetworkIntfNameValid(hnc.Spec.ClusterNetwork, hnc.Spec.VlanID); err != nil {
+		return fmt.Errorf(createErr, hnc.Name, err)
+	}
+
 	// check if clusternetwork exists
 	if _, err := v.cnCache.Get(hnc.Spec.ClusterNetwork); err != nil {
 		return fmt.Errorf(createErr, hnc.Name, fmt.Errorf("it refers to a none-existing cluster network %s or error %w", hnc.Spec.ClusterNetwork, err))
