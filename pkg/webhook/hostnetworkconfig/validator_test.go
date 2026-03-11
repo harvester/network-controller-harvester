@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -547,7 +546,6 @@ func TestCreateHostNetworkConfig(t *testing.T) {
 			validator := NewHostNetworkConfigValidator(nadCache, cnCache, hncCache, vcCache, vsCache, nodeCache, vmCache)
 
 			err := validator.Create(nil, tc.newHostNetworkConfig)
-			logrus.Infof("test case %s returned error: %v", tc.name, err)
 			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
@@ -932,7 +930,6 @@ func TestUpdateHostNetworkConfig(t *testing.T) {
 			validator := NewHostNetworkConfigValidator(nadCache, cnCache, hncCache, vcCache, vsCache, nodeCache, vmCache)
 
 			err := validator.Update(nil, tc.currentHostNetworkConfig, tc.newHostNetworkConfig)
-			logrus.Infof("test case %s returned error: %v", tc.name, err)
 			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
@@ -947,13 +944,10 @@ func TestDeleteHostNetworkConfig(t *testing.T) {
 		name                     string
 		returnErr                bool
 		errKey                   string
-		currentCN                *networkv1.ClusterNetwork
-		currentNAD               *cniv1.NetworkAttachmentDefinition
 		currentHostNetworkConfig *networkv1.HostNetworkConfig
-		currentVM                *kubevirtv1.VirtualMachine
 	}{
 		{
-			name:      "delete hostnetworkconfig successfully when not used by any overlay VMs",
+			name:      "delete hostnetworkconfig successfully",
 			returnErr: false,
 			errKey:    "",
 			currentHostNetworkConfig: &networkv1.HostNetworkConfig{
@@ -962,62 +956,15 @@ func TestDeleteHostNetworkConfig(t *testing.T) {
 					VlanID:         2012,
 					Mode:           "static",
 					HostIPs:        map[string]networkv1.IPAddr{"node1": "192.168.1.100/24"},
-					Underlay:       true,
+					Underlay:       false,
 				},
 			},
 		},
 		{
-			name:      "cannot delete hostnetworkconfig when used by overlay VMs",
+			name:      "cannot delete hostnetworkconfig when underlay is enabled",
 			returnErr: true,
-			errKey:    "it's still used by VM(s)",
-			currentCN: &networkv1.ClusterNetwork{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        testCnName,
-					Annotations: map[string]string{"test": "test"},
-				},
-			},
-			currentNAD: &cniv1.NetworkAttachmentDefinition{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        testNadName,
-					Namespace:   testNamespace,
-					Annotations: map[string]string{"test": "test"},
-					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName, utils.KeyNetworkType: string(utils.OverlayNetwork)},
-				},
-				Spec: cniv1.NetworkAttachmentDefinitionSpec{
-					Config: testNadConfig,
-				},
-			},
-			currentVM: &kubevirtv1.VirtualMachine{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      testVMName,
-					Namespace: testNamespace,
-				},
-				Spec: kubevirtv1.VirtualMachineSpec{
-					Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
-						Spec: kubevirtv1.VirtualMachineInstanceSpec{
-							Networks: []kubevirtv1.Network{
-								{
-									Name: "nic-1",
-									NetworkSource: kubevirtv1.NetworkSource{
-										Multus: &kubevirtv1.MultusNetwork{
-											NetworkName: testNamespace + "/" + testNadName, // same with nad namesapce
-										},
-									},
-								},
-							},
-							Domain: kubevirtv1.DomainSpec{
-								Devices: kubevirtv1.Devices{
-									Interfaces: []kubevirtv1.Interface{
-										{
-											Name: "nic-1",
-										},
-									},
-								},
-							},
-						}, // vmi.spec
-					},
-				},
-			},
+			errKey:    "disable underlay first",
+
 			currentHostNetworkConfig: &networkv1.HostNetworkConfig{
 				Spec: networkv1.HostNetworkConfigSpec{
 					ClusterNetwork: testCnName,
@@ -1044,32 +991,9 @@ func TestDeleteHostNetworkConfig(t *testing.T) {
 
 			// client to inject test data
 			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
-			cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
 			vsCache := fakeclients.VlanStatusCache(nchclientset.NetworkV1beta1().VlanStatuses)
 			nodeCache := fakeclients.NodeCache(nchclientset.CoreV1().Nodes)
-
-			if tc.currentVM != nil {
-				err := nchclientset.Tracker().Add(tc.currentVM)
-				assert.Nil(t, err, "mock resource vm should add into fake controller tracker")
-			}
-
-			if tc.currentCN != nil {
-				_, err := cnClient.Create(tc.currentCN)
-				assert.NoError(t, err)
-			}
-
-			if tc.currentNAD != nil {
-				nadGvr := schema.GroupVersionResource{
-					Group:    "k8s.cni.cncf.io",
-					Version:  "v1",
-					Resource: "network-attachment-definitions",
-				}
-
-				if err := nchclientset.Tracker().Create(nadGvr, tc.currentNAD.DeepCopy(), tc.currentNAD.Namespace); err != nil {
-					t.Fatalf("failed to add nad %+v", tc.currentNAD)
-				}
-			}
 
 			if tc.currentHostNetworkConfig != nil {
 				hncClient := fakeclients.HostNetworkConfigClient(nchclientset.NetworkV1beta1().HostNetworkConfigs)
