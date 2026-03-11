@@ -131,7 +131,13 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 
 	// node selector matches and host network interface already exists, skip processing
 	if intfExists {
-		logrus.Infof("hostnetwork config %s has been applied on this node already, update nodestatus and skip", hnc.Name)
+		logrus.Infof("hostnetwork config %s has been applied on this node already, update nodestatus,tunnel interface annotation and skip", hnc.Name)
+
+		// intf exists but there could be change in underlay, need to update node annotation with new interface if needed
+		if err := h.addNodeAnnotation(utils.GetClusterNetworkVlanDevice(hnc.Spec.ClusterNetwork, hnc.Spec.VlanID), hnc.Spec.Underlay); err != nil {
+			return nil, fmt.Errorf("add node annotation to node %s for host network config %s failed, error: %w", h.nodeName, hnc.Name, err)
+		}
+
 		err := h.setHostNetworkPerNodeStatus(hnc, true, nil)
 		if err != nil {
 			return nil, err

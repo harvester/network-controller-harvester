@@ -15,21 +15,24 @@ import (
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
+	ctlcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
 )
 
 var _ admission.Mutator = &Mutator{}
 
 type Mutator struct {
 	admission.DefaultMutator
-	cnCache ctlnetworkv1.ClusterNetworkCache
-	vcCache ctlnetworkv1.VlanConfigCache
+	cnCache   ctlnetworkv1.ClusterNetworkCache
+	vcCache   ctlnetworkv1.VlanConfigCache
+	nodeCache ctlcorev1.NodeCache
 }
 
 func NewNadMutator(cnCache ctlnetworkv1.ClusterNetworkCache,
-	vcCache ctlnetworkv1.VlanConfigCache) *Mutator {
+	vcCache ctlnetworkv1.VlanConfigCache, nodeCache ctlcorev1.NodeCache) *Mutator {
 	return &Mutator{
-		cnCache: cnCache,
-		vcCache: vcCache,
+		cnCache:   cnCache,
+		vcCache:   vcCache,
+		nodeCache: nodeCache,
 	}
 }
 
@@ -89,6 +92,41 @@ func (m *Mutator) Resource() admission.Resource {
 	}
 }
 
+func (m *Mutator) getClusterNetworkFromNodeAnnotation() (string, error) {
+	nodes, err := m.nodeCache.List(k8slabels.Everything())
+	if err != nil {
+		return "", err
+	}
+
+	// All nodes in the cluster should have the same cluster network tunnel interface if used for underlay, so we only need to get the cluster network from one node's annotation.
+	// Return default management cluster network if there is no node or no annotation is found.
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+
+		if node.DeletionTimestamp != nil {
+			continue
+		}
+
+		if node.Annotations == nil {
+			continue
+		}
+
+		iface, ok := node.Annotations[utils.KeyUnderlayIntf]
+		if !ok || iface == "" {
+			continue
+		}
+		bridgeName, err := utils.GetClusterNetworkName(iface)
+		if err != nil {
+			return "", fmt.Errorf("failed to get bridge name from node %s annotation, error: %w", node.Name, err)
+		}
+		return bridgeName, nil
+	}
+
+	return utils.ManagementClusterNetworkName, nil
+}
+
 func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, _, newConf *utils.NetConf) (admission.Patch, error) {
 	labels := nad.Labels
 	if labels == nil {
@@ -98,9 +136,12 @@ func (m *Mutator) ensureLabels(nad *cniv1.NetworkAttachmentDefinition, _, newCon
 	if newConf.IsKubeOVNCNI() {
 		labels[utils.KeyNetworkType] = string(utils.OverlayNetwork)
 		labels[utils.KeyNetworkReady] = utils.ValueTrue
-		if labels[utils.KeyClusterNetworkLabel] == "" {
-			labels[utils.KeyClusterNetworkLabel] = utils.ManagementClusterNetworkName
+		overlayCn, err := m.getClusterNetworkFromNodeAnnotation()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get cluster network from node annotation, error: %w", err)
 		}
+		labels[utils.KeyClusterNetworkLabel] = overlayCn
+
 		delete(labels, utils.KeyVlanLabel)
 		return admission.Patch{
 			admission.PatchOp{
