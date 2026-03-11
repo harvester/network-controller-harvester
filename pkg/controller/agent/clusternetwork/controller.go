@@ -23,20 +23,18 @@ const (
 )
 
 type Handler struct {
-	cnCache   ctlnetworkv1.ClusterNetworkCache
-	cnClient  ctlnetworkv1.ClusterNetworkClient
-	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
-	nadClient ctlcniv1.NetworkAttachmentDefinitionClient
+	cnCache  ctlnetworkv1.ClusterNetworkCache
+	cnClient ctlnetworkv1.ClusterNetworkClient
+	nadCache ctlcniv1.NetworkAttachmentDefinitionCache
 }
 
 func Register(ctx context.Context, management *config.Management) error {
 	cns := management.HarvesterNetworkFactory.Network().V1beta1().ClusterNetwork()
 	nads := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
 	handler := Handler{
-		cnCache:   cns.Cache(),
-		cnClient:  cns,
-		nadClient: nads,
-		nadCache:  nads.Cache(),
+		cnCache:  cns.Cache(),
+		cnClient: cns,
+		nadCache: nads.Cache(),
 	}
 
 	cns.OnChange(ctx, controllerName, handler.OnChange)

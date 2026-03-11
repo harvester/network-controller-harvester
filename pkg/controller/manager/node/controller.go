@@ -14,8 +14,10 @@ import (
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
+	ctlcniv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
+	cniv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 )
 
 const controllerName = "harvester-network-manager-node-controller"
@@ -30,6 +32,8 @@ type Handler struct {
 	lmClient                ctlnetworkv1.LinkMonitorClient
 	hostNetworkConfigClient ctlnetworkv1.HostNetworkConfigClient
 	hostNetworkConfigCache  ctlnetworkv1.HostNetworkConfigCache
+	nadCache                ctlcniv1.NetworkAttachmentDefinitionCache
+	nadClient               ctlcniv1.NetworkAttachmentDefinitionClient
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -38,6 +42,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	vss := management.HarvesterNetworkFactory.Network().V1beta1().VlanStatus()
 	lms := management.HarvesterNetworkFactory.Network().V1beta1().LinkMonitor()
 	hns := management.HarvesterNetworkFactory.Network().V1beta1().HostNetworkConfig()
+	nads := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
 
 	h := Handler{
 		nodeClient:              nodes,
@@ -49,6 +54,8 @@ func Register(ctx context.Context, management *config.Management) error {
 		lmClient:                lms,
 		hostNetworkConfigClient: hns,
 		hostNetworkConfigCache:  hns.Cache(),
+		nadClient:               nads,
+		nadCache:                nads.Cache(),
 	}
 
 	nodes.OnChange(ctx, controllerName, h.OnChange)
@@ -84,6 +91,10 @@ func (h Handler) OnChange(_ string, node *corev1.Node) (*corev1.Node, error) {
 
 	if err := h.updateHostNetworkAnnotation(node); err != nil {
 		return nil, fmt.Errorf("failed to update host network annotations, node: %s, error: %w", node.Name, err)
+	}
+
+	if err := h.updateUnderlayForOverlayNetwork(node); err != nil {
+		return nil, fmt.Errorf("failed to update underlay for overlay network, node: %s, error: %w", node.Name, err)
 	}
 
 	return node, nil
@@ -301,6 +312,56 @@ func (h Handler) updateHostNetworkAnnotation(node *corev1.Node) error {
 			return fmt.Errorf("failed to update hostnetworkconfig matched node annotation, hostnetworkconfig: %s, node: %s, error: %w",
 				hostnetworkconfig.Name, node.Name, err)
 		}
+	}
+
+	return nil
+}
+
+func (h Handler) setNadClusterNetworkLabel(bridge string) (err error) {
+	var nadList []*cniv1.NetworkAttachmentDefinition
+	nadGetter := utils.NewNadGetter(h.nadCache)
+	if nadList, err = nadGetter.ListAllNads(); err != nil {
+		return fmt.Errorf("failed to list nads err %w", err)
+	}
+
+	for _, nad := range nadList {
+		if nad.DeletionTimestamp != nil {
+			continue
+		}
+
+		if !utils.IsOverlayNad(nad) {
+			continue
+		}
+
+		if utils.GetNadLabel(nad, utils.KeyClusterNetworkLabel) == bridge {
+			continue
+		}
+		nadCopy := nad.DeepCopy()
+		utils.SetNadLabel(nadCopy, utils.KeyClusterNetworkLabel, bridge)
+		if _, err := h.nadClient.Update(nadCopy); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h Handler) updateUnderlayForOverlayNetwork(node *corev1.Node) error {
+	if node.Annotations == nil {
+		return nil
+	}
+
+	iface, ok := node.Annotations[utils.KeyUnderlayIntf]
+	if !ok || iface == "" {
+		return nil
+	}
+	bridge, err := utils.GetClusterNetworkName(iface)
+	if err != nil {
+		return fmt.Errorf("failed to get bridge name from node %s annotation, error: %w", node.Name, err)
+	}
+
+	if err := h.setNadClusterNetworkLabel(bridge); err != nil {
+		return fmt.Errorf("failed to set NAD cluster network label for node %s, error: %w", node.Name, err)
 	}
 
 	return nil

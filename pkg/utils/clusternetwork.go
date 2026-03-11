@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"strings"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 )
@@ -33,4 +34,12 @@ func SetClusterNetworkVlanAnnotations(cn *networkv1.ClusterNetwork, vidstr, vidh
 	}
 	cn.Annotations[KeyVlanIDSetStr] = vidstr
 	cn.Annotations[KeyVlanIDSetStrHash] = vidhash
+}
+
+func GetClusterNetworkName(iface string) (string, error) {
+	cnName, _, found := strings.Cut(iface, BridgeSuffix)
+	if !found {
+		return "", fmt.Errorf("invalid interface format: %s", iface)
+	}
+	return cnName, nil
 }
