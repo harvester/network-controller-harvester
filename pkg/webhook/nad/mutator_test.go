@@ -478,7 +478,8 @@ func TestMutatorUpdateNAD(t *testing.T) {
 			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
 			cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
-			mutator := NewNadMutator(cnCache, vcCache)
+			nodeCache := fakeclients.NodeCache(nchclientset.CoreV1().Nodes)
+			mutator := NewNadMutator(cnCache, vcCache, nodeCache)
 
 			nadGvr := schema.GroupVersionResource{
 				Group:    "k8s.cni.cncf.io",

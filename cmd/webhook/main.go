@@ -137,7 +137,7 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 	webhookServer := server.NewWebhookServer(ctx, cfg, name, options)
 
 	if err := webhookServer.RegisterMutators(
-		nad.NewNadMutator(c.cnCache, c.vcCache),
+		nad.NewNadMutator(c.cnCache, c.vcCache, c.nodeCache),
 		vlanconfig.NewVlanConfigMutator(c.nodeCache),
 	); err != nil {
 		return fmt.Errorf("failed to register mutators: %v", err)
