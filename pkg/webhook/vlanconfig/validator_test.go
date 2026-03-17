@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -510,6 +511,88 @@ func TestUpdateVlanConfig(t *testing.T) {
 				},
 			}, // vmi
 		},
+		{
+			name:      "VlanConfig can't be updated when matched nodes change and vmi is still attached",
+			returnErr: true,
+			errKey:    "stopped",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			oldVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNewVCName,
+					Annotations: map[string]string{utils.KeyMatchedNodes: "[\"node1\"]"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+					},
+				},
+			},
+			newVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNewVCName,
+					Annotations: map[string]string{utils.KeyMatchedNodes: "[\"node2\"]"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+					},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testNadConfig,
+				},
+			},
+			currentVmi: &kubevirtv1.VirtualMachineInstance{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testVMName,
+					Namespace: testNamespace,
+				},
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					Networks: []kubevirtv1.Network{
+						{
+							Name: "nic-1",
+							NetworkSource: kubevirtv1.NetworkSource{
+								Multus: &kubevirtv1.MultusNetwork{
+									NetworkName: testNamespace + "/" + testNadName,
+								},
+							},
+						},
+					},
+					Domain: kubevirtv1.DomainSpec{
+						Devices: kubevirtv1.Devices{
+							Interfaces: []kubevirtv1.Interface{
+								{
+									Name: "nic-1",
+								},
+							},
+						},
+					},
+				},
+				Status: kubevirtv1.VirtualMachineInstanceStatus{
+					NodeName: "node1",
+				},
+			},
+		},
 	}
 
 	nadGvr := schema.GroupVersionResource{
@@ -803,6 +886,28 @@ func TestDeleteVlanConfig(t *testing.T) {
 					assert.True(t, strings.Contains(err.Error(), tc.errKey))
 				}
 			}
+		})
+	}
+}
+
+func TestEqualMatchedNodes(t *testing.T) {
+	tests := []struct {
+		name string
+		old  mapset.Set[string]
+		new  mapset.Set[string]
+		eq   bool
+	}{
+		{name: "nil vs nil", old: nil, new: nil, eq: true},
+		{name: "nil vs empty", old: nil, new: mapset.NewSet[string](), eq: true},
+		{name: "empty vs empty", old: mapset.NewSet[string](), new: mapset.NewSet[string](), eq: true},
+		{name: "same members", old: mapset.NewSet[string]("node1", "node2"), new: mapset.NewSet[string]("node2", "node1"), eq: true},
+		{name: "different members", old: mapset.NewSet[string]("node1"), new: mapset.NewSet[string]("node2"), eq: false},
+		{name: "non-empty vs nil", old: mapset.NewSet[string]("node1"), new: nil, eq: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.eq, equalMatchedNodes(tc.old, tc.new))
 		})
 	}
 }

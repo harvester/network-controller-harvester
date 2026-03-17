@@ -128,19 +128,35 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return fmt.Errorf(updateErr, oldVc.Name, err)
 	}
 
-	// get affected nodes after updating
-	affectedNodes := getAffectedNodes(oldVc, newVc, oldNodes, newNodes)
+	// Only perform expensive VM/Storage checks if the effective behavior
+	// changed. Besides `Spec` updates, matched nodes can also change via
+	// annotations from controllers.
+	specChanged := !reflect.DeepEqual(oldVc.Spec, newVc.Spec)
+	nodesChanged := !equalMatchedNodes(oldNodes, newNodes)
+	if specChanged || nodesChanged {
+		// get affected nodes after updating
+		affectedNodes := getAffectedNodes(oldVc, newVc, oldNodes, newNodes)
 
-	// note: the vlanconfig may match no nodes, the affectedNodes can hence be empty
-	if err := v.checkVmi(oldVc, affectedNodes); err != nil {
-		return fmt.Errorf(updateErr, oldVc.Name, err)
-	}
+		// note: the vlanconfig may match no nodes, the affectedNodes can hence be empty
+		if err := v.checkVmi(oldVc, affectedNodes); err != nil {
+			return fmt.Errorf(updateErr, oldVc.Name, err)
+		}
 
-	if err := v.checkStorageNetwork(oldVc, affectedNodes); err != nil {
-		return fmt.Errorf(updateErr, oldVc.Name, err)
+		if err := v.checkStorageNetwork(oldVc, affectedNodes); err != nil {
+			return fmt.Errorf(updateErr, oldVc.Name, err)
+		}
 	}
 
 	return nil
+}
+
+func equalMatchedNodes(oldNodes, newNodes mapset.Set[string]) bool {
+	oldEmpty := oldNodes == nil || oldNodes.IsEmpty()
+	newEmpty := newNodes == nil || newNodes.IsEmpty()
+	if oldEmpty || newEmpty {
+		return oldEmpty == newEmpty
+	}
+	return oldNodes.Equal(newNodes)
 }
 
 func getAffectedNodes(oldVc, newVc *networkv1.VlanConfig, oldNodes, newNodes mapset.Set[string]) mapset.Set[string] {
