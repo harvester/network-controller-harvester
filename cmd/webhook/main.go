@@ -52,14 +52,14 @@ var (
 
 func main() {
 	var options config.Options
-	logLevel := "info"
+	logLevel := utils.GetDefaultLogLevel()
 
 	flags := []cli.Flag{
 		cli.StringFlag{
 			Name:        "loglevel",
 			Usage:       "Specify log level",
-			EnvVar:      "LOGLEVEL",
-			Value:       "info",
+			EnvVar:      utils.EnvLogLevel,
+			Value:       utils.GetDefaultLogLevel(),
 			Destination: &logLevel,
 		},
 		cli.IntFlag{
