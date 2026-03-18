@@ -1088,3 +1088,67 @@ func TestDeleteHostNetworkConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestSameSubnet(t *testing.T) {
+	tests := []struct {
+		name    string
+		cidrs   []string
+		wantOK  bool
+		wantErr bool
+	}{
+		{
+			name:    "empty slice",
+			cidrs:   []string{},
+			wantOK:  true,
+			wantErr: false,
+		},
+		{
+			name:    "single valid cidr",
+			cidrs:   []string{"192.168.1.0/24"},
+			wantOK:  true,
+			wantErr: false,
+		},
+		{
+			name:    "identical cidrs",
+			cidrs:   []string{"10.0.0.0/16", "10.0.0.0/16"},
+			wantOK:  true,
+			wantErr: false,
+		},
+		{
+			name:    "different masks",
+			cidrs:   []string{"192.168.1.0/24", "192.168.1.0/16"},
+			wantOK:  false,
+			wantErr: false,
+		},
+		{
+			name:    "different networks",
+			cidrs:   []string{"192.168.1.0/24", "192.168.2.0/24"},
+			wantOK:  false,
+			wantErr: false,
+		},
+		{
+			name:    "invalid first cidr",
+			cidrs:   []string{"not-a-cidr"},
+			wantOK:  false,
+			wantErr: true,
+		},
+		{
+			name:    "invalid second cidr",
+			cidrs:   []string{"10.0.0.0/8", "invalid"},
+			wantOK:  false,
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ok, err := sameSubnet(tc.cidrs)
+			if tc.wantErr {
+				assert.Error(t, err, "expected error for cidrs=%v", tc.cidrs)
+			} else {
+				assert.NoError(t, err, "expected no error for cidrs=%v", tc.cidrs)
+			}
+			assert.Equal(t, tc.wantOK, ok, "expected sameSubnet to return %v for cidrs=%v, got %v", tc.wantOK, tc.cidrs, ok)
+		})
+	}
+}
