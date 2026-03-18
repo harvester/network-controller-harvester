@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 type Bond struct {
@@ -26,61 +27,61 @@ func NewBond(bond *netlink.Bond, slaves []string) *Bond {
 
 // Constants for retry configuration
 const (
-    maxRetryAttempts = 2
-    retryDelay       = 100 * time.Millisecond
+	maxRetryAttempts = 2
+	retryDelay       = 100 * time.Millisecond
 )
 
 // isKernelConflictError checks for retryable kernel conflicts
 func isKernelConflictError(err error) bool {
-    if err == nil {
-        return false
-    }
+	if err == nil {
+		return false
+	}
 
-    errorMsg := strings.ToLower(err.Error())
-    conflictIndicators := []string{
-        "device is busy",
-        "resource temporarily unavailable",
-        "operation already in progress",
-        "file exists",
-    }
+	errorMsg := strings.ToLower(err.Error())
+	conflictIndicators := []string{
+		"device is busy",
+		"resource temporarily unavailable",
+		"operation already in progress",
+		"file exists",
+	}
 
-    for _, indicator := range conflictIndicators {
-        if strings.Contains(errorMsg, indicator) {
-            return true
-        }
-    }
+	for _, indicator := range conflictIndicators {
+		if strings.Contains(errorMsg, indicator) {
+			return true
+		}
+	}
 
-    return false
+	return false
 }
 
 // retryOnKernelConflict retries the given function up to maxRetryAttempts if it returns a kernel conflict error.
 func retryOnKernelConflict(operation func() error, operationName string) error {
-    var lastErr error
+	var lastErr error
 
-    for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
-        err := operation()
-        if err == nil {
-            if attempt > 1 {
-                logrus.Infof("%s succeeded on attempt %d", operationName, attempt)
-            }
-            return nil
-        }
+	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
+		err := operation()
+		if err == nil {
+			if attempt > 1 {
+				logrus.Infof("%s succeeded on attempt %d", operationName, attempt)
+			}
+			return nil
+		}
 
-        lastErr = err
+		lastErr = err
 
-        // Only retry on kernel conflict errors
-        if isKernelConflictError(err) && attempt < maxRetryAttempts {
-            logrus.Warnf("Kernel conflict during %s (attempt %d/%d): %v. Retrying...",
-                operationName, attempt, maxRetryAttempts, err)
-            time.Sleep(retryDelay)
-            continue
-        }
+		// Only retry on kernel conflict errors
+		if isKernelConflictError(err) && attempt < maxRetryAttempts {
+			logrus.Warnf("Kernel conflict during %s (attempt %d/%d): %v. Retrying...",
+				operationName, attempt, maxRetryAttempts, err)
+			time.Sleep(retryDelay)
+			continue
+		}
 
-        // For non-retryable errors or final attempt, break
-        break
-    }
+		// For non-retryable errors or final attempt, break
+		break
+	}
 
-    return fmt.Errorf("%s failed after %d attempts: %w", operationName, maxRetryAttempts, lastErr)
+	return fmt.Errorf("%s failed after %d attempts: %w", operationName, maxRetryAttempts, lastErr)
 }
 
 // setLinkUp safely sets a network link to UP state with proper checks and logs
@@ -140,7 +141,7 @@ func (b *Bond) ensureBond() error {
 	}
 	bond, ok := l.(*netlink.Bond)
 	if !ok {
-		return fmt.Errorf("%s already exists but is not a bond", bond.Name)
+		return fmt.Errorf("%s already exists but is not a bond", b.Name)
 	}
 	b.Bond = bond
 
