@@ -14,14 +14,15 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	ctlcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	ctlcniv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	ctlkubevirtv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubevirt.io/v1"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
-	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	ctlcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -216,10 +217,10 @@ func sameSubnet(cidrs []string) (bool, error) {
 
 	// Parse the first CIDR as the reference subnet
 	_, refNet, err := net.ParseCIDR(cidrs[0])
-	refMaskLength, _ = refNet.Mask.Size()
 	if err != nil {
 		return false, err
 	}
+	refMaskLength, _ = refNet.Mask.Size()
 
 	for _, c := range cidrs[1:] {
 		_, net1, err := net.ParseCIDR(c)
