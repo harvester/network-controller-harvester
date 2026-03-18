@@ -234,14 +234,17 @@ func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodes mapset.Set[string])
 	return nil
 }
 
+// getMatchNodes retrieves the matched nodes from the VlanConfig's annotations
+// and returns them as a set.
 func getMatchNodes(vc *networkv1.VlanConfig) (mapset.Set[string], error) {
-	if vc.Annotations == nil || vc.Annotations[utils.KeyMatchedNodes] == "" {
-		return nil, nil
+	empty := mapset.NewSet[string]()
+	if vc == nil || vc.Annotations == nil || vc.Annotations[utils.KeyMatchedNodes] == "" {
+		return empty, nil
 	}
 
 	var matchedNodes []string
 	if err := json.Unmarshal([]byte(vc.Annotations[utils.KeyMatchedNodes]), &matchedNodes); err != nil {
-		return nil, err
+		return empty, err
 	}
 
 	return mapset.NewSet(matchedNodes...), nil
