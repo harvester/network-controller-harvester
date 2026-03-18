@@ -593,6 +593,41 @@ func TestUpdateVlanConfig(t *testing.T) {
 	}
 }
 
+func TestUpdateVlanConfig_NoMatchedNodesAnnotationDoesNotPanic(t *testing.T) {
+	nchclientset := fake.NewSimpleClientset()
+	nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
+	vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
+	vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
+	vsCache := fakeclients.VlanStatusCache(nchclientset.NetworkV1beta1().VlanStatuses)
+	cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
+
+	cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
+	_, err := cnClient.Create(&networkv1.ClusterNetwork{ObjectMeta: metav1.ObjectMeta{Name: testCnName}})
+	assert.NoError(t, err)
+
+	validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
+
+	oldVC := &networkv1.VlanConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   testNewVCName,
+			Labels: map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+		},
+		Spec: networkv1.VlanConfigSpec{
+			ClusterNetwork: testCnName,
+			Uplink: networkv1.Uplink{
+				LinkAttrs: &networkv1.LinkAttrs{MTU: utils.DefaultMTU},
+			},
+		},
+	}
+
+	newVC := oldVC.DeepCopy()
+
+	assert.NotPanics(t, func() {
+		err = validator.Update(nil, oldVC, newVC)
+	})
+	assert.NoError(t, err)
+}
+
 func TestDeleteVlanConfig(t *testing.T) {
 	tests := []struct {
 		name                     string
@@ -801,6 +836,67 @@ func TestDeleteVlanConfig(t *testing.T) {
 				// avoid panic
 				if err != nil {
 					assert.True(t, strings.Contains(err.Error(), tc.errKey))
+				}
+			}
+		})
+	}
+}
+
+func TestGetMatchNodes(t *testing.T) {
+	tests := []struct {
+		name      string
+		vc        *networkv1.VlanConfig
+		wantErr   bool
+		wantNodes []string
+	}{
+		{
+			name:    "nil vlanconfig returns empty set",
+			vc:      nil,
+			wantErr: false,
+		},
+		{
+			name: "missing matched-nodes annotation returns empty set",
+			vc: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{},
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty matched-nodes annotation returns empty set",
+			vc: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{utils.KeyMatchedNodes: ""}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid matched-nodes annotation returns nodes",
+			vc: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{utils.KeyMatchedNodes: "[\"node1\",\"node2\"]"}},
+			},
+			wantErr:   false,
+			wantNodes: []string{"node1", "node2"},
+		},
+		{
+			name: "invalid matched-nodes annotation returns error and empty set",
+			vc: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{utils.KeyMatchedNodes: "not-json"}},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			nodes, err := getMatchNodes(tc.vc)
+			assert.NotNil(t, nodes)
+			assert.Equal(t, tc.wantErr, err != nil)
+
+			if tc.wantErr {
+				assert.True(t, nodes.IsEmpty())
+			} else {
+				assert.Equal(t, len(tc.wantNodes), nodes.Cardinality())
+				for _, node := range tc.wantNodes {
+					assert.True(t, nodes.Contains(node))
 				}
 			}
 		})
