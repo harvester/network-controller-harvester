@@ -61,6 +61,13 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
+	//allow overlay nad creation only if subnet crd/kubeovn is enabled
+	if conf.IsKubeOVNCNI() {
+		if !v.subnetEnabled {
+			return fmt.Errorf(createErr, nad.Namespace, nad.Name, fmt.Errorf("kubeovn is not yet enabled"))
+		}
+	}
+
 	if err := v.checkNadConfig(conf, nad); err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
@@ -135,8 +142,9 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	// do not delete nad when a subnet is using it
 	// This will also make sure nad is not deleted when VMIs,VMs are using it
 	if nadConf.IsKubeOVNCNI() {
+		//allow deletion of overlay nad even if kubeovn is not enabled.
 		if !v.subnetEnabled {
-			return fmt.Errorf("operation is not permitted as kubeovn is not yet enabled")
+			return nil
 		}
 		return v.checkSubnetsUsingNAD(nad)
 	}
