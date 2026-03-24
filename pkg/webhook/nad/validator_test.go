@@ -946,3 +946,108 @@ func TestDeleteNAD(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateOverlayNADWithNoSubnetCRD(t *testing.T) {
+	tests := []struct {
+		name       string
+		returnErr  bool
+		errKey     string
+		currentNAD *cniv1.NetworkAttachmentDefinition
+	}{
+		{
+			name:      "NAD can't be created as it has no subnet CRD",
+			returnErr: true,
+			errKey:    "kubeovn is not yet enabled",
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testKubeOVNNadName,
+					Namespace: testKubeOVNNamespace,
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testKubeOVNNadConfig,
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.NotNil(t, tc.currentNAD)
+			if tc.currentNAD == nil {
+				return
+			}
+
+			nchclientset := fake.NewSimpleClientset()
+			vmCache := fakeclients.VirtualMachineCache(nchclientset.KubevirtV1().VirtualMachines)
+			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
+			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
+			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
+			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
+			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
+			hncCache := fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, false, hncCache, nadCache)
+
+			err := validator.Create(nil, tc.currentNAD)
+			logrus.Infof("Create NAD test case '%s' result error: %v", tc.name, err)
+			assert.True(t, tc.returnErr == (err != nil))
+			if tc.returnErr {
+				assert.NotNil(t, err)
+				if err != nil {
+					assert.True(t, strings.Contains(err.Error(), tc.errKey))
+				}
+			}
+		})
+	}
+}
+
+func TestDeleteOverlayNADWithNoSubnetCRD(t *testing.T) {
+	tests := []struct {
+		name       string
+		returnErr  bool
+		errKey     string
+		currentNAD *cniv1.NetworkAttachmentDefinition
+	}{
+		{
+			name:      "NAD can be deleted when kubeovn is not enabled",
+			returnErr: false,
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testKubeOVNNadName,
+					Namespace: testKubeOVNNamespace,
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testKubeOVNNadConfig,
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.NotNil(t, tc.currentNAD)
+			if tc.currentNAD == nil {
+				return
+			}
+
+			nchclientset := fake.NewSimpleClientset()
+			vmCache := fakeclients.VirtualMachineCache(nchclientset.KubevirtV1().VirtualMachines)
+			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
+			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
+			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
+			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
+			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
+			hncCache := fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, false, hncCache, nadCache)
+
+			err := validator.Delete(nil, tc.currentNAD)
+			logrus.Infof("Delete NAD test case '%s' result error: %v", tc.name, err)
+			assert.True(t, tc.returnErr == (err != nil))
+			if tc.returnErr {
+				assert.NotNil(t, err)
+				if err != nil {
+					assert.True(t, strings.Contains(err.Error(), tc.errKey))
+				}
+			}
+		})
+	}
+}
