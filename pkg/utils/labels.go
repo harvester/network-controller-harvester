@@ -1,6 +1,9 @@
 package utils
 
-import "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
+import (
+	"github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io"
+	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
+)
 
 const (
 	KeyVlanLabel             = network.GroupName + "/vlan-id"
@@ -58,4 +61,17 @@ func SetMgmtClusterNetworkLabelKey(lbs map[string]string) {
 
 func HasLabelKey(lbs map[string]string, key string, value string) bool {
 	return lbs[key] == value
+}
+
+func IsClusterNetworkLabelValid(vc *networkv1.VlanConfig) (bool, string) {
+	label := ""
+	if vc.Labels != nil {
+		label = vc.Labels[KeyClusterNetworkLabel]
+	}
+
+	if label == "" || label != vc.Spec.ClusterNetwork {
+		return false, label
+	}
+
+	return true, ""
 }

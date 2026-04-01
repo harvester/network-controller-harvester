@@ -597,6 +597,35 @@ func TestUpdateVlanConfig(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:      "VlanConfig can't be updated when cluster network name in label is different from the one in spec",
+			returnErr: true,
+			errKey:    "is invalid",
+			newVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNewVCName,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: "different-cn-name"},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+				},
+			},
+		},
+		{
+			name:      "VlanConfig can't be updated when label is empty",
+			returnErr: true,
+			errKey:    "is invalid",
+			newVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNewVCName,
+					Annotations: map[string]string{"test": "test"},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+				},
+			},
+		},
 	}
 
 	nadGvr := schema.GroupVersionResource{
