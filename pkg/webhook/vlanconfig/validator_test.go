@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	kubevirtv1 "kubevirt.io/api/core/v1"
@@ -35,6 +36,8 @@ func TestCreateVlanConfig(t *testing.T) {
 		currentVC *networkv1.VlanConfig
 		currentVS *networkv1.VlanStatus
 		newVC     *networkv1.VlanConfig
+		node1     *v1.Node
+		node2     *v1.Node
 	}{
 		{
 			name:      "VlanConfig can't be created on mgmt network",
@@ -252,6 +255,81 @@ func TestCreateVlanConfig(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:      "VlanConfig can't be created when cluster network name in label is different from the one in spec",
+			returnErr: true,
+			errKey:    "is invalid",
+			newVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNewVCName,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: "different-cn-name"},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+				},
+			},
+		},
+		{
+			name:      "VlanConfig can't be created when node selector is invalid",
+			returnErr: true,
+			errKey:    "node selector is invalid",
+			newVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNewVCName,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					NodeSelector:   map[string]string{"key": "value", "key1": "value1"},
+				},
+			},
+			node1: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "node1",
+					Labels: map[string]string{"key": "value"},
+				},
+			},
+			node2: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node2",
+				},
+			},
+		},
+		{
+			name:      "VlanConfig can be created with valid node selector",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNewVCName,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					NodeSelector:   map[string]string{"key": "value", "key1": "value1"},
+				},
+			},
+			node1: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "node1",
+					Labels: map[string]string{"key": "value", "key1": "value1"},
+				},
+			},
+			node2: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node2",
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -268,6 +346,8 @@ func TestCreateVlanConfig(t *testing.T) {
 			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
 			vsCache := fakeclients.VlanStatusCache(nchclientset.NetworkV1beta1().VlanStatuses)
 			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
+			nodeClient := fakeclients.NodeClient(nchclientset.CoreV1().Nodes)
+			nodeCache := fakeclients.NodeCache(nchclientset.CoreV1().Nodes)
 
 			// client to inject test data
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
@@ -286,7 +366,16 @@ func TestCreateVlanConfig(t *testing.T) {
 				_, err := vsClient.Create(tc.currentVS)
 				assert.NoError(t, err)
 			}
-			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
+
+			if tc.node1 != nil {
+				_, err := nodeClient.Create(tc.node1)
+				assert.NoError(t, err)
+			}
+			if tc.node2 != nil {
+				_, err := nodeClient.Create(tc.node2)
+				assert.NoError(t, err)
+			}
+			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache, nodeCache)
 
 			err := validator.Create(nil, tc.newVC)
 			assert.True(t, tc.returnErr == (err != nil))
@@ -510,6 +599,21 @@ func TestUpdateVlanConfig(t *testing.T) {
 				},
 			}, // vmi
 		},
+		{
+			name:      "VlanConfig can't be created when cluster network name in label is different from the one in spec",
+			returnErr: true,
+			errKey:    "is invalid",
+			newVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNewVCName,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: "different-cn-name"},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+				},
+			},
+		},
 	}
 
 	nadGvr := schema.GroupVersionResource{
@@ -577,7 +681,7 @@ func TestUpdateVlanConfig(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
+			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache, nil)
 
 			err := validator.Update(nil, tc.oldVC, tc.newVC)
 			assert.True(t, tc.returnErr == (err != nil))
@@ -605,7 +709,7 @@ func TestUpdateVlanConfig_NoMatchedNodesAnnotationDoesNotPanic(t *testing.T) {
 	_, err := cnClient.Create(&networkv1.ClusterNetwork{ObjectMeta: metav1.ObjectMeta{Name: testCnName}})
 	assert.NoError(t, err)
 
-	validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
+	validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache, nil)
 
 	oldVC := &networkv1.VlanConfig{
 		ObjectMeta: metav1.ObjectMeta{
@@ -827,7 +931,7 @@ func TestDeleteVlanConfig(t *testing.T) {
 				_, err := hncClient.Create(tc.currentHostNetworkConfig)
 				assert.NoError(t, err)
 			}
-			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
+			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache, nil)
 
 			err := validator.Delete(nil, tc.currentVC)
 			assert.True(t, tc.returnErr == (err != nil))
