@@ -102,6 +102,9 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 			utils.ManagementClusterNetworkName))
 	}
 
+	if valid, label := utils.IsClusterNetworkLabelValid(newVc); !valid {
+		return fmt.Errorf(updateErr, newVc.Name, fmt.Errorf("cluster network label %s is invalid and must not be updated by user", label))
+	}
 	// check if clusternetwork exists
 	// Harvester UI allows to migration a vlanconfig from one clusternetwork to another
 	// but for none-UI, the target ClusterNetwork may be blank
