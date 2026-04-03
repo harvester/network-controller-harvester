@@ -24,11 +24,11 @@ if [ -e ${DOCKERFILE}.${ARCH} ]; then
     DOCKERFILE=${DOCKERFILE}.${ARCH}
 fi
 
-buildx build --load -f ${DOCKERFILE_CONTROLLER} -t ${CONTROLLER_IMAGE} .
+docker buildx build --load -f ${DOCKERFILE_CONTROLLER} -t ${CONTROLLER_IMAGE} .
 echo Built ${CONTROLLER_IMAGE}
 
-buildx build --load -f ${DOCKERFILE_HELPER} -t ${HELPER_IMAGE} .
+docker buildx build --load -f ${DOCKERFILE_HELPER} -t ${HELPER_IMAGE} .
 echo Built ${HELPER_IMAGE}
 
-buildx build --load -f ${DOCKERFILE_WEBHOOK} -t ${WEBHOOK_IMAGE} .
+docker buildx build --load -f ${DOCKERFILE_WEBHOOK} -t ${WEBHOOK_IMAGE} .
 echo Built ${WEBHOOK_IMAGE}
