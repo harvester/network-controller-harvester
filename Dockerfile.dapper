@@ -6,16 +6,11 @@ ENV ARCH=${DAPPER_HOST_ARCH}
 RUN zypper -n rm container-suseconnect && \
     zypper -n install git curl docker gzip tar wget awk
 
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s latest
-
-# The docker version in dapper is too old to have buildx. Install it manually.
-RUN curl -sSfL https://github.com/docker/buildx/releases/download/v0.13.1/buildx-v0.13.1.linux-${ARCH} -o buildx-v0.13.1.linux-${ARCH} && \
-    chmod +x buildx-v0.13.1.linux-${ARCH} && \
-    mv buildx-v0.13.1.linux-${ARCH} /usr/local/bin/buildx
+COPY --from=golangci/golangci-lint:v2.11.4-alpine@sha256:72bcd68512b4e27540dd3a778a1b7afd45759d8145cfb3c089f1d7af53e718e9 /usr/bin/golangci-lint /usr/local/bin/golangci-lint
 
 # tools needed for generate target
-RUN GO111MODULE=on go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.17.1
-RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@latest
+RUN GO111MODULE=on go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.18.0
+RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.43.0
 
 ENV DAPPER_ENV REPO TAG DRONE_TAG
 ENV DAPPER_SOURCE /go/src/github.com/harvester/harvester-network-controller/
