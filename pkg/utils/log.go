@@ -15,3 +15,15 @@ func SetLogLevel(level string) {
 	// set global log level
 	logrus.SetLevel(ll)
 }
+
+func GetLogLevel() string {
+	return logrus.GetLevel().String()
+}
+
+func GetDefaultLogLevel() string {
+	return "info"
+}
+
+func IsDefaultLogLevel() bool {
+	return logrus.GetLevel() == logrus.InfoLevel
+}

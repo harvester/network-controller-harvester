@@ -24,10 +24,18 @@ var (
 )
 
 func main() {
+	logLevel := utils.GetDefaultLogLevel()
 	app := cli.NewApp()
 	app.Name = name
 	app.Usage = "network-helper is to help get the network information through DHCP protocol from the pod within the VLAN network"
 	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:        "loglevel",
+			Usage:       "Specify log level",
+			EnvVar:      utils.EnvLogLevel,
+			Value:       utils.GetDefaultLogLevel(),
+			Destination: &logLevel,
+		},
 		cli.StringFlag{
 			Name:   "kubeconfig, k",
 			EnvVar: "KUBECONFIG",
@@ -55,6 +63,7 @@ func main() {
 		},
 	}
 	app.Action = func(c *cli.Context) {
+		utils.SetLogLevel(logLevel)
 		if err := run(c); err != nil {
 			panic(err)
 		}

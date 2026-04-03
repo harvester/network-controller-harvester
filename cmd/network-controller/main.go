@@ -28,7 +28,7 @@ var (
 )
 
 func main() {
-	logLevel := "info"
+	logLevel := utils.GetDefaultLogLevel()
 	app := cli.NewApp()
 	app.Name = name
 	app.Version = VERSION
@@ -37,8 +37,8 @@ func main() {
 		cli.StringFlag{
 			Name:        "loglevel",
 			Usage:       "Specify log level",
-			EnvVar:      "LOGLEVEL",
-			Value:       "info",
+			EnvVar:      utils.EnvLogLevel,
+			Value:       utils.GetDefaultLogLevel(),
 			Destination: &logLevel,
 		},
 		cli.StringFlag{
@@ -86,22 +86,30 @@ func main() {
 
 	app.Commands = []cli.Command{
 		{
-			Name:   "manager",
-			Usage:  "Run manager",
-			Action: managerRun,
-			Flags:  commonFlags,
+			Name:  "manager",
+			Usage: "Run manager",
+			Action: func(ctx *cli.Context) {
+				utils.SetLogLevel(logLevel)
+				if err := managerRun(ctx); err != nil {
+					logrus.Fatalf("run manager failed: %v", err)
+				}
+			},
+			Flags: commonFlags,
 		},
 		{
-			Name:   "agent",
-			Usage:  "Run agent",
-			Action: agentRun,
-			Flags:  commonFlags,
+			Name:  "agent",
+			Usage: "Run agent",
+			Action: func(ctx *cli.Context) {
+				utils.SetLogLevel(logLevel)
+				if err := agentRun(ctx); err != nil {
+					logrus.Fatalf("run agent failed: %v", err)
+				}
+			},
+			Flags: commonFlags,
 		},
 	}
 
 	logrus.Infof("Starting %v version %v", app.Name, app.Version)
-
-	utils.SetLogLevel(logLevel)
 
 	if err := app.Run(os.Args); err != nil {
 		logrus.Fatal(err)
