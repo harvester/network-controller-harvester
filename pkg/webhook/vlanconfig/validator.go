@@ -8,6 +8,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/harvester/webhook/pkg/server/admission"
+	ctlcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -29,11 +30,12 @@ const (
 type Validator struct {
 	admission.DefaultValidator
 
-	nadCache ctlcniv1.NetworkAttachmentDefinitionCache
-	vcCache  ctlnetworkv1.VlanConfigCache
-	vsCache  ctlnetworkv1.VlanStatusCache
-	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
-	cnCache  ctlnetworkv1.ClusterNetworkCache
+	nadCache  ctlcniv1.NetworkAttachmentDefinitionCache
+	vcCache   ctlnetworkv1.VlanConfigCache
+	vsCache   ctlnetworkv1.VlanStatusCache
+	vmiCache  ctlkubevirtv1.VirtualMachineInstanceCache
+	cnCache   ctlnetworkv1.ClusterNetworkCache
+	nodeCache ctlcorev1.NodeCache
 }
 
 func NewVlanConfigValidator(
@@ -42,13 +44,15 @@ func NewVlanConfigValidator(
 	vsCache ctlnetworkv1.VlanStatusCache,
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache,
 	cnCache ctlnetworkv1.ClusterNetworkCache,
+	nodeCache ctlcorev1.NodeCache,
 ) *Validator {
 	return &Validator{
-		nadCache: nadCache,
-		vcCache:  vcCache,
-		vsCache:  vsCache,
-		vmiCache: vmiCache,
-		cnCache:  cnCache,
+		nadCache:  nadCache,
+		vcCache:   vcCache,
+		vsCache:   vsCache,
+		vmiCache:  vmiCache,
+		cnCache:   cnCache,
+		nodeCache: nodeCache,
 	}
 }
 
@@ -57,13 +61,26 @@ var _ admission.Validator = &Validator{}
 func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	vc := newObj.(*networkv1.VlanConfig)
 
-	if _, err := utils.IsClusterNetworkNameValid(vc.Spec.ClusterNetwork); err != nil {
-		return fmt.Errorf(createErr, vc.Name, err)
-	}
-
 	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
 		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("cluster network can't be %s",
 			utils.ManagementClusterNetworkName))
+	}
+
+	valid, err := v.isValidNodeSelector(vc.Spec.NodeSelector)
+	if err != nil {
+		return fmt.Errorf("node selector does not match any existing nodes%v", err)
+	}
+
+	if !valid {
+		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("node selector is invalid"))
+	}
+
+	if valid, label := utils.IsClusterNetworkLabelValid(vc); !valid {
+		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("cluster network label %s is invalid and must not be updated by user", label))
+	}
+
+	if _, err := utils.IsClusterNetworkNameValid(vc.Spec.ClusterNetwork); err != nil {
+		return fmt.Errorf(createErr, vc.Name, err)
 	}
 
 	// check if clusternetwork exists
@@ -97,11 +114,23 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return nil
 	}
 
+	valid, err := v.isValidNodeSelector(newVc.Spec.NodeSelector)
+	if err != nil {
+		return err
+	}
+
+	if !valid {
+		return fmt.Errorf(createErr, newVc.Name, fmt.Errorf("node selector is invalid"))
+	}
+
 	if newVc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
 		return fmt.Errorf(updateErr, newVc.Name, fmt.Errorf("cluster network can't be %s",
 			utils.ManagementClusterNetworkName))
 	}
 
+	if valid, label := utils.IsClusterNetworkLabelValid(newVc); !valid {
+		return fmt.Errorf(updateErr, newVc.Name, fmt.Errorf("cluster network label %s is invalid and must not be updated by user", label))
+	}
 	// check if clusternetwork exists
 	// Harvester UI allows to migration a vlanconfig from one clusternetwork to another
 	// but for none-UI, the target ClusterNetwork may be blank
@@ -296,4 +325,19 @@ func (v *Validator) checkStorageNetwork(vc *networkv1.VlanConfig, nodes mapset.S
 	}
 
 	return nil
+}
+
+func (v *Validator) isValidNodeSelector(nodeSelector map[string]string) (bool, error) {
+	if len(nodeSelector) == 0 {
+		return true, nil
+	}
+
+	selector := labels.SelectorFromSet(nodeSelector)
+
+	nodes, err := v.nodeCache.List(selector)
+	if err != nil {
+		return false, err
+	}
+
+	return len(nodes) > 0, nil
 }

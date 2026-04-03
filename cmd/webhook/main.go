@@ -146,7 +146,7 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 	validators := []admission.Validator{
 		clusternetwork.NewCnValidator(c.nadCache, c.vmiCache, c.vcCache),
 		nad.NewNadValidator(c.vmCache, c.vmiCache, c.cnCache, c.vcCache, c.kubeovnsubnetCache, crdExists, c.hostNetworkConfigCache, c.nadCache),
-		vlanconfig.NewVlanConfigValidator(c.nadCache, c.vcCache, c.vsCache, c.vmiCache, c.cnCache),
+		vlanconfig.NewVlanConfigValidator(c.nadCache, c.vcCache, c.vsCache, c.vmiCache, c.cnCache, c.nodeCache),
 		hostnetworkconfig.NewHostNetworkConfigValidator(c.nadCache, c.cnCache, c.hostNetworkConfigCache, c.vcCache, c.vsCache, c.nodeCache, c.vmCache),
 	}
 
