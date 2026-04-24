@@ -42,7 +42,9 @@ func TestCreateHostNetworkConfig(t *testing.T) {
 		currentCN                *networkv1.ClusterNetwork
 		currentCN11              *networkv1.ClusterNetwork
 		currentVC                *networkv1.VlanConfig
+		currentVC2               *networkv1.VlanConfig
 		currentVS                *networkv1.VlanStatus
+		currentVS2               *networkv1.VlanStatus
 		currentNAD               *cniv1.NetworkAttachmentDefinition
 		newNAD                   *cniv1.NetworkAttachmentDefinition
 		newHostNetworkConfig     *networkv1.HostNetworkConfig
@@ -463,6 +465,110 @@ func TestCreateHostNetworkConfig(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:      "vlan config with empty matched nodes and another vlanconfig spanning all nodes should be allowed",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testNadConfig,
+				},
+			},
+			currentNode: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node1",
+				},
+			},
+			currentNode2: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node2",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "currentVC",
+					Annotations: map[string]string{utils.KeyMatchedNodes: "[\"node1\",\"node2\"]"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+					},
+				},
+			},
+			currentVC2: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "currentVC2",
+					Annotations: map[string]string{utils.KeyMatchedNodes: "[]"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+					},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "currentVC",
+					Conditions: []networkv1.Condition{
+						{
+							Type:   networkv1.Ready,
+							Status: "True",
+						},
+					},
+				},
+			},
+			currentVS2: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node2"),
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "currentVC",
+					Conditions: []networkv1.Condition{
+						{
+							Type:   networkv1.Ready,
+							Status: "True",
+						},
+					},
+				},
+			},
+			newHostNetworkConfig: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					ClusterNetwork: testCnName,
+					VlanID:         2012,
+					Mode:           "dhcp",
+					Underlay:       true,
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -492,6 +598,10 @@ func TestCreateHostNetworkConfig(t *testing.T) {
 				_, err := vcClient.Create(tc.currentVC)
 				assert.NoError(t, err)
 			}
+			if tc.currentVC2 != nil {
+				_, err := vcClient.Create(tc.currentVC2)
+				assert.NoError(t, err)
+			}
 			if tc.currentCN != nil {
 				_, err := cnClient.Create(tc.currentCN)
 				assert.NoError(t, err)
@@ -502,6 +612,10 @@ func TestCreateHostNetworkConfig(t *testing.T) {
 			}
 			if tc.currentVS != nil {
 				_, err := vsClient.Create(tc.currentVS)
+				assert.NoError(t, err)
+			}
+			if tc.currentVS2 != nil {
+				_, err := vsClient.Create(tc.currentVS2)
 				assert.NoError(t, err)
 			}
 			if tc.currentNode != nil {
