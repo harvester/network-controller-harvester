@@ -4,3 +4,4 @@
 /.idea
 /bin
 harvester-network-controller
+scripts/.version_env
