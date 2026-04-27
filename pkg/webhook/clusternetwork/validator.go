@@ -212,8 +212,8 @@ func (c *CnValidator) checkMTUOfUpdatedMgmtClusterNetwork(oldCn, newCn *networkv
 		return err
 	}
 
-	if nad := utils.FilterFirstActiveStorageNetworkNad(nads); nad != nil {
-		return fmt.Errorf("the MTU can't be changed from %v to %v as storage network nad %s is still attached", oldMtu, newMtu, nad.Name)
+	if nad := utils.FilterFirstActiveSystemNetworkNad(nads); nad != nil {
+		return fmt.Errorf("the MTU can't be changed from %v to %v as nad %s is still attached", oldMtu, newMtu, nad.Name)
 	}
 
 	vmiGetter := utils.NewVmiGetter(c.vmiCache)

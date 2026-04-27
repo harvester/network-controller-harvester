@@ -2,6 +2,7 @@ package utils
 
 import (
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -145,6 +146,207 @@ func TestL2NetConf(t *testing.T) {
 			assert.NotNil(t, vis)
 			if tc.vlanCount != 0 {
 				assert.True(t, tc.vlanCount == vis.GetVlanCount())
+			}
+		})
+	}
+}
+func TestIsSystemNetworkNad(t *testing.T) {
+	tests := []struct {
+		name     string
+		nad      *nadv1.NetworkAttachmentDefinition
+		expected bool
+	}{
+		{
+			name:     "nil nad returns false",
+			nad:      nil,
+			expected: false,
+		},
+		{
+			name: "nad in wrong namespace returns false",
+			nad: &nadv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "storagenetwork-vlan100",
+					Namespace: "default",
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "nad with storage network annotation returns true",
+			nad: &nadv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "any-name",
+					Namespace:   HarvesterSystemNamespaceName,
+					Annotations: map[string]string{StorageNetworkAnnotation: "true"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "nad with storage network name prefix returns true",
+			nad: &nadv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "storagenetwork-vlan100",
+					Namespace: HarvesterSystemNamespaceName,
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "nad with rwx network annotation returns true",
+			nad: &nadv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "any-name",
+					Namespace:   HarvesterSystemNamespaceName,
+					Annotations: map[string]string{RWXNetworkAnnotation: "true"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "nad with rwx network name prefix returns true",
+			nad: &nadv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "rwx-network-abc123",
+					Namespace: HarvesterSystemNamespaceName,
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "nad in correct namespace without annotation or prefix returns false",
+			nad: &nadv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "regular-nad",
+					Namespace: HarvesterSystemNamespaceName,
+				},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, IsSystemNetworkNad(tc.nad))
+		})
+	}
+}
+
+func TestFilterFirstActiveSystemNetworkNad(t *testing.T) {
+	deletionTime := metav1.NewTime(time.Now())
+	tests := []struct {
+		name        string
+		nads        []*nadv1.NetworkAttachmentDefinition
+		expectedNad string // name of expected nad, empty means nil
+	}{
+		{
+			name:        "empty list returns nil",
+			nads:        []*nadv1.NetworkAttachmentDefinition{},
+			expectedNad: "",
+		},
+		{
+			name: "returns nil when no system network nad present",
+			nads: []*nadv1.NetworkAttachmentDefinition{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "regular-nad",
+						Namespace: HarvesterSystemNamespaceName,
+					},
+				},
+			},
+			expectedNad: "",
+		},
+		{
+			name: "returns first active storage network nad",
+			nads: []*nadv1.NetworkAttachmentDefinition{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "storagenetwork-vlan100",
+						Namespace: HarvesterSystemNamespaceName,
+					},
+				},
+			},
+			expectedNad: "storagenetwork-vlan100",
+		},
+		{
+			name: "returns first active rwx network nad",
+			nads: []*nadv1.NetworkAttachmentDefinition{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "rwx-network-abc123",
+						Namespace: HarvesterSystemNamespaceName,
+					},
+				},
+			},
+			expectedNad: "rwx-network-abc123",
+		},
+		{
+			name: "returns first system network nad found",
+			nads: []*nadv1.NetworkAttachmentDefinition{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "storagenetwork-vlan100",
+						Namespace: HarvesterSystemNamespaceName,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "rwx-network-abc123",
+						Namespace: HarvesterSystemNamespaceName,
+					},
+				},
+			},
+			expectedNad: "storagenetwork-vlan100",
+		},
+		{
+			name: "skips deleted storage network nad, finds rwx",
+			nads: []*nadv1.NetworkAttachmentDefinition{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "storagenetwork-vlan100",
+						Namespace:         HarvesterSystemNamespaceName,
+						DeletionTimestamp: &deletionTime,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "rwx-network-abc123",
+						Namespace: HarvesterSystemNamespaceName,
+					},
+				},
+			},
+			expectedNad: "rwx-network-abc123",
+		},
+		{
+			name: "skips all deleted system network nads",
+			nads: []*nadv1.NetworkAttachmentDefinition{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "storagenetwork-vlan100",
+						Namespace:         HarvesterSystemNamespaceName,
+						DeletionTimestamp: &deletionTime,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "rwx-network-abc123",
+						Namespace:         HarvesterSystemNamespaceName,
+						DeletionTimestamp: &deletionTime,
+					},
+				},
+			},
+			expectedNad: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := FilterFirstActiveSystemNetworkNad(tc.nads)
+			if tc.expectedNad == "" {
+				assert.Nil(t, result)
+			} else {
+				assert.NotNil(t, result)
+				assert.Equal(t, tc.expectedNad, result.Name)
 			}
 		})
 	}

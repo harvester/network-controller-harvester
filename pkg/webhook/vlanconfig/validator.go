@@ -136,7 +136,7 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return fmt.Errorf(updateErr, oldVc.Name, err)
 	}
 
-	if err := v.checkStorageNetwork(oldVc, affectedNodes); err != nil {
+	if err := v.checkNetworkNadsAttached(oldVc, affectedNodes); err != nil {
 		return fmt.Errorf(updateErr, oldVc.Name, err)
 	}
 
@@ -166,7 +166,7 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 		return fmt.Errorf(deleteErr, vc.Name, err)
 	}
 
-	if err := v.checkStorageNetwork(vc, nodes); err != nil {
+	if err := v.checkNetworkNadsAttached(vc, nodes); err != nil {
 		return fmt.Errorf(deleteErr, vc.Name, err)
 	}
 
@@ -278,21 +278,21 @@ func (v *Validator) validateMTU(current *networkv1.VlanConfig) error {
 	return nil
 }
 
-// if storagenetwork nad is there, and affected node number > 0, then deny
-func (v *Validator) checkStorageNetwork(vc *networkv1.VlanConfig, nodes mapset.Set[string]) error {
-	// affect no nodes
+// checkNetworkNadsAttached checks if storage network or rwx network nads are still attached
+func (v *Validator) checkNetworkNadsAttached(vc *networkv1.VlanConfig, nodes mapset.Set[string]) error {
 	if nodes == nil || nodes.Cardinality() == 0 {
 		return nil
 	}
 
-	nadGetter := utils.NewNadGetter(v.nadCache)
-	nad, err := nadGetter.GetFirstActiveStorageNetworkNadOnClusterNetwork(vc.Spec.ClusterNetwork)
+	nads, err := v.nadCache.List(utils.HarvesterSystemNamespaceName, labels.Set(map[string]string{
+		utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork,
+	}).AsSelector())
 	if err != nil {
 		return err
 	}
 
-	if nad != nil {
-		return fmt.Errorf("the storage network nad %s is still attached", nad.Name)
+	if nad := utils.FilterFirstActiveSystemNetworkNad(nads); nad != nil {
+		return fmt.Errorf("the system network nad %s is still attached", nad.Name)
 	}
 
 	return nil

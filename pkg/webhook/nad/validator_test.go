@@ -34,6 +34,13 @@ const (
 	testKubeOVNNadConfig2 = "{\"cniVersion\":\"0.3.1\",\"name\":\"vswitch1\",\"type\":\"kube-ovn\",\"server_socket\":\"/run/openvswitch/kube-ovn-daemon.sock\", \"provider\": \"vswitch7.default.ovn\"}"
 	testSubnetName        = "vswitch1"
 	testSubnetNamespace   = "default"
+
+	testStorageNadName      = "storagenetwork-vlan100"
+	testRWXNadName          = "rwx-network-abc123"
+	testStorageNadConfigOld = "{\"cniVersion\":\"0.3.1\",\"name\":\"storagenetwork-vlan100\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":100,\"ipam\":{}}"
+	testStorageNadConfigNew = "{\"cniVersion\":\"0.3.1\",\"name\":\"storagenetwork-vlan100\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":200,\"ipam\":{}}"
+	testRWXNadConfigOld     = "{\"cniVersion\":\"0.3.1\",\"name\":\"rwx-network-abc123\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":100,\"ipam\":{}}"
+	testRWXNadConfigNew     = "{\"cniVersion\":\"0.3.1\",\"name\":\"rwx-network-abc123\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":200,\"ipam\":{}}"
 )
 
 func TestCreateNAD(t *testing.T) {
@@ -608,16 +615,91 @@ func TestCreateNAD(t *testing.T) {
 }
 
 func TestUpdateNAD(t *testing.T) {
+	testNAD := &cniv1.NetworkAttachmentDefinition{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        testNadName,
+			Namespace:   testNamespace,
+			Annotations: map[string]string{"test": "test"},
+			Labels:      map[string]string{utils.KeyClusterNetworkLabel: "test-cn1"},
+		},
+		Spec: cniv1.NetworkAttachmentDefinitionSpec{
+			Config: testNadConfig1,
+		},
+	}
+
 	tests := []struct {
 		name       string
 		returnErr  bool
 		errKey     string
+		currentCN  *networkv1.ClusterNetwork
+		oldNAD     *cniv1.NetworkAttachmentDefinition
 		currentNAD *cniv1.NetworkAttachmentDefinition
 	}{
+		{
+			name:      "storage network NAD can't be updated",
+			returnErr: true,
+			errKey:    "system network nad's params can't be changed",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testCnName,
+				},
+			},
+			oldNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testStorageNadName,
+					Namespace: utils.HarvesterSystemNamespaceName,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testStorageNadConfigOld,
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testStorageNadName,
+					Namespace: utils.HarvesterSystemNamespaceName,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testStorageNadConfigNew,
+				},
+			},
+		},
+		{
+			name:      "rwx network NAD can't be updated",
+			returnErr: true,
+			errKey:    "system network nad's params can't be changed",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testCnName,
+				},
+			},
+			oldNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testRWXNadName,
+					Namespace: utils.HarvesterSystemNamespaceName,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testRWXNadConfigOld,
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testRWXNadName,
+					Namespace: utils.HarvesterSystemNamespaceName,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testRWXNadConfigNew,
+				},
+			},
+		},
 		{
 			name:      "change the cluster network on nad throws error",
 			returnErr: true,
 			errKey:    "nad bridge name can't be changed",
+			oldNAD:    testNAD,
 			currentNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testNadName,
@@ -634,6 +716,7 @@ func TestUpdateNAD(t *testing.T) {
 			name:      "change the nad type (bridge/kube-ovn) throws error",
 			returnErr: true,
 			errKey:    "nad cannot be updated",
+			oldNAD:    testNAD,
 			currentNAD: &cniv1.NetworkAttachmentDefinition{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testKubeOVNNadName,
@@ -643,18 +726,6 @@ func TestUpdateNAD(t *testing.T) {
 					Config: testKubeOVNNadConfig,
 				},
 			},
-		},
-	}
-
-	oldNad := &cniv1.NetworkAttachmentDefinition{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        testNadName,
-			Namespace:   testNamespace,
-			Annotations: map[string]string{"test": "test"},
-			Labels:      map[string]string{utils.KeyClusterNetworkLabel: "test-cn1"},
-		},
-		Spec: cniv1.NetworkAttachmentDefinitionSpec{
-			Config: testNadConfig1,
 		},
 	}
 
@@ -675,17 +746,23 @@ func TestUpdateNAD(t *testing.T) {
 			hncCache := fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs)
 			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true, hncCache, nadCache)
 
+			if tc.currentCN != nil {
+				cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
+				_, err := cnClient.Create(tc.currentCN)
+				assert.NoError(t, err)
+			}
+
 			nadGvr := schema.GroupVersionResource{
 				Group:    "k8s.cni.cncf.io",
 				Version:  "v1",
 				Resource: "network-attachment-definitions",
 			}
 
-			if err := nchclientset.Tracker().Create(nadGvr, oldNad.DeepCopy(), oldNad.Namespace); err != nil {
-				t.Fatalf("failed to add nad %+v", oldNad)
+			if err := nchclientset.Tracker().Create(nadGvr, tc.oldNAD.DeepCopy(), tc.oldNAD.Namespace); err != nil {
+				t.Fatalf("failed to add nad %+v", tc.oldNAD)
 			}
 
-			err := validator.Update(nil, oldNad, tc.currentNAD)
+			err := validator.Update(nil, tc.oldNAD, tc.currentNAD)
 			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)

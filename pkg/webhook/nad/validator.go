@@ -22,8 +22,6 @@ const (
 	createErr = "can't create nad %s/%s because %w"
 	updateErr = "can't update nad %s/%s because %w"
 	deleteErr = "can't delete nad %s/%s because %w"
-
-	storageNetworkErr = "it is used by storagenetwork"
 )
 
 type Validator struct {
@@ -122,9 +120,9 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
-	// storagenetwork nad's params can't be changed, the only way is to clear & set storagenetwork
-	// then all storagenetwork related PODs will be replaced with new nad
-	if err := v.checkStorageNetwork(newNad); err != nil {
+	// system network nad's params can't be changed, the only way is to clear & set the network
+	// then all related PODs will be replaced with new nad
+	if err := v.checkSystemNetwork(newNad); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
@@ -334,9 +332,9 @@ func (v *Validator) checkVM(nad *cniv1.NetworkAttachmentDefinition) error {
 	return nil
 }
 
-func (v *Validator) checkStorageNetwork(nad *cniv1.NetworkAttachmentDefinition) error {
-	if utils.IsStorageNetworkNad(nad) {
-		return fmt.Errorf("%s", storageNetworkErr)
+func (v *Validator) checkSystemNetwork(nad *cniv1.NetworkAttachmentDefinition) error {
+	if utils.IsSystemNetworkNad(nad) {
+		return fmt.Errorf("system network nad's params can't be changed")
 	}
 
 	return nil
