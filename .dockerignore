@@ -1,0 +1,9 @@
+.DS_Store
+/.dapper
+/.nocalhost
+/.idea
+harvester-network-controller
+/dist
+.git
+
+# /bin is not ignored because `make package` uses the project root as docker build context
