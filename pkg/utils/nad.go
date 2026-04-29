@@ -629,32 +629,28 @@ func isMaskZero(ipnet *net.IPNet) bool {
 	return true
 }
 
-// if this nad is a storagenetwork nad
-func IsStorageNetworkNad(nad *nadv1.NetworkAttachmentDefinition) bool {
+// IsSystemNetworkNad checks if the nad is a system network nad (storage or rwx).
+func IsSystemNetworkNad(nad *nadv1.NetworkAttachmentDefinition) bool {
 	if nad == nil || nad.Namespace != HarvesterSystemNamespaceName {
 		return false
 	}
 
-	// seems Harvester webhook has no protection on this annotation
-	if nad.Annotations != nil && nad.Annotations[StorageNetworkAnnotation] == "true" {
-		return true
+	isMatch := func(annotation, prefix string) bool {
+		if nad.Annotations != nil && nad.Annotations[annotation] == "true" {
+			return true
+		}
+		return strings.HasPrefix(nad.Name, prefix)
 	}
 
-	// check name
-	if strings.HasPrefix(nad.Name, StorageNetworkNetAttachDefPrefix) {
-		return true
-	}
-
-	return false
+	return isMatch(StorageNetworkAnnotation, StorageNetworkNetAttachDefPrefix) ||
+		isMatch(RWXNetworkAnnotation, RWXNetworkNetAttachDefPrefix)
 }
 
-// filter the first active storage network nad from a list of nads
-func FilterFirstActiveStorageNetworkNad(nads []*nadv1.NetworkAttachmentDefinition) *nadv1.NetworkAttachmentDefinition {
-	if len(nads) == 0 {
-		return nil
-	}
+// FilterFirstActiveSystemNetworkNad checks for any active system network nad (storage or rwx) from a list of nads.
+// Returns the nad and its type description, or nil if none found.
+func FilterFirstActiveSystemNetworkNad(nads []*nadv1.NetworkAttachmentDefinition) *nadv1.NetworkAttachmentDefinition {
 	for _, nad := range nads {
-		if IsStorageNetworkNad(nad) && nad.DeletionTimestamp == nil {
+		if nad != nil && nad.DeletionTimestamp == nil && IsSystemNetworkNad(nad) {
 			return nad
 		}
 	}
@@ -696,21 +692,6 @@ func (n *NadGetter) ListNadsOnClusterNetwork(cnName string) ([]*nadv1.NetworkAtt
 		return nil, nil
 	}
 	return nads, nil
-}
-
-func (n *NadGetter) GetFirstActiveStorageNetworkNadOnClusterNetwork(cnName string) (*nadv1.NetworkAttachmentDefinition, error) {
-	nads, err := n.nadCache.List(HarvesterSystemNamespaceName, labels.Set(map[string]string{
-		KeyClusterNetworkLabel: cnName,
-	}).AsSelector())
-	if err != nil {
-		return nil, err
-	}
-
-	if len(nads) == 0 {
-		return nil, nil
-	}
-
-	return FilterFirstActiveStorageNetworkNad(nads), nil
 }
 
 func (n *NadGetter) NadNamesOnClusterNetwork(cnName string) ([]string, error) {

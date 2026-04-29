@@ -28,13 +28,14 @@ const (
 
 func TestCreateVlanConfig(t *testing.T) {
 	tests := []struct {
-		name      string
-		returnErr bool
-		errKey    string
-		currentCN *networkv1.ClusterNetwork
-		currentVC *networkv1.VlanConfig
-		currentVS *networkv1.VlanStatus
-		newVC     *networkv1.VlanConfig
+		name       string
+		returnErr  bool
+		errKey     string
+		currentCN  *networkv1.ClusterNetwork
+		currentVC  *networkv1.VlanConfig
+		currentVS  *networkv1.VlanStatus
+		currentNAD *cniv1.NetworkAttachmentDefinition
+		newVC      *networkv1.VlanConfig
 	}{
 		{
 			name:      "VlanConfig can't be created on mgmt network",
@@ -510,6 +511,92 @@ func TestUpdateVlanConfig(t *testing.T) {
 				},
 			}, // vmi
 		},
+		{
+			name:      "VlanConfig can't be updated as storage network nad is still attached",
+			returnErr: true,
+			errKey:    "system network nad",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testCnName,
+				},
+			},
+			oldVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNewVCName,
+					Annotations: map[string]string{utils.KeyMatchedNodes: `["node1"]`},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{MTU: utils.DefaultMTU},
+					},
+				},
+			},
+			newVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNewVCName,
+					Annotations: map[string]string{utils.KeyMatchedNodes: `["node1"]`},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{MTU: utils.DefaultMTU + 1},
+					},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "storagenetwork-vlan100",
+					Namespace: utils.HarvesterSystemNamespaceName,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+			},
+		},
+		{
+			name:      "VlanConfig can't be updated as rwx network nad is still attached",
+			returnErr: true,
+			errKey:    "system network nad",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testCnName,
+				},
+			},
+			oldVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNewVCName,
+					Annotations: map[string]string{utils.KeyMatchedNodes: `["node1"]`},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{MTU: utils.DefaultMTU},
+					},
+				},
+			},
+			newVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNewVCName,
+					Annotations: map[string]string{utils.KeyMatchedNodes: `["node1"]`},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{MTU: utils.DefaultMTU + 1},
+					},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "rwx-network-abc123",
+					Namespace: utils.HarvesterSystemNamespaceName,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+			},
+		},
 	}
 
 	nadGvr := schema.GroupVersionResource{
@@ -772,6 +859,66 @@ func TestDeleteVlanConfig(t *testing.T) {
 							MTU: utils.DefaultMTU,
 						},
 					},
+				},
+			},
+		},
+		{
+			name:      "VlanConfig can't be deleted as storage network nad is still attached",
+			returnErr: true,
+			errKey:    "system network nad",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testCnName,
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "VC1",
+					Annotations: map[string]string{utils.KeyMatchedNodes: `["node1"]`},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{MTU: utils.DefaultMTU},
+					},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "storagenetwork-vlan100",
+					Namespace: utils.HarvesterSystemNamespaceName,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+			},
+		},
+		{
+			name:      "VlanConfig can't be deleted as rwx network nad is still attached",
+			returnErr: true,
+			errKey:    "system network nad",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testCnName,
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "VC1",
+					Annotations: map[string]string{utils.KeyMatchedNodes: `["node1"]`},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{MTU: utils.DefaultMTU},
+					},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "rwx-network-abc123",
+					Namespace: utils.HarvesterSystemNamespaceName,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
 				},
 			},
 		},

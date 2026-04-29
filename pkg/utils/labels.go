@@ -29,10 +29,12 @@ const (
 
 	HarvesterMgmtClusterNetworkLabeyKey = network.GroupName + "/" + ManagementClusterNetworkName
 
-	// defined in Harvester pkg/controller/master/storagenetwork/storage_network.go
+	// defined in Harvester pkg/util/constants.go
 	// to avoid loop references, needs to wait until Harvester move this to its const and then refers to
 	StorageNetworkAnnotation         = "storage-network.settings.harvesterhci.io"
 	StorageNetworkNetAttachDefPrefix = "storagenetwork-"
+	RWXNetworkAnnotation             = "rwx-network.settings.harvesterhci.io"
+	RWXNetworkNetAttachDefPrefix     = "rwx-network-"
 )
 
 func GetLabelKeyOfClusterNetwork(clusterNetwork string) string {
