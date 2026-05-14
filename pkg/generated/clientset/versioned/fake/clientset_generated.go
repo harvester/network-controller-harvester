@@ -20,6 +20,8 @@ package fake
 
 import (
 	clientset "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned"
+	harvesterhciv1beta1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/harvesterhci.io/v1beta1"
+	fakeharvesterhciv1beta1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/harvesterhci.io/v1beta1/fake"
 	k8scnicncfiov1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/k8s.cni.cncf.io/v1"
 	fakek8scnicncfiov1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/k8s.cni.cncf.io/v1/fake"
 	kubeovnv1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/kubeovn.io/v1"
@@ -99,6 +101,11 @@ var (
 // CoreV1 retrieves the CoreV1Client
 func (c *Clientset) CoreV1() corev1.CoreV1Interface {
 	return &fakecorev1.FakeCoreV1{Fake: &c.Fake}
+}
+
+// HarvesterhciV1beta1 retrieves the HarvesterhciV1beta1Client
+func (c *Clientset) HarvesterhciV1beta1() harvesterhciv1beta1.HarvesterhciV1beta1Interface {
+	return &fakeharvesterhciv1beta1.FakeHarvesterhciV1beta1{Fake: &c.Fake}
 }
 
 // K8sCniCncfIoV1 retrieves the K8sCniCncfIoV1Client

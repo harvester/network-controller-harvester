@@ -18,6 +18,7 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/fake"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/harvester/harvester-network-controller/pkg/utils/fakeclients"
+	harvesterv1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
 )
 
 const (
@@ -41,17 +42,19 @@ const (
 	testStorageNadConfigNew = "{\"cniVersion\":\"0.3.1\",\"name\":\"storagenetwork-vlan100\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":200,\"ipam\":{}}"
 	testRWXNadConfigOld     = "{\"cniVersion\":\"0.3.1\",\"name\":\"rwx-network-abc123\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":100,\"ipam\":{}}"
 	testRWXNadConfigNew     = "{\"cniVersion\":\"0.3.1\",\"name\":\"rwx-network-abc123\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":200,\"ipam\":{}}"
+	testNadTrunkConfig      = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":0,\"ipam\":{},\"vlanTrunk\":[{\"minID\":5,\"maxID\":10},{\"minID\":300,\"maxID\":320},{\"minID\":25,\"maxID\":25}]}"
 )
 
 func TestCreateNAD(t *testing.T) {
 	tests := []struct {
-		name       string
-		returnErr  bool
-		errKey     string
-		currentCN  *networkv1.ClusterNetwork
-		currentVC  *networkv1.VlanConfig
-		currentNAD *cniv1.NetworkAttachmentDefinition
-		newNAD     *cniv1.NetworkAttachmentDefinition
+		name               string
+		returnErr          bool
+		errKey             string
+		currentCN          *networkv1.ClusterNetwork
+		currentVC          *networkv1.VlanConfig
+		currentNAD         *cniv1.NetworkAttachmentDefinition
+		newNAD             *cniv1.NetworkAttachmentDefinition
+		testStorageSetting *harvesterv1.Setting
 	}{
 		{
 			name:      "valid NAD can be created",
@@ -570,6 +573,46 @@ func TestCreateNAD(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:      "nad cannot be created with same vlan-id as storage network nad when exclusive vlan is enabled",
+			returnErr: true,
+			errKey:    "is exclusively reserved for storage network",
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testNadName,
+					Namespace: testNamespace,
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testNadConfig,
+				},
+			},
+			testStorageSetting: &harvesterv1.Setting{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: utils.StorageNetworkName,
+				},
+				Value: `{"vlan":300, "clusterNetwork":"mgmt","exclusiveVlan": true}`,
+			},
+		},
+		{
+			name:      "trunk nad cannot be created with same vlan-id as storage network nad when exclusive vlan is enabled",
+			returnErr: true,
+			errKey:    "is exclusively reserved for storage network",
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testNadName,
+					Namespace: testNamespace,
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testNadTrunkConfig,
+				},
+			},
+			testStorageSetting: &harvesterv1.Setting{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: utils.StorageNetworkName,
+				},
+				Value: `{"vlan":302, "clusterNetwork":"mgmt","exclusiveVlan": true}`,
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -585,6 +628,8 @@ func TestCreateNAD(t *testing.T) {
 			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
 			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			hncCache := fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs)
+			settingCache := fakeclients.SettingCache(nchclientset.HarvesterhciV1beta1().Settings)
+			settingClient := fakeclients.SettingClient(nchclientset.HarvesterhciV1beta1().Settings)
 
 			// client to inject test data
 			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
@@ -602,7 +647,20 @@ func TestCreateNAD(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true, hncCache, nadCache)
+			if tc.testStorageSetting == nil {
+				defaultStorageSetting := &harvesterv1.Setting{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: utils.StorageNetworkName,
+					},
+				}
+				_, settingErr := settingClient.Create(defaultStorageSetting)
+				assert.NoError(t, settingErr)
+			} else {
+				_, settingErr := settingClient.Create(tc.testStorageSetting)
+				assert.NoError(t, settingErr)
+			}
+
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true, hncCache, nadCache, settingCache)
 
 			err := validator.Create(nil, tc.newNAD)
 			assert.True(t, tc.returnErr == (err != nil))
@@ -744,13 +802,24 @@ func TestUpdateNAD(t *testing.T) {
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
 			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			hncCache := fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs)
-			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true, hncCache, nadCache)
+			settingCache := fakeclients.SettingCache(nchclientset.HarvesterhciV1beta1().Settings)
+			settingClient := fakeclients.SettingClient(nchclientset.HarvesterhciV1beta1().Settings)
+
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true, hncCache, nadCache, settingCache)
 
 			if tc.currentCN != nil {
 				cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
 				_, err := cnClient.Create(tc.currentCN)
 				assert.NoError(t, err)
 			}
+
+			defaultStorageSetting := &harvesterv1.Setting{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: utils.StorageNetworkName,
+				},
+			}
+			_, settingErr := settingClient.Create(defaultStorageSetting)
+			assert.NoError(t, settingErr)
 
 			nadGvr := schema.GroupVersionResource{
 				Group:    "k8s.cni.cncf.io",
@@ -988,7 +1057,7 @@ func TestDeleteNAD(t *testing.T) {
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
 			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			hncCache := fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs)
-			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true, hncCache, nadCache)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true, hncCache, nadCache, nil)
 
 			if tc.currentVM != nil {
 				err := nchclientset.Tracker().Add(tc.currentVM)
@@ -1062,7 +1131,17 @@ func TestCreateOverlayNADWithNoSubnetCRD(t *testing.T) {
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
 			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			hncCache := fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs)
-			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, false, hncCache, nadCache)
+			settingCache := fakeclients.SettingCache(nchclientset.HarvesterhciV1beta1().Settings)
+			settingClient := fakeclients.SettingClient(nchclientset.HarvesterhciV1beta1().Settings)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, false, hncCache, nadCache, settingCache)
+
+			defaultStorageSetting := &harvesterv1.Setting{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: utils.StorageNetworkName,
+				},
+			}
+			_, settingErr := settingClient.Create(defaultStorageSetting)
+			assert.NoError(t, settingErr)
 
 			err := validator.Create(nil, tc.currentNAD)
 			logrus.Infof("Create NAD test case '%s' result error: %v", tc.name, err)
@@ -1114,7 +1193,7 @@ func TestDeleteOverlayNADWithNoSubnetCRD(t *testing.T) {
 			subnetCache := fakeclients.SubnetCache(nchclientset.KubeovnV1().Subnets)
 			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
 			hncCache := fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs)
-			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, false, hncCache, nadCache)
+			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, false, hncCache, nadCache, nil)
 
 			err := validator.Delete(nil, tc.currentNAD)
 			logrus.Infof("Delete NAD test case '%s' result error: %v", tc.name, err)

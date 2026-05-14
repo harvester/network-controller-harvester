@@ -20,6 +20,7 @@ package fake
 
 import (
 	networkv1beta1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
+	harvesterhciv1beta1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
 	k8scnicncfiov1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -36,6 +37,7 @@ var codecs = serializer.NewCodecFactory(scheme)
 
 var localSchemeBuilder = runtime.SchemeBuilder{
 	corev1.AddToScheme,
+	harvesterhciv1beta1.AddToScheme,
 	k8scnicncfiov1.AddToScheme,
 	kubeovnv1.AddToScheme,
 	kubevirtv1.AddToScheme,

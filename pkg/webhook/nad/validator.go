@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	harvesterv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/harvesterhci.io/v1beta1"
 	ctlcniv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	kubeovnnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io/v1"
 	ctlkubevirtv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubevirt.io/v1"
@@ -34,11 +35,12 @@ type Validator struct {
 	subnetEnabled bool
 	hncCache      ctlnetworkv1.HostNetworkConfigCache
 	nadCache      ctlcniv1.NetworkAttachmentDefinitionCache
+	settingCache  harvesterv1.SettingCache
 }
 
 var _ admission.Validator = &Validator{}
 
-func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkubevirtv1.VirtualMachineInstanceCache, cnCache ctlnetworkv1.ClusterNetworkCache, vcCache ctlnetworkv1.VlanConfigCache, subnetCache kubeovnnetworkv1.SubnetCache, subnetEnabled bool, hncCache ctlnetworkv1.HostNetworkConfigCache, nadCache ctlcniv1.NetworkAttachmentDefinitionCache) *Validator {
+func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkubevirtv1.VirtualMachineInstanceCache, cnCache ctlnetworkv1.ClusterNetworkCache, vcCache ctlnetworkv1.VlanConfigCache, subnetCache kubeovnnetworkv1.SubnetCache, subnetEnabled bool, hncCache ctlnetworkv1.HostNetworkConfigCache, nadCache ctlcniv1.NetworkAttachmentDefinitionCache, settingCache harvesterv1.SettingCache) *Validator {
 	return &Validator{
 		vmCache:       vmCache,
 		vmiCache:      vmiCache,
@@ -48,6 +50,7 @@ func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkube
 		subnetEnabled: subnetEnabled,
 		hncCache:      hncCache,
 		nadCache:      nadCache,
+		settingCache:  settingCache,
 	}
 }
 
@@ -59,6 +62,9 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
+	if err := v.checkExclusiveVlan(conf); err != nil {
+		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
+	}
 	//allow overlay nad creation only if subnet crd/kubeovn is enabled
 	if conf.IsKubeOVNCNI() {
 		if !v.subnetEnabled {
@@ -93,6 +99,10 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	oldConf, err := utils.DecodeNadConfigToNetConf(oldNad)
 	if err != nil {
 		return fmt.Errorf(updateErr, oldNad.Namespace, oldNad.Name, err)
+	}
+
+	if err := v.checkExclusiveVlan(newConf); err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
 	if err := v.checkRoute(newNad.Annotations[utils.KeyNetworkRoute]); err != nil {
@@ -388,6 +398,45 @@ func (v *Validator) checkOverlayVMsUsingClusterNetwork(nad *cniv1.NetworkAttachm
 				return fmt.Errorf("hostnetworkconfig %s is using nad %s vid %d as underlay on cluster network %s, %w", hostnetworkconfig.Name, nad.Name, vlanID, clusterNetwork, err)
 			}
 		}
+	}
+
+	return nil
+}
+
+func (v *Validator) checkExclusiveVlan(conf *utils.NetConf) error {
+	if conf == nil {
+		return nil
+	}
+
+	setting, err := v.settingCache.Get(utils.StorageNetworkName)
+	if err != nil {
+		return fmt.Errorf("failed to get storage-network setting: %w", err)
+	}
+	if setting == nil || setting.Value == "" {
+		return nil
+	}
+
+	storageVlan, exclusive, parseErr := utils.ParseVlanExclusiveSetting(setting.Value)
+	if parseErr != nil {
+		return fmt.Errorf("failed to parse storage-network setting: %w", parseErr)
+	}
+
+	// if the exclusive flag is not set, then no VLAN is exclusively reserved for storage network, so skip the check
+	if !exclusive {
+		return nil
+	}
+
+	vlanID := conf.GetVlanID()
+	//If the NAD is using trunk mode (vlanID == 0 and vlanTrunk has entries), check if any of the trunk VLANs is exclusively reserved for storage network
+	if vlanID == 0 && conf.VlanTrunk != nil && len(conf.VlanTrunk) > 0 {
+		if conf.HasTrunkVlanID(storageVlan) {
+			return fmt.Errorf("vlan %d is exclusively reserved for storage network", storageVlan)
+		}
+	}
+
+	//NAD is using access/tagged mode, check if the VLAN ID is exclusively reserved for storage network
+	if storageVlan == vlanID {
+		return fmt.Errorf("vlan %d is exclusively reserved for storage network", vlanID)
 	}
 
 	return nil

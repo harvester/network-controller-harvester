@@ -23,6 +23,7 @@ const (
 
 	CNITypeBridge       = "bridge"
 	CNITypeDefaultEmpty = "" // potential empty type, is treated as CNITypeBridge
+	StorageNetworkName  = "storage-network"
 )
 
 type Connectivity string
@@ -377,6 +378,18 @@ func (item *VlanTrunk) IsValid() (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (nc *NetConf) HasTrunkVlanID(target int) bool {
+	for _, vt := range nc.VlanTrunk {
+		if vt.ID != nil && *vt.ID == target {
+			return true
+		}
+		if vt.MinID != nil && vt.MaxID != nil && target >= *vt.MinID && target <= *vt.MaxID {
+			return true
+		}
+	}
+	return false
 }
 
 // if vlanconfig is valid
@@ -749,4 +762,15 @@ func GetProviderFromNad(nadName string, nadNamespace string) (provider string, e
 	}
 
 	return nadName + "." + nadNamespace + "." + ovnProvider, nil
+}
+
+func ParseVlanExclusiveSetting(value string) (vlan int, exclusive bool, err error) {
+	var data struct {
+		Vlan          int  `json:"vlan"`
+		ExclusiveVlan bool `json:"exclusiveVlan"`
+	}
+	if err := json.Unmarshal([]byte(value), &data); err != nil {
+		return 0, false, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+	return data.Vlan, data.ExclusiveVlan, nil
 }

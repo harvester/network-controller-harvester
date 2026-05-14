@@ -22,6 +22,7 @@ import (
 	fmt "fmt"
 	http "net/http"
 
+	harvesterhciv1beta1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/harvesterhci.io/v1beta1"
 	k8scnicncfiov1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/k8s.cni.cncf.io/v1"
 	kubeovnv1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/kubeovn.io/v1"
 	kubevirtv1 "github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/typed/kubevirt.io/v1"
@@ -35,6 +36,7 @@ import (
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	CoreV1() corev1.CoreV1Interface
+	HarvesterhciV1beta1() harvesterhciv1beta1.HarvesterhciV1beta1Interface
 	K8sCniCncfIoV1() k8scnicncfiov1.K8sCniCncfIoV1Interface
 	KubeovnV1() kubeovnv1.KubeovnV1Interface
 	KubevirtV1() kubevirtv1.KubevirtV1Interface
@@ -44,16 +46,22 @@ type Interface interface {
 // Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	coreV1         *corev1.CoreV1Client
-	k8sCniCncfIoV1 *k8scnicncfiov1.K8sCniCncfIoV1Client
-	kubeovnV1      *kubeovnv1.KubeovnV1Client
-	kubevirtV1     *kubevirtv1.KubevirtV1Client
-	networkV1beta1 *networkv1beta1.NetworkV1beta1Client
+	coreV1              *corev1.CoreV1Client
+	harvesterhciV1beta1 *harvesterhciv1beta1.HarvesterhciV1beta1Client
+	k8sCniCncfIoV1      *k8scnicncfiov1.K8sCniCncfIoV1Client
+	kubeovnV1           *kubeovnv1.KubeovnV1Client
+	kubevirtV1          *kubevirtv1.KubevirtV1Client
+	networkV1beta1      *networkv1beta1.NetworkV1beta1Client
 }
 
 // CoreV1 retrieves the CoreV1Client
 func (c *Clientset) CoreV1() corev1.CoreV1Interface {
 	return c.coreV1
+}
+
+// HarvesterhciV1beta1 retrieves the HarvesterhciV1beta1Client
+func (c *Clientset) HarvesterhciV1beta1() harvesterhciv1beta1.HarvesterhciV1beta1Interface {
+	return c.harvesterhciV1beta1
 }
 
 // K8sCniCncfIoV1 retrieves the K8sCniCncfIoV1Client
@@ -124,6 +132,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
+	cs.harvesterhciV1beta1, err = harvesterhciv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 	cs.k8sCniCncfIoV1, err = k8scnicncfiov1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
@@ -162,6 +174,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.coreV1 = corev1.New(c)
+	cs.harvesterhciV1beta1 = harvesterhciv1beta1.New(c)
 	cs.k8sCniCncfIoV1 = k8scnicncfiov1.New(c)
 	cs.kubeovnV1 = kubeovnv1.New(c)
 	cs.kubevirtV1 = kubevirtv1.New(c)

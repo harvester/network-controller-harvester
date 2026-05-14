@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
+	harvesterv1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
 	kubeovnsubnetv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	controllergen "github.com/rancher/wrangler/v3/pkg/controller-gen"
 	"github.com/rancher/wrangler/v3/pkg/controller-gen/args"
@@ -60,6 +61,13 @@ func main() {
 			corev1.SchemeGroupVersion.Group: {
 				Types: []interface{}{
 					corev1.Node{},
+				},
+				GenerateTypes:   false,
+				GenerateClients: true,
+			},
+			harvesterv1.SchemeGroupVersion.Group: {
+				Types: []interface{}{
+					harvesterv1.Setting{},
 				},
 				GenerateTypes:   false,
 				GenerateClients: true,

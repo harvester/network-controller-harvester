@@ -24,6 +24,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	harvester "github.com/harvester/harvester-network-controller/pkg/generated/controllers/harvesterhci.io"
+	harvesterv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/harvesterhci.io/v1beta1"
 	ctlcni "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io"
 	ctlcniv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io/v1"
 	kubeovnnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io"
@@ -145,7 +147,7 @@ func run(ctx context.Context, cfg *rest.Config, options *config.Options) error {
 
 	validators := []admission.Validator{
 		clusternetwork.NewCnValidator(c.nadCache, c.vmiCache, c.vcCache),
-		nad.NewNadValidator(c.vmCache, c.vmiCache, c.cnCache, c.vcCache, c.kubeovnsubnetCache, crdExists, c.hostNetworkConfigCache, c.nadCache),
+		nad.NewNadValidator(c.vmCache, c.vmiCache, c.cnCache, c.vcCache, c.kubeovnsubnetCache, crdExists, c.hostNetworkConfigCache, c.nadCache, c.settingCache),
 		vlanconfig.NewVlanConfigValidator(c.nadCache, c.vcCache, c.vsCache, c.vmiCache, c.cnCache),
 		hostnetworkconfig.NewHostNetworkConfigValidator(c.nadCache, c.cnCache, c.hostNetworkConfigCache, c.vcCache, c.vsCache, c.nodeCache, c.vmCache),
 	}
@@ -182,6 +184,7 @@ type caches struct {
 	kubeovnsubnetCache     kubeovnnetworkv1.SubnetCache
 	kubeovnvpcCache        kubeovnnetworkv1.VpcCache
 	hostNetworkConfigCache ctlnetworkv1.HostNetworkConfigCache
+	settingCache           harvesterv1.SettingCache
 }
 
 func newCaches(ctx context.Context, cfg *rest.Config, threadiness int, crdExists bool) (*caches, error) {
@@ -195,6 +198,8 @@ func newCaches(ctx context.Context, cfg *rest.Config, threadiness int, crdExists
 	starters = append(starters, harvesterNetworkFactory)
 	coreFactory := ctlcore.NewFactoryFromConfigOrDie(cfg)
 	starters = append(starters, coreFactory)
+	harvesterFactory := harvester.NewFactoryFromConfigOrDie(cfg)
+	starters = append(starters, harvesterFactory)
 
 	// must declare cache before starting informers
 	c := &caches{
@@ -206,6 +211,7 @@ func newCaches(ctx context.Context, cfg *rest.Config, threadiness int, crdExists
 		cnCache:                harvesterNetworkFactory.Network().V1beta1().ClusterNetwork().Cache(),
 		nodeCache:              coreFactory.Core().V1().Node().Cache(),
 		hostNetworkConfigCache: harvesterNetworkFactory.Network().V1beta1().HostNetworkConfig().Cache(),
+		settingCache:           harvesterFactory.Harvesterhci().V1beta1().Setting().Cache(),
 	}
 
 	if crdExists {
