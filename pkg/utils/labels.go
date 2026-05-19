@@ -38,6 +38,7 @@ const (
 	StorageNetworkNetAttachDefPrefix = "storagenetwork-"
 	RWXNetworkAnnotation             = "rwx-network.settings.harvesterhci.io"
 	RWXNetworkNetAttachDefPrefix     = "rwx-network-"
+	ExclusiveVlanStorageNetworkLabel = StorageNetworkAnnotation + "/exclusivevlan"
 )
 
 func GetLabelKeyOfClusterNetwork(clusterNetwork string) string {

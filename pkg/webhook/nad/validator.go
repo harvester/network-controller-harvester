@@ -59,6 +59,10 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
+	if err := v.checkVlanOverlapWithSN(nad, conf); err != nil {
+		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
+	}
+
 	//allow overlay nad creation only if subnet crd/kubeovn is enabled
 	if conf.IsKubeOVNCNI() {
 		if !v.subnetEnabled {
@@ -102,6 +106,10 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	// skip the following check if the config is not changed
 	if reflect.DeepEqual(newConf, oldConf) {
 		return nil
+	}
+
+	if err := v.checkVlanOverlapWithSN(newNad, newConf); err != nil {
+		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
 	if err := v.checkNadTypes(oldConf, newConf); err != nil {
@@ -388,6 +396,34 @@ func (v *Validator) checkOverlayVMsUsingClusterNetwork(nad *cniv1.NetworkAttachm
 				return fmt.Errorf("hostnetworkconfig %s is using nad %s vid %d as underlay on cluster network %s, %w", hostnetworkconfig.Name, nad.Name, vlanID, clusterNetwork, err)
 			}
 		}
+	}
+
+	return nil
+}
+
+func (v *Validator) checkVlanOverlapWithSN(nad *cniv1.NetworkAttachmentDefinition, nadConf *utils.NetConf) error {
+	//check only for vlan nad with type bridge CNI
+	if utils.IsSystemNetworkNad(nad) || nadConf.IsKubeOVNCNI() {
+		return nil
+	}
+
+	snNads, err := v.nadCache.List("", labels.Set(map[string]string{
+		utils.ExclusiveVlanStorageNetworkLabel: "true",
+	}).AsSelector())
+	if err != nil {
+		return fmt.Errorf("failed to list storage network nads with exclusive vlan enabled, err %w", err)
+	}
+
+	if len(snNads) == 0 {
+		return nil
+	}
+
+	snNadConf, decodeErr := utils.DecodeNadConfigToNetConf(snNads[0])
+	if decodeErr != nil {
+		return fmt.Errorf("failed to decode storage network nad %s/%s config, err %w", snNads[0].Namespace, snNads[0].Name, decodeErr)
+	}
+	if utils.IsVlanOverlapping(nadConf, snNadConf) {
+		return fmt.Errorf("vlan %d is exclusively reserved for storage network", snNadConf.GetVlanID())
 	}
 
 	return nil

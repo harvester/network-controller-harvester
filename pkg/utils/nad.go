@@ -646,6 +646,29 @@ func IsSystemNetworkNad(nad *nadv1.NetworkAttachmentDefinition) bool {
 		isMatch(RWXNetworkAnnotation, RWXNetworkNetAttachDefPrefix)
 }
 
+func (nc *NetConf) HasTrunkVlanID(target int) bool {
+	for _, vt := range nc.VlanTrunk {
+		if vt.ID != nil && *vt.ID == target {
+			return true
+		}
+		if vt.MinID != nil && vt.MaxID != nil && target >= *vt.MinID && target <= *vt.MaxID {
+			return true
+		}
+	}
+	return false
+}
+
+func IsVlanOverlapping(nadConf *NetConf, snNadConf *NetConf) bool {
+	vmVlan := nadConf.GetVlanID()
+	snVlan := snNadConf.GetVlanID()
+
+	if nadConf.HasTrunkVlanID(snVlan) || snVlan == vmVlan {
+		return true
+	}
+
+	return false
+}
+
 // FilterFirstActiveSystemNetworkNad checks for any active system network nad (storage or rwx) from a list of nads.
 // Returns the nad and its type description, or nil if none found.
 func FilterFirstActiveSystemNetworkNad(nads []*nadv1.NetworkAttachmentDefinition) *nadv1.NetworkAttachmentDefinition {
