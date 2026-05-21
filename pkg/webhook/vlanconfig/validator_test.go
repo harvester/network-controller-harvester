@@ -732,6 +732,9 @@ func TestUpdateVlanConfig_NoMatchedNodesAnnotationDoesNotPanic(t *testing.T) {
 			ClusterNetwork: testCnName,
 			Uplink: networkv1.Uplink{
 				LinkAttrs: &networkv1.LinkAttrs{MTU: utils.DefaultMTU},
+				BondOptions: &networkv1.BondOptions{
+					Mode: utils.DefaultBondMode,
+				},
 			},
 		},
 	}
@@ -1073,6 +1076,486 @@ func TestGetMatchNodes(t *testing.T) {
 				assert.Equal(t, len(tc.wantNodes), nodes.Cardinality())
 				for _, node := range tc.wantNodes {
 					assert.True(t, nodes.Contains(node))
+				}
+			}
+		})
+	}
+}
+
+func TestValidateBondOptions(t *testing.T) {
+	tests := []struct {
+		name                     string
+		returnErr                bool
+		errKey                   string
+		currentCN                *networkv1.ClusterNetwork
+		currentVC                *networkv1.VlanConfig // delete this one
+		currentVS                *networkv1.VlanStatus
+		currentNAD               *cniv1.NetworkAttachmentDefinition
+		currentVm                *kubevirtv1.VirtualMachine
+		currentHostNetworkConfig *networkv1.HostNetworkConfig
+	}{
+		{
+			name:      "BondOptions is nil no error should be returned",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "VC1",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "VC1",
+					Labels: map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+						BondOptions: nil,
+					},
+				},
+			},
+		},
+		{
+			name:      "BondOptions specify Miimon and ArpInterval error should be returned",
+			returnErr: true,
+			errKey:    "miimon and arp_interval can't be set at the same time",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "VC1",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "VC1",
+					Labels: map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+						BondOptions: &networkv1.BondOptions{
+							Miimon:      100,
+							ArpInterval: 100,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:      "BondOptions specify Mode BondMode8023AD and ArpInterval error should be returned",
+			returnErr: true,
+			errKey:    "arp_interval can't be set if mode is 802.3ad",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "VC1",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "VC1",
+					Labels: map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+						BondOptions: &networkv1.BondOptions{
+							Mode:        networkv1.BondMode8023AD,
+							Miimon:      -1,
+							ArpInterval: 100,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:      "BondOptions specify ArpInterval but ArpIpTargets is not set error should be returned",
+			returnErr: true,
+			errKey:    "arp_interval can't be set if arp_ip_targets is not set",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "VC1",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "VC1",
+					Labels: map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+						BondOptions: &networkv1.BondOptions{
+							Miimon:      -1,
+							ArpInterval: 100,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:      "BondOptions specify ArpValidate but ArpInterval is set to 0 error should be returned",
+			returnErr: true,
+			errKey:    "arp_validate can't be set if arp_interval is 0 or not set",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "VC1",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "VC1",
+					Labels: map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+						BondOptions: &networkv1.BondOptions{
+							Miimon:       -1,
+							ArpInterval:  0,
+							ArpValidate:  "any",
+							ArpIpTargets: []string{"10.10.0.1"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:      "BondOptions specify ArpValidate but ArpInterval is not set error should be returned",
+			returnErr: true,
+			errKey:    "arp_validate can't be set if arp_interval is 0 or not set",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "VC1",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "VC1",
+					Labels: map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+						BondOptions: &networkv1.BondOptions{
+							Miimon:       -1,
+							ArpValidate:  "any",
+							ArpIpTargets: []string{"10.10.0.1"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:      "BondOptions specify XmitHashPolicy validateBondXmitHashPolicy should be executed",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "VC1",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "VC1",
+					Labels: map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+						BondOptions: &networkv1.BondOptions{
+							Miimon:         100,
+							ArpInterval:    -1,
+							Mode:           networkv1.BondMode8023AD,
+							XmitHashPolicy: "layer2",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:      "BondOptions specify XmitHashPolicy but Mode is set to incompatible Mode validateBondXmitHashPolicy should return an error",
+			returnErr: true,
+			errKey:    "xmit_hash_policy can be set if mode is one of",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "VC1",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "VC1",
+					Labels: map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+						BondOptions: &networkv1.BondOptions{
+							Miimon:         100,
+							ArpInterval:    -1,
+							Mode:           networkv1.BondModeBalanceAlb,
+							XmitHashPolicy: "layer2",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:      "BondOptions specify LacpRate but Mode is not set to BondMode8023AD should return an error",
+			returnErr: true,
+			errKey:    "lacp_rate can be set only if mode is 802.3ad",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "VC1",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "VC1",
+					Labels: map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+						BondOptions: &networkv1.BondOptions{
+							Miimon:         100,
+							ArpInterval:    -1,
+							Mode:           networkv1.BondModeBalanceXor,
+							XmitHashPolicy: "layer2",
+							LacpRate:       "slow",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:      "BondOptions specify AdSelect but Mode is not set to BondMode8023AD should return an error",
+			returnErr: true,
+			errKey:    "ad_select can be set only if mode is 802.3ad",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "VC1",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "VC1",
+					Labels: map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+						BondOptions: &networkv1.BondOptions{
+							Miimon:         100,
+							ArpInterval:    -1,
+							Mode:           networkv1.BondModeBalanceXor,
+							XmitHashPolicy: "layer2",
+							AdSelect:       "stable",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.NotNil(t, tc.currentVC)
+			if tc.currentVC == nil {
+				return
+			}
+
+			nchclientset := fake.NewSimpleClientset()
+			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
+			vmiCache := fakeclients.VirtualMachineInstanceCache(nchclientset.KubevirtV1().VirtualMachineInstances)
+			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
+			vsCache := fakeclients.VlanStatusCache(nchclientset.NetworkV1beta1().VlanStatuses)
+			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
+
+			// client to inject test data
+			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
+			cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
+			vsClient := fakeclients.VlanStatusClient(nchclientset.NetworkV1beta1().VlanStatuses)
+
+			if tc.currentVC != nil {
+				_, err := vcClient.Create(tc.currentVC)
+				assert.NoError(t, err)
+			}
+			if tc.currentCN != nil {
+				_, err := cnClient.Create(tc.currentCN)
+				assert.NoError(t, err)
+			}
+			if tc.currentVS != nil {
+				_, err := vsClient.Create(tc.currentVS)
+				assert.NoError(t, err)
+			}
+			if tc.currentNAD != nil {
+				nadGvr := schema.GroupVersionResource{
+					Group:    "k8s.cni.cncf.io",
+					Version:  "v1",
+					Resource: "network-attachment-definitions",
+				}
+				if err := nchclientset.Tracker().Create(nadGvr, tc.currentNAD.DeepCopy(), tc.currentNAD.Namespace); err != nil {
+					t.Fatalf("failed to add nad %+v", tc.currentNAD)
+				}
+			}
+			if tc.currentVm != nil {
+				err := nchclientset.Tracker().Add(tc.currentVm)
+				assert.Nil(t, err, "mock resource vm should add into fake controller tracker")
+			}
+			if tc.currentHostNetworkConfig != nil {
+				hncClient := fakeclients.HostNetworkConfigClient(nchclientset.NetworkV1beta1().HostNetworkConfigs)
+				_, err := hncClient.Create(tc.currentHostNetworkConfig)
+				assert.NoError(t, err)
+			}
+			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
+
+			err := validator.validateBondOptions(tc.currentVC)
+			assert.True(t, tc.returnErr == (err != nil))
+			if tc.returnErr {
+				assert.NotNil(t, err)
+				// avoid panic
+				if err != nil {
+					assert.True(t, strings.Contains(err.Error(), tc.errKey))
 				}
 			}
 		})

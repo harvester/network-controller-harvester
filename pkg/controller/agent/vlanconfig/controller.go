@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
 
 	"github.com/sirupsen/logrus"
@@ -311,20 +312,65 @@ func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 	}
 	// Note: do not use &netlink.Bond{}
 	bond := netlink.NewLinkBond(linkAttrs)
-	// set bonding mode
-	mode := netlink.BOND_MODE_ACTIVE_BACKUP
-	if vc.Spec.Uplink.BondOptions != nil && vc.Spec.Uplink.BondOptions.Mode != "" {
-		mode = netlink.StringToBondMode(string(vc.Spec.Uplink.BondOptions.Mode))
-	}
-	bond.Mode = mode
 
-	miimon := utils.DefaultValueMiimon
-	// set bonding miimon
-	if vc.Spec.Uplink.BondOptions != nil && vc.Spec.Uplink.BondOptions.Miimon != -1 {
-		miimon = vc.Spec.Uplink.BondOptions.Miimon
+	// if bond options are not defined use defaults and create bond
+	if vc.Spec.Uplink.BondOptions == nil {
+		bond.Mode = netlink.BOND_MODE_BALANCE_RR
+		bond.Miimon = utils.DefaultValueMiimon
+
+		goto CreateBond
 	}
 
-	bond.Miimon = miimon
+	// set mode
+	if vc.Spec.Uplink.BondOptions.Mode != "" {
+		bond.Mode = netlink.StringToBondMode(string(vc.Spec.Uplink.BondOptions.Mode))
+	}
+
+	// set miimon
+	if vc.Spec.Uplink.BondOptions.Miimon != -1 {
+		bond.Miimon = vc.Spec.Uplink.BondOptions.Miimon
+	}
+
+	// set  xmit_hash_policy
+	if vc.Spec.Uplink.BondOptions.XmitHashPolicy != "" {
+		bond.XmitHashPolicy = netlink.StringToBondXmitHashPolicy(vc.Spec.Uplink.BondOptions.XmitHashPolicy)
+	}
+
+	// set lacp_rate
+	if vc.Spec.Uplink.BondOptions.LacpRate != "" {
+		bond.LacpRate = netlink.StringToBondLacpRate(vc.Spec.Uplink.BondOptions.LacpRate)
+	}
+
+	// set ad_select
+	if vc.Spec.Uplink.BondOptions.AdSelect != "" {
+		bond.AdSelect = utils.StringToBondAdSelect(vc.Spec.Uplink.BondOptions.AdSelect)
+	}
+
+	// set arp_interval
+	if vc.Spec.Uplink.BondOptions.ArpInterval != -1 {
+		bond.ArpInterval = vc.Spec.Uplink.BondOptions.ArpInterval
+	}
+
+	// set arp_ip_target
+	if len(vc.Spec.Uplink.BondOptions.ArpIpTargets) > 0 {
+		var arpIpTargets []net.IP
+		for _, target := range vc.Spec.Uplink.BondOptions.ArpIpTargets {
+			arpIpTargets = append(arpIpTargets, net.ParseIP(target))
+		}
+		bond.ArpIpTargets = arpIpTargets
+	}
+
+	// set arp_validate
+	if vc.Spec.Uplink.BondOptions.ArpValidate != "" {
+		bond.ArpValidate = utils.StringToBondArpValidate(vc.Spec.Uplink.BondOptions.ArpValidate)
+	}
+
+	// set arp_all_targets
+	if vc.Spec.Uplink.BondOptions.ArpAllTargets != "" {
+		bond.ArpAllTargets = utils.StringToBondArpAllTargets(vc.Spec.Uplink.BondOptions.ArpAllTargets)
+	}
+
+CreateBond:
 	b := iface.NewBond(bond, vc.Spec.Uplink.NICs)
 	if err := b.EnsureBond(); err != nil {
 		return nil, err

@@ -316,5 +316,55 @@ func compareBond(old, new *netlink.Bond) bool { //nolint
 		return false
 	}
 
+	// handle change on xmit_hash_policy
+	if old.XmitHashPolicy != new.XmitHashPolicy {
+		return false
+	}
+
+	// handle change on lacp_rate
+	if old.LacpRate != new.LacpRate {
+		return false
+	}
+
+	// handle change on ad_select
+	if old.AdSelect != new.AdSelect {
+		return false
+	}
+
+	// handle change on arp_interval
+	if old.ArpInterval != new.ArpInterval {
+		return false
+	}
+
+	// handle change on arp_ip_targets
+	if len(old.ArpIpTargets) != len(new.ArpIpTargets) {
+		return false
+	}
+
+	// we need to check all the IPs in the list and look for a change
+	if len(old.ArpIpTargets) == len(new.ArpIpTargets) && len(old.ArpIpTargets) != 0 {
+		for _, oldTarget := range old.ArpIpTargets {
+			for i, newTarget := range new.ArpIpTargets {
+				if !oldTarget.Equal(newTarget) {
+					if i != len(new.ArpIpTargets)-1 {
+						continue
+					} else {
+						return false
+					}
+				}
+			}
+		}
+	}
+
+	// handle change on arp_validate
+	if old.ArpValidate != new.ArpValidate {
+		return false
+	}
+
+	// handle change on arp_all_targets
+	if old.ArpAllTargets != new.ArpAllTargets {
+		return false
+	}
+
 	return true
 }

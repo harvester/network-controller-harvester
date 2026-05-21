@@ -63,8 +63,44 @@ spec:
                   bondOptions:
                     description: 'reference: https://www.kernel.org/doc/Documentation/networking/bonding.txt'
                     properties:
-                      miimon:
+                      adSelect:
+                        enum:
+                        - stable
+                        - bandwidth
+                        - count
+                        type: string
+                      arpAllTargets:
+                        default: any
+                        enum:
+                        - any
+                        - all
+                        type: string
+                      arpInterval:
                         default: -1
+                        minimum: -1
+                        type: integer
+                      arpIpTargets:
+                        items:
+                          type: string
+                        maxItems: 16
+                        type: array
+                      arpValidate:
+                        default: none
+                        enum:
+                        - none
+                        - active
+                        - backup
+                        - all
+                        - filter
+                        - filter_active
+                        - filter_backup
+                        type: string
+                      lacpRate:
+                        enum:
+                        - slow
+                        - fast
+                        type: string
+                      miimon:
                         minimum: -1
                         type: integer
                       mode:
@@ -77,6 +113,15 @@ spec:
                         - 802.3ad
                         - balance-tlb
                         - balance-alb
+                        type: string
+                      xmitHashPolicy:
+                        default: layer2
+                        enum:
+                        - layer2
+                        - layer2+3
+                        - layer3+4
+                        - encap2+3
+                        - encap3+4
                         type: string
                     type: object
                   linkAttributes:

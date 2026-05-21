@@ -55,8 +55,33 @@ type BondOptions struct {
 	Mode BondMode `json:"mode,omitempty"`
 	// +optional
 	// +kubebuilder:validation:Minimum:=-1
-	// +kubebuilder:default:=-1
 	Miimon int `json:"miimon,omitempty"`
+	// +optional
+	// +kubebuilder:validation:Enum={"layer2","layer2+3","layer3+4","encap2+3","encap3+4"}
+	// +kubebuilder:default:="layer2"
+	XmitHashPolicy string `json:"xmitHashPolicy,omitempty"`
+	// +optional
+	// +kubebuilder:validation:Enum={"slow","fast"}
+	LacpRate string `json:"lacpRate,omitempty"`
+	// +optional
+	// +kubebuilder:validation:Enum={"stable","bandwidth","count"}
+	AdSelect string `json:"adSelect,omitempty"`
+	// +optional
+	// +kubebuilder:validation:Minimum:=-1
+	// +kubebuilder:default:=-1
+	ArpInterval int `json:"arpInterval,omitempty"`
+	// +optional
+	// +kubebuilder:validation:MaxItems:=16
+	// +kubebuilder:validation:Item:Pattern:="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+	ArpIpTargets []string `json:"arpIpTargets,omitempty"`
+	// +optional
+	// +kubebuilder:validation:Enum={"none","active","backup","all","filter", "filter_active", "filter_backup"}
+	// +kubebuilder:default:="none"
+	ArpValidate string `json:"arpValidate,omitempty"`
+	// +optional
+	// +kubebuilder:validation:Enum={"any", "all"}
+	// +kubebuilder:default:="any"
+	ArpAllTargets string `json:"arpAllTargets,omitempty"`
 }
 
 // +kubebuilder:validation:Enum={"balance-rr","active-backup","balance-xor","broadcast","802.3ad","balance-tlb","balance-alb"}
