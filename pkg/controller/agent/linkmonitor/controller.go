@@ -7,12 +7,14 @@ import (
 	ctlcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/config"
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/monitor"
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 const (
@@ -23,6 +25,8 @@ type Handler struct {
 	nodeName string
 
 	nodeCache    ctlcorev1.NodeCache
+	vcCache      ctlnetworkv1.VlanConfigCache
+	vcClient     ctlnetworkv1.VlanConfigClient
 	lmController ctlnetworkv1.LinkMonitorController
 	lmClient     ctlnetworkv1.LinkMonitorClient
 
@@ -32,10 +36,13 @@ type Handler struct {
 func Register(ctx context.Context, management *config.Management) error {
 	lms := management.HarvesterNetworkFactory.Network().V1beta1().LinkMonitor()
 	nodes := management.CoreFactory.Core().V1().Node()
+	vcs := management.HarvesterNetworkFactory.Network().V1beta1().VlanConfig()
 
 	h := &Handler{
 		nodeName:     management.Options.NodeName,
 		nodeCache:    nodes.Cache(),
+		vcCache:      vcs.Cache(),
+		vcClient:     vcs,
 		lmController: lms,
 		lmClient:     lms,
 	}
@@ -75,6 +82,10 @@ func (h Handler) OnChange(_ string, lm *networkv1.LinkMonitor) (*networkv1.LinkM
 
 	if err := h.syncLinkStatus(lm); err != nil {
 		return nil, fmt.Errorf("synchronize links to link monitor %s failed, error: %w", lm.Name, err)
+	}
+
+	if lm.Name == utils.ManagementClusterNetworkName {
+		return nil, h.updateMgmtVlanConfig()
 	}
 
 	return lm, nil
@@ -206,4 +217,36 @@ func (h Handler) syncLinkStatus(lm *networkv1.LinkMonitor) error {
 	}
 
 	return h.updateStatus(lm, linkStatusList)
+}
+
+// update mgmt vlanconfig when mgmt cluster link params change
+func (h Handler) updateMgmtVlanConfig() error {
+	mgmtVlanConfigName := utils.GetMgmtVlanConfigName(h.nodeName)
+	vc, err := h.vcCache.Get(mgmtVlanConfigName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			logrus.Infof("no VlanConfig found for mgmt cluster network")
+			return nil
+		}
+		return fmt.Errorf("failed to get VlanConfig %s: %w", mgmtVlanConfigName, err)
+	}
+
+	mgmtIntfInfo, err := utils.GetMgmtBondInfo()
+	if err != nil {
+		logrus.Errorf("failed to get mgmt interface info: %v", err)
+		return err
+	}
+	vcCopy := vc.DeepCopy()
+
+	if !utils.BuildUpdatedVlanConfig(vcCopy, mgmtIntfInfo) {
+		return nil
+	}
+
+	_, err = h.vcClient.Update(vcCopy)
+	if err != nil {
+		return fmt.Errorf("failed to update VlanConfig %s: %w", vcCopy.Name, err)
+	}
+
+	logrus.Infof("updated VlanConfig %s with new info: MTU=%d, BondMode=%s, NICs=%v", vcCopy.Name, vcCopy.Spec.Uplink.LinkAttrs.MTU, vcCopy.Spec.Uplink.BondOptions.Mode, vcCopy.Spec.Uplink.NICs)
+	return nil
 }
