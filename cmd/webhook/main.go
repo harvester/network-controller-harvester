@@ -87,7 +87,7 @@ func main() {
 			Name:        "controller-user",
 			EnvVar:      "CONTROLLER_USER_NAME",
 			Destination: &options.ControllerUsername,
-			Value:       "harvester-load-balancer-webhook",
+			Value:       "system:serviceaccount:harvester-system:harvester-network-controller",
 			Usage:       "The harvester controller username",
 		},
 		cli.StringFlag{

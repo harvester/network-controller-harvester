@@ -4,7 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/wrangler/v3/pkg/webhook"
 	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/admission/v1"
+	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	kubevirtv1 "kubevirt.io/api/core/v1"
@@ -15,6 +18,8 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/fake"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/harvester/harvester-network-controller/pkg/utils/fakeclients"
+	webhookConfig "github.com/harvester/webhook/pkg/config"
+	"github.com/harvester/webhook/pkg/server/admission"
 )
 
 const (
@@ -23,7 +28,6 @@ const (
 	testVMName    = "vm1"
 	testNamespace = "test"
 	testNewVCName = "newVC"
-	testNadConfig = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
 )
 
 func TestCreateVlanConfig(t *testing.T) {
@@ -36,9 +40,10 @@ func TestCreateVlanConfig(t *testing.T) {
 		currentVS  *networkv1.VlanStatus
 		currentNAD *cniv1.NetworkAttachmentDefinition
 		newVC      *networkv1.VlanConfig
+		userReq    bool
 	}{
 		{
-			name:      "VlanConfig can't be created on mgmt network",
+			name:      "VlanConfig can't be created on mgmt network by user request",
 			returnErr: true,
 			errKey:    "mgmt",
 			newVC: &networkv1.VlanConfig{
@@ -48,6 +53,27 @@ func TestCreateVlanConfig(t *testing.T) {
 				},
 				Spec: networkv1.VlanConfigSpec{
 					ClusterNetwork: utils.ManagementClusterNetworkName,
+				},
+			},
+			userReq: true,
+		},
+		{
+			name:      "VlanConfig can be created on mgmt network by controller request",
+			returnErr: false,
+			errKey:    "",
+			newVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "testOnMgmt",
+					Annotations: map[string]string{"test": "test"},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: utils.ManagementClusterNetworkName,
+				},
+			},
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.ManagementClusterNetworkName,
+					Annotations: map[string]string{"test": "test"},
 				},
 			},
 		},
@@ -289,7 +315,17 @@ func TestCreateVlanConfig(t *testing.T) {
 			}
 			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
 
-			err := validator.Create(nil, tc.newVC)
+			var username string
+			if tc.userReq {
+				username = "system:admin"
+			} else {
+				username = "system:serviceaccount:harvester-system:harvester-network-controller"
+			}
+			options := &webhookConfig.Options{ControllerUsername: "system:serviceaccount:harvester-system:harvester-network-controller"}
+			webhookReq := &webhook.Request{AdmissionRequest: v1.AdmissionRequest{UserInfo: authenticationv1.UserInfo{Username: username}}}
+			req := admission.NewRequest(webhookReq, options)
+
+			err := validator.Create(req, tc.newVC)
 			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {
 				assert.NotNil(t, err)
