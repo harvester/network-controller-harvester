@@ -32,6 +32,10 @@ func NewVlanConfigMutator(nodeCache ctlcorev1.NodeCache) *Mutator {
 func (m *Mutator) Create(_ *admission.Request, newObj runtime.Object) (admission.Patch, error) {
 	vlanConfig := newObj.(*networkv1.VlanConfig)
 
+	//skip matched node annotation for mgmt vlanconfig
+	if vlanConfig.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
+		return nil, nil
+	}
 	annotationPatch, err := m.matchNodes(vlanConfig)
 	if err != nil {
 		return nil, fmt.Errorf(createErr, vlanConfig.Name, err)
@@ -49,6 +53,10 @@ func (m *Mutator) Update(_ *admission.Request, oldObj, newObj runtime.Object) (a
 		return nil, nil
 	}
 
+	//skip matched node annotation for mgmt vlanconfig
+	if newVc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
+		return nil, nil
+	}
 	// continue the mutation even if spec is not changed, to ensure those labels
 	var cnLabelPatch, annotationPatch admission.Patch
 	if newVc.Spec.ClusterNetwork != oldVc.Spec.ClusterNetwork {

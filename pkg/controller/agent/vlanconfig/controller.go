@@ -79,9 +79,10 @@ func Register(ctx context.Context, management *config.Management) error {
 }
 
 func (h Handler) OnChange(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
-	if vc == nil || vc.DeletionTimestamp != nil {
+	if vc == nil || vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName || vc.DeletionTimestamp != nil {
 		return nil, nil
 	}
+
 	logrus.Infof("vlan config %s has been changed, spec: %+v", vc.Name, vc.Spec)
 
 	isMatched, err := h.MatchNode(vc)
@@ -113,7 +114,7 @@ func (h Handler) OnChange(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanCo
 }
 
 func (h Handler) OnRemove(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
-	if vc == nil {
+	if vc == nil || vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
 		return nil, nil
 	}
 
@@ -137,6 +138,11 @@ func (h Handler) initialize() error {
 	if err := iface.DisableBridgeNF(); err != nil {
 		return fmt.Errorf("disable net.bridge.bridge-nf-call-iptables failed, error: %v", err)
 	}
+
+	if err := h.CreateOrUpdateMgmtVlanConfig(); err != nil {
+		return fmt.Errorf("mgmt vlanconfig error: %w", err)
+	}
+
 	return nil
 }
 
@@ -461,4 +467,113 @@ func (h Handler) removeNodeLabel(vs *networkv1.VlanStatus) error {
 // vlanstatus name: <vc name>-<node name>-<crc32 checksum>
 func (h Handler) statusName(clusterNetwork string) string {
 	return utils.Name("", clusterNetwork, h.nodeName)
+}
+
+func (h *Handler) createMgmtVlanConfig(vc *networkv1.VlanConfig) error {
+	_, err := h.vcClient.Create(vc)
+	if err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			logrus.Debugf("%s already exists", utils.GetMgmtVlanConfigName(h.nodeName))
+			return nil
+		}
+
+		return fmt.Errorf("failed to create mgmt-vlanconfig %s: %w",
+			utils.GetMgmtVlanConfigName(h.nodeName), err)
+	}
+
+	return nil
+}
+
+// CreateOrUpdateMgmtVlanConfig checks mgmt-bo, gathers info, and creates or updates a VlanConfig resource.
+func (h *Handler) CreateOrUpdateMgmtVlanConfig() error {
+	mgmtInfo, err := utils.GetMgmtBondInfo()
+	if err != nil {
+		logrus.Warnf("mgmt interface info not found, create an empty mgmt vlanconfig: %v", err)
+		if err := h.createMgmtVlanConfig(&networkv1.VlanConfig{ObjectMeta: metav1.ObjectMeta{
+			Name: utils.GetMgmtVlanConfigName(h.nodeName),
+		}}); err != nil {
+			return fmt.Errorf("failed to create empty mgmt vlanconfig: %w", err)
+		}
+		return nil
+	}
+
+	mgmtVlanConfigName := utils.GetMgmtVlanConfigName(h.nodeName)
+
+	// Try update first.
+	found, err := h.updateMgmtVlanConfigIfExists(mgmtInfo)
+	if err != nil {
+		return fmt.Errorf("failed to update existing mgmt vlanconfig %s: %w", mgmtVlanConfigName, err)
+	}
+
+	if found {
+		return nil
+	}
+
+	// Not found, create new object.
+	vc := &networkv1.VlanConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: mgmtVlanConfigName,
+			Labels: map[string]string{
+				utils.KeyClusterNetworkLabel: utils.ManagementClusterNetworkName,
+			},
+		},
+		Spec: networkv1.VlanConfigSpec{
+			ClusterNetwork: utils.ManagementClusterNetworkName,
+			Uplink: networkv1.Uplink{
+				BondOptions: &networkv1.BondOptions{
+					Mode:   networkv1.BondMode(mgmtInfo.BondMode),
+					Miimon: -1,
+				},
+				LinkAttrs: &networkv1.LinkAttrs{
+					MTU:    mgmtInfo.MTU,
+					TxQLen: -1,
+				},
+				NICs: append([]string{}, mgmtInfo.SlaveNames...),
+			},
+		},
+	}
+
+	if err := h.createMgmtVlanConfig(vc); err != nil {
+		return err
+	}
+
+	logrus.Infof(
+		"created VlanConfig %s with MTU=%d BondMode=%s NICs=%v",
+		vc.Name,
+		vc.Spec.Uplink.LinkAttrs.MTU,
+		vc.Spec.Uplink.BondOptions.Mode,
+		vc.Spec.Uplink.NICs,
+	)
+
+	return nil
+}
+
+func (h *Handler) updateMgmtVlanConfigIfExists(mgmtInfo *utils.MgmtBondInterfaceInfo) (bool, error) {
+	name := utils.GetMgmtVlanConfigName(h.nodeName)
+
+	existing, err := h.vcCache.Get(name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	if existing == nil {
+		return false, nil
+	}
+	updated := existing.DeepCopy()
+
+	if !utils.BuildUpdatedVlanConfig(updated, mgmtInfo) {
+		return true, nil
+	}
+
+	_, err = h.vcClient.Update(updated)
+	if err != nil {
+		return true, err
+	}
+
+	logrus.Infof("updated VlanConfig %s", updated.Name)
+
+	return true, nil
 }
