@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # check=skip=InvalidDefaultArgInFrom
 
-FROM registry.suse.com/bci/golang:1.25.7 AS builder
+FROM registry.suse.com/bci/golang:1.26 AS builder
 ARG MK_HOST_ARCH
 ENV ARCH=$MK_HOST_ARCH
 RUN zypper -n rm container-suseconnect && \
