@@ -1,8 +1,6 @@
 module github.com/harvester/harvester-network-controller
 
-go 1.25
-
-toolchain go1.25.3
+go 1.26
 
 replace (
 	github.com/containerd/containerd => github.com/containerd/containerd v1.6.18
