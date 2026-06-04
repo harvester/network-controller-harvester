@@ -1,12 +1,6 @@
 module github.com/harvester/harvester-network-controller
 
-<<<<<<< HEAD
-go 1.25
-
-toolchain go1.25.3
-=======
 go 1.26
->>>>>>> d35c78c (chore: bump golang 1.26)
 
 replace (
 	github.com/containerd/containerd => github.com/containerd/containerd v1.6.18
@@ -92,6 +86,7 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/urfave/cli v1.22.16
 	github.com/vishvananda/netlink v1.3.1
+	golang.org/x/sys v0.35.0
 	k8s.io/api v0.33.5
 	k8s.io/apiextensions-apiserver v0.33.5
 	k8s.io/apimachinery v0.33.5
@@ -151,7 +146,6 @@ require (
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
