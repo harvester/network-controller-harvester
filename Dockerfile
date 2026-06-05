@@ -1,6 +1,3 @@
-# syntax=docker/dockerfile:1
-# check=skip=InvalidDefaultArgInFrom
-
 FROM registry.suse.com/bci/golang:1.26 AS builder
 ARG MK_HOST_ARCH
 ENV ARCH=$MK_HOST_ARCH
