@@ -496,28 +496,46 @@ func constructJob(cur *batchv1.Job, namespace, image string, nad *cniv1.NetworkA
 	}
 	job.Spec.Template.ObjectMeta.Annotations[cniv1.NetworkAttachmentAnnot] = selectedNetworks
 
-	// podSpec
-	job.Spec.Template.Spec.Containers = []corev1.Container{
-		{
-			Name:  jobContainerName,
-			Image: image,
-			Env: []corev1.EnvVar{
-				{
-					Name: JobEnvNadNetwork,
-					ValueFrom: &corev1.EnvVarSource{
-						FieldRef: &corev1.ObjectFieldSelector{
-							FieldPath: fmt.Sprintf("metadata.annotations['%s']", cniv1.NetworkAttachmentAnnot),
-						},
+	getEnv := func() []corev1.EnvVar {
+		env := []corev1.EnvVar{
+			{
+				Name: JobEnvNadNetwork,
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: fmt.Sprintf("metadata.annotations['%s']", cniv1.NetworkAttachmentAnnot),
 					},
 				},
-				{
-					Name:  JobEnvDHCPServer,
-					Value: l3netconf.GetDHCPServerIPAddr(),
-				},
 			},
-			ImagePullPolicy: corev1.PullIfNotPresent,
-		},
+			{
+				Name:  JobEnvDHCPServer,
+				Value: l3netconf.GetDHCPServerIPAddr(),
+			},
+		}
+
+		// Only inject non-default log levels during initialization.
+		if !utils.IsDefaultLogLevel() {
+			env = append(env, corev1.EnvVar{
+				Name:  utils.EnvLogLevel,
+				Value: utils.GetLogLevel(),
+			})
+		}
+
+		return env
 	}
+
+	// podSpec
+	// Job Pod templates are immutable, so existing jobs cannot be updated.
+	if cur == nil {
+		job.Spec.Template.Spec.Containers = []corev1.Container{
+			{
+				Name:            jobContainerName,
+				Image:           image,
+				Env:             getEnv(),
+				ImagePullPolicy: corev1.PullIfNotPresent,
+			},
+		}
+	}
+
 	// Add nodeAffinity to prove the job pod is scheduled to the proper node with the specified cluster network
 	job.Spec.Template.Spec.Affinity = &corev1.Affinity{
 		NodeAffinity: &corev1.NodeAffinity{

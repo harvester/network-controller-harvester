@@ -75,7 +75,7 @@ func BuildUpdatedVlanConfig(vc *networkv1.VlanConfig, mgmtIntfInfo *MgmtBondInte
 	}
 
 	if !compareStringSlices(vc.Spec.Uplink.NICs, mgmtIntfInfo.SlaveNames) {
-		vc.Spec.Uplink.NICs = append([]string{}, mgmtIntfInfo.SlaveNames...)
+		vc.Spec.Uplink.NICs = mgmtIntfInfo.SlaveNames
 		changed = true
 	}
 

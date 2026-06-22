@@ -9,6 +9,7 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
@@ -264,7 +265,7 @@ func (h Handler) removeNodeFromVlanConfig(nodeName string) error {
 func (h Handler) removeMgmtVlanConfig(nodeName string) error {
 	vcName := utils.GetMgmtVlanConfigName(nodeName)
 
-	if err := h.vcClient.Delete(vcName, &metav1.DeleteOptions{}); err != nil {
+	if err := h.vcClient.Delete(vcName, &metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 

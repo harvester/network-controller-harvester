@@ -6,7 +6,7 @@ import (
 
 const (
 	ManagementClusterNetworkName = "mgmt"
-	MgmtVlanConfigSuffix         = "mgmt-vlanconfig-"
+	MgmtVlanConfigPrefix         = "mgmt-vlanconfig-"
 )
 
 func IsManagementClusterNetwork(cnName string) bool {
@@ -26,5 +26,5 @@ func IsUserRequestForMgmtCluster(req *admission.Request, clusterNetwork string) 
 }
 
 func GetMgmtVlanConfigName(nodeName string) string {
-	return MgmtVlanConfigSuffix + nodeName
+	return MgmtVlanConfigPrefix + nodeName
 }

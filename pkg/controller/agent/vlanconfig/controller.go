@@ -481,6 +481,7 @@ func (h *Handler) createMgmtVlanConfig(vc *networkv1.VlanConfig) error {
 			utils.GetMgmtVlanConfigName(h.nodeName), err)
 	}
 
+	logrus.Infof("created VlanConfig %s with MTU=%d BondMode=%s NICs=%v", vc.Name, vc.Spec.Uplink.LinkAttrs.MTU, vc.Spec.Uplink.BondOptions.Mode, vc.Spec.Uplink.NICs)
 	return nil
 }
 
@@ -497,83 +498,58 @@ func (h *Handler) CreateOrUpdateMgmtVlanConfig() error {
 		return nil
 	}
 
-	mgmtVlanConfigName := utils.GetMgmtVlanConfigName(h.nodeName)
-
-	// Try update first.
-	found, err := h.updateMgmtVlanConfigIfExists(mgmtInfo)
-	if err != nil {
-		return fmt.Errorf("failed to update existing mgmt vlanconfig %s: %w", mgmtVlanConfigName, err)
-	}
-
-	if found {
-		return nil
-	}
-
-	// Not found, create new object.
-	vc := &networkv1.VlanConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: mgmtVlanConfigName,
-			Labels: map[string]string{
-				utils.KeyClusterNetworkLabel: utils.ManagementClusterNetworkName,
-			},
-		},
-		Spec: networkv1.VlanConfigSpec{
-			ClusterNetwork: utils.ManagementClusterNetworkName,
-			Uplink: networkv1.Uplink{
-				BondOptions: &networkv1.BondOptions{
-					Mode:   networkv1.BondMode(mgmtInfo.BondMode),
-					Miimon: -1,
-				},
-				LinkAttrs: &networkv1.LinkAttrs{
-					MTU:    mgmtInfo.MTU,
-					TxQLen: -1,
-				},
-				NICs: append([]string{}, mgmtInfo.SlaveNames...),
-			},
-		},
-	}
-
-	if err := h.createMgmtVlanConfig(vc); err != nil {
-		return err
-	}
-
-	logrus.Infof(
-		"created VlanConfig %s with MTU=%d BondMode=%s NICs=%v",
-		vc.Name,
-		vc.Spec.Uplink.LinkAttrs.MTU,
-		vc.Spec.Uplink.BondOptions.Mode,
-		vc.Spec.Uplink.NICs,
-	)
-
-	return nil
+	return h.createOrUpdateMgmtVlanConfig(mgmtInfo)
 }
 
-func (h *Handler) updateMgmtVlanConfigIfExists(mgmtInfo *utils.MgmtBondInterfaceInfo) (bool, error) {
+func (h *Handler) createOrUpdateMgmtVlanConfig(mgmtInfo *utils.MgmtBondInterfaceInfo) error {
 	name := utils.GetMgmtVlanConfigName(h.nodeName)
 
 	existing, err := h.vcCache.Get(name)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	// Resource does not exist -> create using mgmtInfo
+	if apierrors.IsNotFound(err) {
+		vc := &networkv1.VlanConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name,
+				Labels: map[string]string{
+					utils.KeyClusterNetworkLabel: utils.ManagementClusterNetworkName,
+				},
+			},
+			Spec: networkv1.VlanConfigSpec{
+				ClusterNetwork: utils.ManagementClusterNetworkName,
+				Uplink: networkv1.Uplink{
+					BondOptions: &networkv1.BondOptions{
+						Mode:   networkv1.BondMode(mgmtInfo.BondMode),
+						Miimon: -1,
+					},
+					LinkAttrs: &networkv1.LinkAttrs{
+						MTU:    mgmtInfo.MTU,
+						TxQLen: -1,
+					},
+					NICs: mgmtInfo.SlaveNames,
+				},
+			},
 		}
-		return false, err
+
+		return h.createMgmtVlanConfig(vc)
 	}
 
-	if existing == nil {
-		return false, nil
-	}
-	updated := existing.DeepCopy()
+	// Resource exists -> update if required
+	vcCopy := existing.DeepCopy()
 
-	if !utils.BuildUpdatedVlanConfig(updated, mgmtInfo) {
-		return true, nil
+	if !utils.BuildUpdatedVlanConfig(vcCopy, mgmtInfo) {
+		return nil
 	}
 
-	_, err = h.vcClient.Update(updated)
+	_, err = h.vcClient.Update(vcCopy)
 	if err != nil {
-		return true, err
+		return err
 	}
 
-	logrus.Infof("updated VlanConfig %s", updated.Name)
+	logrus.Infof("updated VlanConfig %s with MTU=%d BondMode=%s NICs=%v", vcCopy.Name, vcCopy.Spec.Uplink.LinkAttrs.MTU, vcCopy.Spec.Uplink.BondOptions.Mode, vcCopy.Spec.Uplink.NICs)
 
-	return true, nil
+	return nil
 }
