@@ -35,12 +35,15 @@ const (
 	testSubnetName        = "vswitch1"
 	testSubnetNamespace   = "default"
 
-	testStorageNadName      = "storagenetwork-vlan100"
-	testRWXNadName          = "rwx-network-abc123"
-	testStorageNadConfigOld = "{\"cniVersion\":\"0.3.1\",\"name\":\"storagenetwork-vlan100\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":100,\"ipam\":{}}"
-	testStorageNadConfigNew = "{\"cniVersion\":\"0.3.1\",\"name\":\"storagenetwork-vlan100\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":200,\"ipam\":{}}"
-	testRWXNadConfigOld     = "{\"cniVersion\":\"0.3.1\",\"name\":\"rwx-network-abc123\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":100,\"ipam\":{}}"
-	testRWXNadConfigNew     = "{\"cniVersion\":\"0.3.1\",\"name\":\"rwx-network-abc123\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":200,\"ipam\":{}}"
+	testStorageNadName              = "storagenetwork-vlan100"
+	testUntaggedStorageNadName      = "storagenetwork-untagged"
+	testRWXNadName                  = "rwx-network-abc123"
+	testStorageNadConfigOld         = "{\"cniVersion\":\"0.3.1\",\"name\":\"storagenetwork-vlan100\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":100,\"ipam\":{}}"
+	testStorageNadConfigNew         = "{\"cniVersion\":\"0.3.1\",\"name\":\"storagenetwork-vlan100\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":200,\"ipam\":{}}"
+	testUntaggedStorageNadConfigOld = "{\"cniVersion\":\"0.3.1\",\"name\":\"storagenetwork-untagged\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"ipam\":{}}"
+	testRWXNadConfigOld             = "{\"cniVersion\":\"0.3.1\",\"name\":\"rwx-network-abc123\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":100,\"ipam\":{}}"
+	testRWXNadConfigNew             = "{\"cniVersion\":\"0.3.1\",\"name\":\"rwx-network-abc123\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":200,\"ipam\":{}}"
+	testNadTrunkConfig              = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":0,\"ipam\":{},\"vlanTrunk\":[{\"minID\":5,\"maxID\":10},{\"minID\":300,\"maxID\":320},{\"minID\":25,\"maxID\":25}]}"
 )
 
 func TestCreateNAD(t *testing.T) {
@@ -570,6 +573,210 @@ func TestCreateNAD(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:      "NAD can't be created as VLAN overlaps with exclusive storage network NAD",
+			returnErr: true,
+			errKey:    "vlan 100 is exclusively reserved for storage network",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   utils.HarvesterSystemNamespaceName,
+					Annotations: map[string]string{utils.StorageNetworkAnnotation: "true"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName, utils.ExclusiveVlanStorageNetworkLabel: "true"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":100,\"ipam\":{}}",
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "net2-vlan",
+					Namespace: testNamespace,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":100,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can be created as VLAN does not overlap with exclusive storage network NAD",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testStorageNadName,
+					Namespace: utils.HarvesterSystemNamespaceName,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testStorageNadConfigOld,
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "net2-vlan",
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net2-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":200,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can be created as VLAN  overlap with exclusive storage network NAD but exclusive vlan is not enabled",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testStorageNadName,
+					Namespace:   utils.HarvesterSystemNamespaceName,
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+					Annotations: map[string]string{utils.StorageNetworkAnnotation: "true"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testStorageNadConfigOld,
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "net2-vlan",
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net2-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":100,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can be created when no exclusive storage network NAD exists",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "net3-vlan",
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net3-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "NAD can be created with valid trunk VLAN config",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testNadTrunkConfig,
+				},
+			},
+		},
+		{
+			name:      "NAD can't be created as trunk VLAN range overlaps with exclusive storage network NAD",
+			returnErr: true,
+			errKey:    "vlan 100 is exclusively reserved for storage network",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testStorageNadName,
+					Namespace:   utils.HarvesterSystemNamespaceName,
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName, utils.ExclusiveVlanStorageNetworkLabel: "true"},
+					Annotations: map[string]string{utils.StorageNetworkAnnotation: "true"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testStorageNadConfigOld,
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "net4-vlan",
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net4-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":0,\"vlanTrunk\":[{\"minID\":100,\"maxID\":105}],\"ipam\":{}}",
+				},
+			},
+		},
+		{
+			name:      "Overlay NAD can be created with untagged storage network NAD with exclusive vlan enabled",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testUntaggedStorageNadName,
+					Namespace: utils.HarvesterSystemNamespaceName,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName, utils.ExclusiveVlanStorageNetworkLabel: "true"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testUntaggedStorageNadConfigOld,
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testKubeOVNNadName,
+					Namespace: testKubeOVNNamespace,
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testKubeOVNNadConfig,
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -600,6 +807,18 @@ func TestCreateNAD(t *testing.T) {
 			if tc.currentCN != nil {
 				_, err := cnClient.Create(tc.currentCN)
 				assert.NoError(t, err)
+			}
+
+			if tc.currentNAD != nil {
+				nadGvr := schema.GroupVersionResource{
+					Group:    "k8s.cni.cncf.io",
+					Version:  "v1",
+					Resource: "network-attachment-definitions",
+				}
+
+				if err := nchclientset.Tracker().Create(nadGvr, tc.currentNAD.DeepCopy(), tc.currentNAD.Namespace); err != nil {
+					t.Fatalf("failed to add nad %+v", tc.currentNAD)
+				}
 			}
 
 			validator := NewNadValidator(vmCache, vmiCache, cnCache, vcCache, subnetCache, true, hncCache, nadCache)
@@ -634,6 +853,7 @@ func TestUpdateNAD(t *testing.T) {
 		currentCN  *networkv1.ClusterNetwork
 		oldNAD     *cniv1.NetworkAttachmentDefinition
 		currentNAD *cniv1.NetworkAttachmentDefinition
+		snNAD      *cniv1.NetworkAttachmentDefinition
 	}{
 		{
 			name:      "storage network NAD can't be updated",
@@ -727,6 +947,39 @@ func TestUpdateNAD(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:      "NAD can't be created as VLAN overlaps with exclusive storage network NAD",
+			returnErr: true,
+			errKey:    "vlan 100 is exclusively reserved for storage network",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			oldNAD: testNAD,
+			snNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "sn-vlan",
+					Namespace:   utils.HarvesterSystemNamespaceName,
+					Annotations: map[string]string{utils.StorageNetworkAnnotation: "true"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName, utils.ExclusiveVlanStorageNetworkLabel: "true"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"sn-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":100,\"ipam\":{}}",
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testNadName,
+					Namespace: testNamespace,
+					Labels:    map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":100,\"ipam\":{}}",
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -762,6 +1015,11 @@ func TestUpdateNAD(t *testing.T) {
 				t.Fatalf("failed to add nad %+v", tc.oldNAD)
 			}
 
+			if tc.snNAD != nil {
+				if err := nchclientset.Tracker().Create(nadGvr, tc.snNAD.DeepCopy(), tc.snNAD.Namespace); err != nil {
+					t.Fatalf("failed to add nad %+v", tc.snNAD)
+				}
+			}
 			err := validator.Update(nil, tc.oldNAD, tc.currentNAD)
 			assert.True(t, tc.returnErr == (err != nil))
 			if tc.returnErr {

@@ -7,4 +7,6 @@ const (
 	defaultNamespace = "default"
 
 	HarvesterSystemNamespaceName = "harvester-system" // don't import harvester/pkg/util to avoid loop importing, define it directly
+
+	EnvLogLevel = "LOGLEVEL"
 )
