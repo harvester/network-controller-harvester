@@ -70,7 +70,7 @@ require (
 	github.com/achanda/go-sysctl v0.0.0-20160222034550-6be7678c45d2
 	github.com/cenk/backoff v2.2.1+incompatible
 	github.com/containernetworking/cni v1.3.0
-	github.com/containernetworking/plugins v1.9.0
+	github.com/containernetworking/plugins v1.9.1
 	github.com/coreos/go-iptables v0.8.0
 	github.com/deckarep/golang-set/v2 v2.6.0
 	github.com/go-ping/ping v0.0.0-20211014180314-6e2b003bffdd
