@@ -86,7 +86,7 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/urfave/cli v1.22.16
 	github.com/vishvananda/netlink v1.3.1
-	golang.org/x/sys v0.35.0
+	golang.org/x/sys v0.46.0
 	k8s.io/api v0.34.0
 	k8s.io/apiextensions-apiserver v0.34.0
 	k8s.io/apimachinery v0.34.0
