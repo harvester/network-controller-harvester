@@ -1,6 +1,7 @@
 FROM registry.suse.com/bci/golang:1.26 AS builder
 ARG MK_HOST_ARCH
 ENV ARCH=$MK_HOST_ARCH
+ENV GOTOOLCHAIN=auto
 RUN zypper -n rm container-suseconnect && \
     zypper -n install git curl gzip tar wget awk
 COPY --from=golangci/golangci-lint:v2.11.4-alpine@sha256:72bcd68512b4e27540dd3a778a1b7afd45759d8145cfb3c089f1d7af53e718e9 \
