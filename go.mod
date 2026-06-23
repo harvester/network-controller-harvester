@@ -59,7 +59,7 @@ replace (
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.10
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.10
 	kubevirt.io/api => github.com/kubevirt/api v1.7.0
-	kubevirt.io/client-go => github.com/kubevirt/client-go v1.7.0
+	kubevirt.io/client-go => github.com/kubevirt/client-go v1.8.4
 	launchpad.net/gocheck v0.0.0-20140225173054-000000000087 => github.com/go-check/check v0.0.0-20180628173108-788fd7840127
 	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.7.3
 	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.19.7
