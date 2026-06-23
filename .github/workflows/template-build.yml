@@ -59,7 +59,7 @@ jobs:
         password: ${{ env.DOCKER_PASSWORD }}
 
     - name: Docker Build (Controller)
-      uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
       with:
         provenance: false
         context: .
@@ -69,7 +69,7 @@ jobs:
         tags: ${{ env.repo }}/${{ env.controllerImageName }}:${{ inputs.release-tag-name }}
 
     - name: Docker Build (Helper)
-      uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
       with:
         provenance: false
         context: .
@@ -79,7 +79,7 @@ jobs:
         tags: ${{ env.repo }}/${{ env.helperImageName }}:${{ inputs.release-tag-name }}
 
     - name: Docker Build (Webhook)
-      uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
       with:
         provenance: false
         context: .
