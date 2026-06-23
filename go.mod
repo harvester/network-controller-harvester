@@ -27,7 +27,7 @@ replace (
 	go.opentelemetry.io/otel/metric => go.opentelemetry.io/otel/metric v1.33.0
 	go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.31.0
 	go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v1.33.0
-	go.opentelemetry.io/proto/otlp => go.opentelemetry.io/proto/otlp v1.3.1
+	go.opentelemetry.io/proto/otlp => go.opentelemetry.io/proto/otlp v1.10.0
 	golang.org/x/net => golang.org/x/net v0.38.0
 	google.golang.org/grpc => google.golang.org/grpc v1.69.4
 	helm.sh/helm/v3 => github.com/rancher/helm/v3 v3.9.0-rancher1
