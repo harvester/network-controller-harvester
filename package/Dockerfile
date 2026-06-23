@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.17.1
+# syntax=docker/dockerfile:1.25.0
 
 FROM registry.suse.com/bci/bci-base:16.0
 RUN zypper -n rm container-suseconnect && \
