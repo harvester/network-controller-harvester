@@ -22,6 +22,9 @@ const (
 
 	// format: e.g. mgmt-br
 	ManagementClusterNetworkDevicePrefix = ManagementClusterNetworkName + BridgeSuffix
+
+	// format: e.g. mgmt-bo
+	ManagementClusterNetworkBondDevicePrefix = ManagementClusterNetworkName + BondSuffix
 )
 
 func HasMgmtClusterNetworkVlanDevicePrefix(link string) bool {

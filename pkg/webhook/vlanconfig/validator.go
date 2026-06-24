@@ -54,16 +54,17 @@ func NewVlanConfigValidator(
 
 var _ admission.Validator = &Validator{}
 
-func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
+func (v *Validator) Create(req *admission.Request, newObj runtime.Object) error {
 	vc := newObj.(*networkv1.VlanConfig)
+
+	// skip vlanconfig creation if the request is not from controller for mgmt cluster network
+	if utils.IsUserRequestForMgmtCluster(req, vc.Spec.ClusterNetwork) {
+		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("users can't create vlanConfig for %s cluster network",
+			utils.ManagementClusterNetworkName))
+	}
 
 	if _, err := utils.IsClusterNetworkNameValid(vc.Spec.ClusterNetwork); err != nil {
 		return fmt.Errorf(createErr, vc.Name, err)
-	}
-
-	if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
-		return fmt.Errorf(createErr, vc.Name, fmt.Errorf("cluster network can't be %s",
-			utils.ManagementClusterNetworkName))
 	}
 
 	// check if clusternetwork exists
@@ -88,7 +89,7 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	return nil
 }
 
-func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) error {
+func (v *Validator) Update(req *admission.Request, oldObj, newObj runtime.Object) error {
 	oldVc := oldObj.(*networkv1.VlanConfig)
 	newVc := newObj.(*networkv1.VlanConfig)
 
@@ -97,8 +98,9 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return nil
 	}
 
-	if newVc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
-		return fmt.Errorf(updateErr, newVc.Name, fmt.Errorf("cluster network can't be %s",
+	// skip vlanconfig update if the request is not from controller for mgmt cluster network
+	if utils.IsUserRequestForMgmtCluster(req, newVc.Spec.ClusterNetwork) {
+		return fmt.Errorf(updateErr, newVc.Name, fmt.Errorf("users can't update vlanConfig for %s cluster network",
 			utils.ManagementClusterNetworkName))
 	}
 
@@ -156,8 +158,13 @@ func getAffectedNodes(oldVc, newVc *networkv1.VlanConfig, oldNodes, newNodes map
 	return oldNodes.Difference(newNodes)
 }
 
-func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
+func (v *Validator) Delete(req *admission.Request, oldObj runtime.Object) error {
 	vc := oldObj.(*networkv1.VlanConfig)
+
+	if utils.IsUserRequestForMgmtCluster(req, vc.Spec.ClusterNetwork) {
+		return fmt.Errorf(deleteErr, vc.Name, fmt.Errorf("users can't delete vlanConfig for %s cluster network",
+			utils.ManagementClusterNetworkName))
+	}
 
 	nodes, err := getMatchNodes(vc)
 	if err != nil {
@@ -254,6 +261,9 @@ func getMatchNodes(vc *networkv1.VlanConfig) (mapset.Set[string], error) {
 }
 
 func (v *Validator) validateMTU(current *networkv1.VlanConfig) error {
+	if current.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
+		return nil
+	}
 	// MTU can be 0, it means user does not input and the default value is used
 	mtu := utils.GetMTUFromVlanConfig(current)
 	if !utils.IsValidMTU(mtu) {
