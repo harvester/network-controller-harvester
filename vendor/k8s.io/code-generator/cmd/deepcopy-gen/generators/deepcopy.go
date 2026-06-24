@@ -19,23 +19,17 @@ package generators
 import (
 	"fmt"
 	"io"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 
-	"k8s.io/gengo/args"
-	"k8s.io/gengo/generator"
-	"k8s.io/gengo/namer"
-	"k8s.io/gengo/types"
-
+	"k8s.io/code-generator/cmd/deepcopy-gen/args"
+	"k8s.io/gengo/v2"
+	"k8s.io/gengo/v2/generator"
+	"k8s.io/gengo/v2/namer"
+	"k8s.io/gengo/v2/types"
 	"k8s.io/klog/v2"
 )
-
-// CustomArgs is used tby the go2idl framework to pass args specific to this
-// generator.
-type CustomArgs struct {
-	BoundingDirs []string // Only deal with types rooted under these dirs.
-}
 
 // This is the comment tag that carries parameters for deep-copy generation.
 const (
@@ -59,7 +53,7 @@ func extractEnabledTypeTag(t *types.Type) *enabledTagValue {
 }
 
 func extractEnabledTag(comments []string) *enabledTagValue {
-	tagVals := types.ExtractCommentTags("+", comments)[tagEnabledName]
+	tagVals := gengo.ExtractCommentTags("+", comments)[tagEnabledName]
 	if tagVals == nil {
 		// No match for the tag.
 		return nil
@@ -124,34 +118,28 @@ func DefaultNameSystem() string {
 	return "public"
 }
 
-func Packages(context *generator.Context, arguments *args.GeneratorArgs) generator.Packages {
-	boilerplate, err := arguments.LoadGoBoilerplate()
+func GetTargets(context *generator.Context, args *args.Args) []generator.Target {
+	boilerplate, err := gengo.GoBoilerplate(args.GoHeaderFile, gengo.StdBuildTag, gengo.StdGeneratedBy)
 	if err != nil {
 		klog.Fatalf("Failed loading boilerplate: %v", err)
 	}
 
-	packages := generator.Packages{}
-	header := append([]byte(fmt.Sprintf("//go:build !%s\n// +build !%s\n\n", arguments.GeneratedBuildTag, arguments.GeneratedBuildTag)), boilerplate...)
-
 	boundingDirs := []string{}
-	if customArgs, ok := arguments.CustomArgs.(*CustomArgs); ok {
-		if customArgs.BoundingDirs == nil {
-			customArgs.BoundingDirs = context.Inputs
-		}
-		for i := range customArgs.BoundingDirs {
-			// Strip any trailing slashes - they are not exactly "correct" but
-			// this is friendlier.
-			boundingDirs = append(boundingDirs, strings.TrimRight(customArgs.BoundingDirs[i], "/"))
-		}
+	if args.BoundingDirs == nil {
+		args.BoundingDirs = context.Inputs
+	}
+	for i := range args.BoundingDirs {
+		// Strip any trailing slashes - they are not exactly "correct" but
+		// this is friendlier.
+		boundingDirs = append(boundingDirs, strings.TrimRight(args.BoundingDirs[i], "/"))
 	}
 
+	targets := []generator.Target{}
+
 	for _, i := range context.Inputs {
-		klog.V(5).Infof("Considering pkg %q", i)
+		klog.V(3).Infof("Considering pkg %q", i)
+
 		pkg := context.Universe[i]
-		if pkg == nil {
-			// If the input had no Go files, for example.
-			continue
-		}
 
 		ptag := extractEnabledTag(pkg.Comments)
 		ptagValue := ""
@@ -162,9 +150,9 @@ func Packages(context *generator.Context, arguments *args.GeneratorArgs) generat
 				klog.Fatalf("Package %v: unsupported %s value: %q", i, tagEnabledName, ptagValue)
 			}
 			ptagRegister = ptag.register
-			klog.V(5).Infof("  tag.value: %q, tag.register: %t", ptagValue, ptagRegister)
+			klog.V(3).Infof("  tag.value: %q, tag.register: %t", ptagValue, ptagRegister)
 		} else {
-			klog.V(5).Infof("  no tag")
+			klog.V(3).Infof("  no tag")
 		}
 
 		// If the pkg-scoped tag says to generate, we can skip scanning types.
@@ -175,10 +163,10 @@ func Packages(context *generator.Context, arguments *args.GeneratorArgs) generat
 			// can be copied.
 			var uncopyable []string
 			for _, t := range pkg.Types {
-				klog.V(5).Infof("  considering type %q", t.Name.String())
+				klog.V(3).Infof("  considering type %q", t.Name.String())
 				ttag := extractEnabledTypeTag(t)
 				if ttag != nil && ttag.value == "true" {
-					klog.V(5).Infof("    tag=true")
+					klog.V(3).Infof("    tag=true")
 					if !copyableType(t) {
 						uncopyable = append(uncopyable, fmt.Sprintf("%v", t))
 					} else {
@@ -194,42 +182,29 @@ func Packages(context *generator.Context, arguments *args.GeneratorArgs) generat
 
 		if pkgNeedsGeneration {
 			klog.V(3).Infof("Package %q needs generation", i)
-			path := pkg.Path
-			// if the source path is within a /vendor/ directory (for example,
-			// k8s.io/kubernetes/vendor/k8s.io/apimachinery/pkg/apis/meta/v1), allow
-			// generation to output to the proper relative path (under vendor).
-			// Otherwise, the generator will create the file in the wrong location
-			// in the output directory.
-			// TODO: build a more fundamental concept in gengo for dealing with modifications
-			// to vendored packages.
-			if strings.HasPrefix(pkg.SourcePath, arguments.OutputBase) {
-				expandedPath := strings.TrimPrefix(pkg.SourcePath, arguments.OutputBase)
-				if strings.Contains(expandedPath, "/vendor/") {
-					path = expandedPath
-				}
-			}
-			packages = append(packages,
-				&generator.DefaultPackage{
-					PackageName: strings.Split(filepath.Base(pkg.Path), ".")[0],
-					PackagePath: path,
-					HeaderText:  header,
-					GeneratorFunc: func(c *generator.Context) (generators []generator.Generator) {
-						return []generator.Generator{
-							NewGenDeepCopy(arguments.OutputFileBaseName, pkg.Path, boundingDirs, (ptagValue == tagValuePackage), ptagRegister),
-						}
-					},
+			targets = append(targets,
+				&generator.SimpleTarget{
+					PkgName:       strings.Split(path.Base(pkg.Path), ".")[0],
+					PkgPath:       pkg.Path,
+					PkgDir:        pkg.Dir, // output pkg is the same as the input
+					HeaderComment: boilerplate,
 					FilterFunc: func(c *generator.Context, t *types.Type) bool {
 						return t.Name.Package == pkg.Path
+					},
+					GeneratorsFunc: func(c *generator.Context) (generators []generator.Generator) {
+						return []generator.Generator{
+							NewGenDeepCopy(args.OutputFile, pkg.Path, boundingDirs, (ptagValue == tagValuePackage), ptagRegister),
+						}
 					},
 				})
 		}
 	}
-	return packages
+	return targets
 }
 
 // genDeepCopy produces a file with autogenerated deep-copy functions.
 type genDeepCopy struct {
-	generator.DefaultGen
+	generator.GoGenerator
 	targetPackage string
 	boundingDirs  []string
 	allTypes      bool
@@ -238,16 +213,16 @@ type genDeepCopy struct {
 	typesForInit  []*types.Type
 }
 
-func NewGenDeepCopy(sanitizedName, targetPackage string, boundingDirs []string, allTypes, registerTypes bool) generator.Generator {
+func NewGenDeepCopy(outputFilename, targetPackage string, boundingDirs []string, allTypes, registerTypes bool) generator.Generator {
 	return &genDeepCopy{
-		DefaultGen: generator.DefaultGen{
-			OptionalName: sanitizedName,
+		GoGenerator: generator.GoGenerator{
+			OutputFilename: outputFilename,
 		},
 		targetPackage: targetPackage,
 		boundingDirs:  boundingDirs,
 		allTypes:      allTypes,
 		registerTypes: registerTypes,
-		imports:       generator.NewImportTracker(),
+		imports:       generator.NewImportTrackerForPackage(targetPackage),
 		typesForInit:  make([]*types.Type, 0),
 	}
 }
@@ -272,22 +247,11 @@ func (g *genDeepCopy) Filter(c *generator.Context, t *types.Type) bool {
 		return false
 	}
 	if !copyableType(t) {
-		klog.V(2).Infof("Type %v is not copyable", t)
+		klog.V(3).Infof("Type %v is not copyable", t)
 		return false
 	}
-	klog.V(4).Infof("Type %v is copyable", t)
+	klog.V(3).Infof("Type %v is copyable", t)
 	g.typesForInit = append(g.typesForInit, t)
-	return true
-}
-
-func (g *genDeepCopy) copyableAndInBounds(t *types.Type) bool {
-	if !copyableType(t) {
-		return false
-	}
-	// Only packages within the restricted range can be processed.
-	if !isRootedUnder(t.Name.Package, g.boundingDirs) {
-		return false
-	}
 	return true
 }
 
@@ -295,9 +259,12 @@ func (g *genDeepCopy) copyableAndInBounds(t *types.Type) bool {
 // if the type does not match. This allows more efficient deep copy
 // implementations to be defined by the type's author.  The correct signature
 // for a type T is:
-//    func (t T) DeepCopy() T
+//
+//	func (t T) DeepCopy() T
+//
 // or:
-//    func (t *T) DeepCopy() *T
+//
+//	func (t *T) DeepCopy() *T
 func deepCopyMethod(t *types.Type) (*types.Signature, error) {
 	f, found := t.Methods["DeepCopy"]
 	if !found {
@@ -310,8 +277,8 @@ func deepCopyMethod(t *types.Type) (*types.Signature, error) {
 		return nil, fmt.Errorf("type %v: invalid DeepCopy signature, expected exactly one result", t)
 	}
 
-	ptrResult := f.Signature.Results[0].Kind == types.Pointer && f.Signature.Results[0].Elem.Name == t.Name
-	nonPtrResult := f.Signature.Results[0].Name == t.Name
+	ptrResult := f.Signature.Results[0].Type.Kind == types.Pointer && f.Signature.Results[0].Type.Elem.Name == t.Name
+	nonPtrResult := f.Signature.Results[0].Type.Name == t.Name
 
 	if !ptrResult && !nonPtrResult {
 		return nil, fmt.Errorf("type %v: invalid DeepCopy signature, expected to return %s or *%s", t, t.Name.Name, t.Name.Name)
@@ -344,9 +311,12 @@ func deepCopyMethodOrDie(t *types.Type) *types.Signature {
 // if the type is wrong. DeepCopyInto allows more efficient deep copy
 // implementations to be defined by the type's author.  The correct signature
 // for a type T is:
-//    func (t T) DeepCopyInto(t *T)
+//
+//	func (t T) DeepCopyInto(t *T)
+//
 // or:
-//    func (t *T) DeepCopyInto(t *T)
+//
+//	func (t *T) DeepCopyInto(t *T)
 func deepCopyIntoMethod(t *types.Type) (*types.Signature, error) {
 	f, found := t.Methods["DeepCopyInto"]
 	if !found {
@@ -359,7 +329,7 @@ func deepCopyIntoMethod(t *types.Type) (*types.Signature, error) {
 		return nil, fmt.Errorf("type %v: invalid DeepCopy signature, expected no result type", t)
 	}
 
-	ptrParam := f.Signature.Parameters[0].Kind == types.Pointer && f.Signature.Parameters[0].Elem.Name == t.Name
+	ptrParam := f.Signature.Parameters[0].Type.Kind == types.Pointer && f.Signature.Parameters[0].Type.Elem.Name == t.Name
 
 	if !ptrParam {
 		return nil, fmt.Errorf("type %v: invalid DeepCopy signature, expected parameter of type *%s", t, t.Name.Name)
@@ -384,18 +354,6 @@ func deepCopyIntoMethodOrDie(t *types.Type) *types.Signature {
 		klog.Fatal(err)
 	}
 	return ret
-}
-
-func isRootedUnder(pkg string, roots []string) bool {
-	// Add trailing / to avoid false matches, e.g. foo/bar vs foo/barn.  This
-	// assumes that bounding dirs do not have trailing slashes.
-	pkg = pkg + "/"
-	for _, root := range roots {
-		if strings.HasPrefix(pkg, root+"/") {
-			return true
-		}
-	}
-	return false
 }
 
 func copyableType(t *types.Type) bool {
@@ -479,12 +437,12 @@ func (g *genDeepCopy) needsGeneration(t *types.Type) bool {
 	}
 	if g.allTypes && tv == "false" {
 		// The whole package is being generated, but this type has opted out.
-		klog.V(5).Infof("Not generating for type %v because type opted out", t)
+		klog.V(2).Infof("Not generating for type %v because type opted out", t)
 		return false
 	}
 	if !g.allTypes && tv != "true" {
 		// The whole package is NOT being generated, and this type has NOT opted in.
-		klog.V(5).Infof("Not generating for type %v because type did not opt in", t)
+		klog.V(2).Infof("Not generating for type %v because type did not opt in", t)
 		return false
 	}
 	return true
@@ -493,7 +451,7 @@ func (g *genDeepCopy) needsGeneration(t *types.Type) bool {
 func extractInterfacesTag(t *types.Type) []string {
 	var result []string
 	comments := append(append([]string{}, t.SecondClosestCommentLines...), t.CommentLines...)
-	values := types.ExtractCommentTags("+", comments)[interfacesTagName]
+	values := gengo.ExtractCommentTags("+", comments)[interfacesTagName]
 	for _, v := range values {
 		if len(v) == 0 {
 			continue
@@ -511,7 +469,7 @@ func extractInterfacesTag(t *types.Type) []string {
 
 func extractNonPointerInterfaces(t *types.Type) (bool, error) {
 	comments := append(append([]string{}, t.SecondClosestCommentLines...), t.CommentLines...)
-	values := types.ExtractCommentTags("+", comments)[interfacesNonPointerTagName]
+	values := gengo.ExtractCommentTags("+", comments)[interfacesNonPointerTagName]
 	if len(values) == 0 {
 		return false, nil
 	}
@@ -534,7 +492,8 @@ func (g *genDeepCopy) deepCopyableInterfacesInner(c *generator.Context, t *types
 	var ts []*types.Type
 	for _, intf := range intfs {
 		t := types.ParseFullyQualifiedName(intf)
-		err := c.AddDir(t.Package)
+		klog.V(3).Infof("Loading package for interface %v", intf)
+		_, err := c.LoadPackages(t.Package)
 		if err != nil {
 			return nil, err
 		}
@@ -590,7 +549,7 @@ func (g *genDeepCopy) GenerateType(c *generator.Context, t *types.Type, w io.Wri
 	if !g.needsGeneration(t) {
 		return nil
 	}
-	klog.V(5).Infof("Generating deepcopy function for type %v", t)
+	klog.V(2).Infof("Generating deepcopy functions for type %v", t)
 
 	sw := generator.NewSnippetWriter(w, c, "$", "$")
 	args := argsFromType(t)
@@ -737,7 +696,7 @@ func (g *genDeepCopy) doMap(t *types.Type, sw *generator.SnippetWriter) {
 		leftPointer := ut.Elem.Kind == types.Pointer
 		rightPointer := !isReference(ut.Elem)
 		if dc != nil {
-			rightPointer = dc.Results[0].Kind == types.Pointer
+			rightPointer = dc.Results[0].Type.Kind == types.Pointer
 		}
 		if leftPointer == rightPointer {
 			sw.Do("(*out)[key] = val.DeepCopy()\n", nil)
@@ -853,7 +812,7 @@ func (g *genDeepCopy) doStruct(t *types.Type, sw *generator.SnippetWriter) {
 			leftPointer := ft.Kind == types.Pointer
 			rightPointer := !isReference(ft)
 			if dc != nil {
-				rightPointer = dc.Results[0].Kind == types.Pointer
+				rightPointer = dc.Results[0].Type.Kind == types.Pointer
 			}
 			if leftPointer == rightPointer {
 				sw.Do("out.$.name$ = in.$.name$.DeepCopy()\n", args)
@@ -891,7 +850,7 @@ func (g *genDeepCopy) doStruct(t *types.Type, sw *generator.SnippetWriter) {
 			sw.Do(fmt.Sprintf("out.$.name$ = in.$.name$.DeepCopy%s()\n", uft.Name.Name), args)
 			sw.Do("}\n", nil)
 		default:
-			klog.Fatalf("Hit an unsupported type %v for %v, from %v", uft, ft, t)
+			klog.Fatalf("Hit an unsupported type '%v' for '%v', from %v.%v", uft, ft, t, m.Name)
 		}
 	}
 }
@@ -907,7 +866,7 @@ func (g *genDeepCopy) doPointer(t *types.Type, sw *generator.SnippetWriter) {
 	case dc != nil || dci != nil:
 		rightPointer := !isReference(ut.Elem)
 		if dc != nil {
-			rightPointer = dc.Results[0].Kind == types.Pointer
+			rightPointer = dc.Results[0].Type.Kind == types.Pointer
 		}
 		if rightPointer {
 			sw.Do("*out = (*in).DeepCopy()\n", nil)

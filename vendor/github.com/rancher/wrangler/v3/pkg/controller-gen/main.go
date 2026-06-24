@@ -16,16 +16,18 @@ import (
 	cgargs "github.com/rancher/wrangler/v3/pkg/controller-gen/args"
 	"github.com/rancher/wrangler/v3/pkg/controller-gen/generators"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/tools/imports"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	csargs "k8s.io/code-generator/cmd/client-gen/args"
 
 	cs "k8s.io/code-generator/cmd/client-gen/generators"
 	types2 "k8s.io/code-generator/cmd/client-gen/types"
+	dpargs "k8s.io/code-generator/cmd/deepcopy-gen/args"
+	dp "k8s.io/code-generator/cmd/deepcopy-gen/generators"
 	infargs "k8s.io/code-generator/cmd/informer-gen/args"
 	inf "k8s.io/code-generator/cmd/informer-gen/generators"
 	lsargs "k8s.io/code-generator/cmd/lister-gen/args"
 	ls "k8s.io/code-generator/cmd/lister-gen/generators"
-	dp "k8s.io/gengo/examples/deepcopy-gen/generators"
 	oaargs "k8s.io/kube-openapi/cmd/openapi-gen/args"
 	oa "k8s.io/kube-openapi/pkg/generators"
 )
@@ -61,6 +63,13 @@ func Run(opts cgargs.Options) {
 	clientGen := generators.NewClientGenerator()
 
 	getTargets := func(context *generator.Context) []generator.Target {
+		// replace the default formatter options to ensure unused imports are pruned.
+		// ref: https://github.com/kubernetes/gengo/pull/277#issuecomment-2557462569
+		goGenerator := generator.NewGoFile()
+		goGenerator.Format = func(src []byte) ([]byte, error) {
+			return imports.Process("", src, nil)
+		}
+		context.FileTypes[generator.GoFileType] = goGenerator
 		return clientGen.GetTargets(context, customArgs)
 	}
 	if err := gengo.Execute(
@@ -200,25 +209,29 @@ func generateDeepcopy(groups map[string]bool, customArgs *cgargs.CustomArgs) err
 		return nil
 	}
 
-	deepCopyCustomArgs := &dp.CustomArgs{}
+	deepCopyArgs := dpargs.New()
+	deepCopyArgs.OutputFile = "zz_generated_deepcopy.go"
+	deepCopyArgs.GoHeaderFile = customArgs.Options.Boilerplate
 
-	args := args.Default().WithoutDefaultFlagParsing()
-	args.CustomArgs = deepCopyCustomArgs
-	args.OutputBase = customArgs.OutputBase
-	args.OutputFileBaseName = "zz_generated_deepcopy"
-	args.GoHeaderFilePath = customArgs.Options.Boilerplate
-
+	inputDirs := []string{}
 	for gv, names := range customArgs.TypesByGroup {
 		if !groups[gv.Group] {
 			continue
 		}
-		args.InputDirs = append(args.InputDirs, names[0].Package)
-		deepCopyCustomArgs.BoundingDirs = append(deepCopyCustomArgs.BoundingDirs, names[0].Package)
+		inputDirs = append(inputDirs, names[0].Package)
 	}
 
-	return args.Execute(dp.NameSystems(),
+	getTargets := func(context *generator.Context) []generator.Target {
+		return dp.GetTargets(context, deepCopyArgs)
+	}
+
+	return gengo.Execute(
+		dp.NameSystems(),
 		dp.DefaultNameSystem(),
-		dp.Packages)
+		getTargets,
+		gengo.StdBuildTag,
+		inputDirs,
+	)
 }
 
 func generateClientset(groups map[string]bool, customArgs *cgargs.CustomArgs) error {
@@ -285,6 +298,7 @@ func generateOpenAPI(groups map[string]bool, customArgs *cgargs.CustomArgs) erro
 	openAPIArgs.OutputFile = "zz_generated_openapi.go"
 	openAPIArgs.OutputPkg = customArgs.Options.OutputPackage + "/openapi"
 	openAPIArgs.GoHeaderFile = customArgs.Options.Boilerplate
+	openAPIArgs.OutputModelNameFile = "zz_generated.model_name.go"
 
 	if err := openAPIArgs.Validate(); err != nil {
 		return err
@@ -292,17 +306,24 @@ func generateOpenAPI(groups map[string]bool, customArgs *cgargs.CustomArgs) erro
 
 	inputDirsMap := map[string]bool{}
 	inputDirs := []string{}
+	inputModelDirsMap := map[string]bool{}
+	inputModelDirs := []string{}
+
 	for gv, names := range customArgs.TypesByGroup {
 		if !groups[gv.Group] {
 			continue
 		}
+		group := customArgs.Options.Groups[gv.Group]
 
 		if _, found := inputDirsMap[names[0].Package]; !found {
 			inputDirsMap[names[0].Package] = true
 			inputDirs = append(inputDirs, names[0].Package)
+			if group.OpenAPIModelPackageName != "" {
+				inputModelDirsMap[names[0].Package] = true
+				inputModelDirs = append(inputModelDirs, names[0].Package)
+			}
 		}
 
-		group := customArgs.Options.Groups[gv.Group]
 		for _, dep := range group.OpenAPIDependencies {
 			if _, found := inputDirsMap[dep]; !found {
 				inputDirsMap[dep] = true
@@ -311,16 +332,39 @@ func generateOpenAPI(groups map[string]bool, customArgs *cgargs.CustomArgs) erro
 		}
 	}
 
-	getTargets := func(context *generator.Context) []generator.Target {
-		return oa.GetTargets(context, openAPIArgs)
+	boilerplate, err := gengo.GoBoilerplate(openAPIArgs.GoHeaderFile, gengo.StdBuildTag, gengo.StdGeneratedBy)
+	if err != nil {
+		return err
 	}
 
-	return gengo.Execute(
+	getTargets := func(context *generator.Context) []generator.Target {
+		return oa.GetOpenAPITargets(context, openAPIArgs, boilerplate)
+	}
+
+	if err := gengo.Execute(
 		oa.NameSystems(),
 		oa.DefaultNameSystem(),
 		getTargets,
 		gengo.StdBuildTag,
 		inputDirs,
+	); err != nil {
+		return err
+	}
+
+	if len(inputModelDirs) <= 0 {
+		return nil
+	}
+
+	getModelNameTargets := func(context *generator.Context) []generator.Target {
+		return oa.GetModelNameTargets(context, openAPIArgs, boilerplate)
+	}
+
+	return gengo.Execute(
+		oa.NameSystems(),
+		oa.DefaultNameSystem(),
+		getModelNameTargets,
+		gengo.StdBuildTag,
+		inputModelDirs,
 	)
 }
 
