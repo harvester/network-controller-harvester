@@ -24,6 +24,7 @@ type Handler struct {
 	cnCache  ctlnetworkv1.ClusterNetworkCache
 	vsCache  ctlnetworkv1.VlanStatusCache
 	vcCache  ctlnetworkv1.VlanConfigCache
+	vcClient ctlnetworkv1.VlanConfigClient
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -36,6 +37,7 @@ func Register(ctx context.Context, management *config.Management) error {
 		cnCache:  cns.Cache(),
 		vsCache:  vss.Cache(),
 		vcCache:  vcs.Cache(),
+		vcClient: vcs,
 	}
 
 	vcs.OnChange(ctx, ControllerName, handler.EnsureClusterNetwork)
@@ -47,7 +49,7 @@ func Register(ctx context.Context, management *config.Management) error {
 }
 
 func (h Handler) EnsureClusterNetwork(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
-	if vc == nil || vc.DeletionTimestamp != nil {
+	if vc == nil || vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName || vc.DeletionTimestamp != nil {
 		return nil, nil
 	}
 
@@ -60,7 +62,7 @@ func (h Handler) EnsureClusterNetwork(_ string, vc *networkv1.VlanConfig) (*netw
 }
 
 func (h Handler) SetClusterNetworkReady(_ string, vs *networkv1.VlanStatus) (*networkv1.VlanStatus, error) {
-	if vs == nil || vs.DeletionTimestamp != nil {
+	if vs == nil || vs.Status.ClusterNetwork == utils.ManagementClusterNetworkName || vs.DeletionTimestamp != nil {
 		return nil, nil
 	}
 
@@ -75,7 +77,7 @@ func (h Handler) SetClusterNetworkReady(_ string, vs *networkv1.VlanStatus) (*ne
 }
 
 func (h Handler) SetClusterNetworkUnready(_ string, vs *networkv1.VlanStatus) (*networkv1.VlanStatus, error) {
-	if vs == nil {
+	if vs == nil || vs.Status.ClusterNetwork == utils.ManagementClusterNetworkName {
 		return nil, nil
 	}
 
@@ -190,7 +192,7 @@ func (h Handler) setClusterNetworkUnready(vs *networkv1.VlanStatus) error {
 }
 
 func (h Handler) OnVlanConfigRemove(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
-	if vc == nil {
+	if vc == nil || vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
 		return nil, nil
 	}
 

@@ -9,6 +9,7 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	ctlcorev1 "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
@@ -83,6 +84,10 @@ func (h Handler) OnChange(_ string, node *corev1.Node) (*corev1.Node, error) {
 		return nil, err
 	}
 	for _, vc := range vcs {
+		if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
+			// skip vlan config with management cluster network
+			continue
+		}
 		if err := h.updateMatchedNodeAnnotation(vc, node); err != nil {
 			return nil, fmt.Errorf("failed to update matched node annotation, vc: %s, node: %s, error: %w",
 				vc.Name, node.Name, err)
@@ -242,9 +247,26 @@ func (h Handler) removeNodeFromVlanConfig(nodeName string) error {
 	}
 
 	for _, vc := range vcs {
+		if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
+			// if the vlan config is for management cluster network, delete the vlan config directly because management cluster network only matches one node
+			if err := h.removeMgmtVlanConfig(nodeName); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := h.removeNodeFromOneVlanConfig(vc, nodeName); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (h Handler) removeMgmtVlanConfig(nodeName string) error {
+	vcName := utils.GetMgmtVlanConfigName(nodeName)
+
+	if err := h.vcClient.Delete(vcName, &metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+		return err
 	}
 
 	return nil
