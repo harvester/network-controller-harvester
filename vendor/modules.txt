@@ -310,8 +310,8 @@ golang.org/x/crypto/acme/autocert
 golang.org/x/mod/internal/lazyregexp
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.54.0 => golang.org/x/net v0.38.0
-## explicit; go 1.23.0
+# golang.org/x/net v0.55.0 => golang.org/x/net v0.55.0
+## explicit; go 1.25.0
 golang.org/x/net/bpf
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
@@ -319,6 +319,7 @@ golang.org/x/net/http2/hpack
 golang.org/x/net/icmp
 golang.org/x/net/idna
 golang.org/x/net/internal/httpcommon
+golang.org/x/net/internal/httpsfv
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
 golang.org/x/net/ipv4
@@ -962,7 +963,7 @@ sigs.k8s.io/yaml/goyaml.v2
 # go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.31.0
 # go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v1.33.0
 # go.opentelemetry.io/proto/otlp => go.opentelemetry.io/proto/otlp v1.3.1
-# golang.org/x/net => golang.org/x/net v0.38.0
+# golang.org/x/net => golang.org/x/net v0.55.0
 # google.golang.org/grpc => google.golang.org/grpc v1.79.3
 # helm.sh/helm/v3 => github.com/rancher/helm/v3 v3.9.0-rancher1
 # k8s.io/api => k8s.io/api v0.33.5
