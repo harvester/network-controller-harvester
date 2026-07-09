@@ -9,6 +9,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/harvester/webhook/pkg/server/admission"
+	"github.com/vishvananda/netlink"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -463,6 +464,55 @@ func (v *Validator) checkVCSpansAllNodes(clusterNetwork string) error {
 
 		if !matchedNodes.Contains(node.Name) {
 			return fmt.Errorf("vlanconfig does not span %s", node.Name)
+		}
+	}
+
+	return nil
+}
+
+func validateHostNetworkVLAN(vlanID int) error {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return err
+	}
+
+	for _, link := range links {
+		name := link.Attrs().Name
+
+		if vlanID == 1 {
+			// Check any cluster network bridge or VLAN 1 sub-interface
+			if !strings.HasSuffix(name, utils.BridgeSuffix) &&
+				!strings.HasSuffix(name, utils.BridgeSuffixWithVlan1) {
+				continue
+			}
+
+			addrs, err := netlink.AddrList(link, netlink.FAMILY_V4)
+			if err != nil {
+				return err
+			}
+
+			if len(addrs) > 0 {
+				return fmt.Errorf(
+					"vlan 1 is already configured on interface %s with address %s",
+					name,
+					addrs[0].IPNet.String(),
+				)
+			}
+		} else {
+			// VLAN > 1:
+			// Check if another VLAN interface with same VLAN ID exists
+			vlanLink, ok := link.(*netlink.Vlan)
+			if !ok {
+				continue
+			}
+
+			if vlanLink.VlanId == vlanID {
+				return fmt.Errorf(
+					"vlan %d is already configured on interface %s",
+					vlanID,
+					name,
+				)
+			}
 		}
 	}
 

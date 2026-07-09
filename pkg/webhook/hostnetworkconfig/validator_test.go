@@ -1,6 +1,8 @@
 package hostnetworkconfig
 
 import (
+	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -17,6 +19,9 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/generated/clientset/versioned/fake"
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/harvester/harvester-network-controller/pkg/utils/fakeclients"
+
+	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
 )
 
 const (
@@ -1189,4 +1194,172 @@ func TestSameSubnet(t *testing.T) {
 			assert.Equal(t, tc.wantOK, ok, "expected sameSubnet to return %v for cidrs=%v, got %v", tc.wantOK, tc.cidrs, ok)
 		})
 	}
+}
+
+func TestValidateHostNetworkVLAN(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(t *testing.T)
+		vlanID  int
+		wantErr bool
+		errKey  string
+	}{
+		{
+			name:    "vlan > 1 returns error when same vlan id already exists",
+			vlanID:  2012,
+			wantErr: true,
+			errKey:  "already configured on interface",
+			setup: func(t *testing.T) {
+				parent := createBridgeLink(t, utils.GetClusterNetworkPrefix(testCnName))
+				_ = createVlanLink(t, utils.GetClusterNetworkVlanDevice(testCnName, 2012), parent.Attrs().Index, 2012)
+			},
+		},
+		{
+			name:    "vlan > 1 succeeds when only different vlan id exists",
+			vlanID:  2012,
+			wantErr: false,
+			setup: func(t *testing.T) {
+				parent := createBridgeLink(t, utils.GetClusterNetworkPrefix(testCnName))
+				_ = createVlanLink(t, utils.GetClusterNetworkVlanDevice(testCnName, 2013), parent.Attrs().Index, 2013)
+				parent1 := createBridgeLink(t, utils.GetClusterNetworkPrefix(testCnName11))
+				_ = createVlanLink(t, utils.GetClusterNetworkVlanDevice(testCnName11, 2014), parent1.Attrs().Index, 2014)
+			},
+		},
+		{
+			name:    "vlan 1 returns error when bridge has ipv4 address",
+			vlanID:  1,
+			wantErr: true,
+			errKey:  "vlan 1 is already configured on interface",
+			setup: func(t *testing.T) {
+				br := createBridgeLink(t, utils.GetClusterNetworkPrefix(testCnName))
+				addIPv4Addr(t, br, "192.168.50.10/24")
+			},
+		},
+		{
+			name:    "vlan 1 returns error when vlan sub-interface has ipv4 address",
+			vlanID:  1,
+			wantErr: true,
+			errKey:  "vlan 1 is already configured on interface",
+			setup: func(t *testing.T) {
+				parent := createBridgeLink(t, utils.GetClusterNetworkPrefix(testCnName))
+				vlan := createVlanLink(t, utils.GetClusterNetworkVlanDevice(testCnName, 1), parent.Attrs().Index, 1)
+				addIPv4Addr(t, vlan, "192.168.60.10/24")
+			},
+		},
+		{
+			name:    "vlan 1 succeeds when matching interfaces exist but no ipv4 address",
+			vlanID:  1,
+			wantErr: false,
+			setup: func(t *testing.T) {
+				_ = createBridgeLink(t, utils.GetClusterNetworkPrefix(testCnName))
+			},
+		},
+		{
+			name:    "vlan 1 succeeds when no relevant interface exists",
+			vlanID:  1,
+			wantErr: false,
+			setup: func(t *testing.T) {
+				parent := createBridgeLink(t, utils.GetClusterNetworkPrefix(testCnName))
+				vlan := createVlanLink(t, utils.GetClusterNetworkVlanDevice(testCnName, 2014), parent.Attrs().Index, 2014)
+				addIPv4Addr(t, vlan, "192.168.70.10/24")
+				_ = createBridgeLink(t, utils.GetClusterNetworkPrefix(utils.ManagementClusterNetworkName))
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withIsolatedNetNS(t, func() {
+				if tc.setup != nil {
+					tc.setup(t)
+				}
+
+				err := validateHostNetworkVLAN(tc.vlanID)
+				assert.Equal(t, tc.wantErr, err != nil)
+
+				if tc.wantErr {
+					assert.Error(t, err)
+					assert.True(t, strings.Contains(err.Error(), tc.errKey), fmt.Sprintf("got error: %v", err))
+				} else {
+					assert.NoError(t, err)
+				}
+			})
+		})
+	}
+}
+
+func withIsolatedNetNS(t *testing.T, fn func()) {
+	t.Helper()
+
+	if runtime.GOOS != "linux" {
+		t.Skip("requires linux")
+	}
+
+	runtime.LockOSThread()
+
+	origNS, err := netns.Get()
+	if err != nil {
+		runtime.UnlockOSThread()
+		t.Skipf("failed to get current netns: %v", err)
+		return
+	}
+
+	newNS, err := netns.New()
+	if err != nil {
+		_ = origNS.Close()
+		runtime.UnlockOSThread()
+		t.Skipf("requires CAP_SYS_ADMIN/CAP_NET_ADMIN to create netns: %v", err)
+		return
+	}
+
+	defer func() {
+		_ = netns.Set(origNS)
+		_ = newNS.Close()
+		_ = origNS.Close()
+		runtime.UnlockOSThread()
+	}()
+
+	fn()
+}
+
+func createBridgeLink(t *testing.T, name string) netlink.Link {
+	t.Helper()
+
+	link := &netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{Name: name},
+	}
+	err := netlink.LinkAdd(link)
+	assert.NoError(t, err)
+
+	out, err := netlink.LinkByName(name)
+	assert.NoError(t, err)
+	return out
+}
+
+func createVlanLink(t *testing.T, name string, parentIndex int, vlanID int) netlink.Link {
+	t.Helper()
+
+	link := &netlink.Vlan{
+		LinkAttrs: netlink.LinkAttrs{
+			Name:        name,
+			ParentIndex: parentIndex,
+		},
+		VlanId: vlanID,
+	}
+	err := netlink.LinkAdd(link)
+	assert.NoError(t, err)
+
+	out, err := netlink.LinkByName(name)
+	assert.NoError(t, err)
+	return out
+}
+
+func addIPv4Addr(t *testing.T, link netlink.Link, cidr string) {
+	t.Helper()
+
+	addr, err := netlink.ParseAddr(cidr)
+	assert.NoError(t, err)
+
+	err = netlink.AddrAdd(link, addr)
+	assert.NoError(t, err)
 }

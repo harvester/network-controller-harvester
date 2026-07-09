@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	BridgeSuffix       = "-br"
-	BondSuffix         = "-bo"
-	DefaultValueMiimon = 100
+	BridgeSuffix          = "-br"
+	BondSuffix            = "-bo"
+	DefaultValueMiimon    = 100
+	BridgeSuffixWithVlan1 = "-br.1"
 
 	LenOfBridgeSuffix = 3 // length of BridgeSuffix
 	LenOfBondSuffix   = 3 // length of BondSuffix
@@ -43,6 +44,10 @@ func GetClusterNetworkDevicePrefix(cnName string) string {
 // e.g. cn2-br.2025
 func GetClusterNetworkBrVlanDevice(cnBrName string, vlanId uint16) string {
 	return fmt.Sprintf("%s%s%s", cnBrName, VlanSubInterfaceSpliter, fmt.Sprint(vlanId))
+}
+
+func GetClusterNetworkPrefix(cnName string) string {
+	return fmt.Sprintf("%s%s", cnName, BridgeSuffix)
 }
 
 // e.g. cn2-br.2025
