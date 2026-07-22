@@ -301,16 +301,16 @@ github.com/vishvananda/netns
 # github.com/x448/float16 v0.8.4
 ## explicit; go 1.11
 github.com/x448/float16
-# golang.org/x/crypto v0.52.0
+# golang.org/x/crypto v0.53.0
 ## explicit; go 1.25.0
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
-# golang.org/x/mod v0.35.0
+# golang.org/x/mod v0.36.0
 ## explicit; go 1.25.0
 golang.org/x/mod/internal/lazyregexp
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.55.0 => golang.org/x/net v0.55.0
+# golang.org/x/net v0.56.0 => golang.org/x/net v0.56.0
 ## explicit; go 1.25.0
 golang.org/x/net/bpf
 golang.org/x/net/http/httpguts
@@ -328,18 +328,18 @@ golang.org/x/net/ipv6
 ## explicit; go 1.23.0
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.20.0
+# golang.org/x/sync v0.21.0
 ## explicit; go 1.25.0
 golang.org/x/sync/errgroup
-# golang.org/x/sys v0.45.0
+# golang.org/x/sys v0.46.0
 ## explicit; go 1.25.0
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/term v0.43.0
+# golang.org/x/term v0.44.0
 ## explicit; go 1.25.0
 golang.org/x/term
-# golang.org/x/text v0.37.0
+# golang.org/x/text v0.38.0
 ## explicit; go 1.25.0
 golang.org/x/text/cases
 golang.org/x/text/internal
@@ -354,7 +354,7 @@ golang.org/x/text/unicode/norm
 # golang.org/x/time v0.11.0
 ## explicit; go 1.23.0
 golang.org/x/time/rate
-# golang.org/x/tools v0.44.0
+# golang.org/x/tools v0.45.0
 ## explicit; go 1.25.0
 golang.org/x/tools/go/ast/astutil
 golang.org/x/tools/go/ast/edge
@@ -963,7 +963,7 @@ sigs.k8s.io/yaml/goyaml.v2
 # go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.31.0
 # go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v1.33.0
 # go.opentelemetry.io/proto/otlp => go.opentelemetry.io/proto/otlp v1.3.1
-# golang.org/x/net => golang.org/x/net v0.55.0
+# golang.org/x/net => golang.org/x/net v0.56.0
 # google.golang.org/grpc => google.golang.org/grpc v1.79.3
 # helm.sh/helm/v3 => github.com/rancher/helm/v3 v3.9.0-rancher1
 # k8s.io/api => k8s.io/api v0.33.5
