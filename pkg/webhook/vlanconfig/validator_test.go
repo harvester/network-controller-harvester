@@ -733,7 +733,9 @@ func TestUpdateVlanConfig_NoMatchedNodesAnnotationDoesNotPanic(t *testing.T) {
 			Uplink: networkv1.Uplink{
 				LinkAttrs: &networkv1.LinkAttrs{MTU: utils.DefaultMTU},
 				BondOptions: &networkv1.BondOptions{
-					Mode: utils.DefaultBondMode,
+					Mode:        utils.DefaultBondMode,
+					Miimon:      100,
+					ArpInterval: -1,
 				},
 			},
 		},
@@ -753,7 +755,7 @@ func TestDeleteVlanConfig(t *testing.T) {
 		returnErr                bool
 		errKey                   string
 		currentCN                *networkv1.ClusterNetwork
-		currentVC                *networkv1.VlanConfig // delete this one
+		currentVC                *networkv1.VlanConfig
 		currentVS                *networkv1.VlanStatus
 		currentNAD               *cniv1.NetworkAttachmentDefinition
 		currentVm                *kubevirtv1.VirtualMachine

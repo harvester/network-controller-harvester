@@ -55,10 +55,10 @@ type BondOptions struct {
 	Mode BondMode `json:"mode,omitempty"`
 	// +optional
 	// +kubebuilder:validation:Minimum:=-1
+	// +kubebuilder:default:=-1
 	Miimon int `json:"miimon,omitempty"`
 	// +optional
 	// +kubebuilder:validation:Enum={"layer2","layer2+3","layer3+4","encap2+3","encap3+4"}
-	// +kubebuilder:default:="layer2"
 	XmitHashPolicy string `json:"xmitHashPolicy,omitempty"`
 	// +optional
 	// +kubebuilder:validation:Enum={"slow","fast"}

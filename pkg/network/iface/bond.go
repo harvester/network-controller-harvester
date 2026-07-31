@@ -336,26 +336,35 @@ func compareBond(old, new *netlink.Bond) bool { //nolint
 		return false
 	}
 
-	// handle change on arp_ip_targets
+	// handle change on arp_ip_targets (order-insensitive, multiplicity-aware)
 	if len(old.ArpIpTargets) != len(new.ArpIpTargets) {
 		return false
 	}
 
 	// we need to check all the IPs in the list and look for a change
-	if len(old.ArpIpTargets) == len(new.ArpIpTargets) && len(old.ArpIpTargets) != 0 {
-		for _, oldTarget := range old.ArpIpTargets {
-			for i, newTarget := range new.ArpIpTargets {
-				if !oldTarget.Equal(newTarget) {
-					if i != len(new.ArpIpTargets)-1 {
-						continue
-					} else {
-						return false
-					}
-				}
+	if len(old.ArpIpTargets) > 0 {
+		counts := make(map[string]int, len(old.ArpIpTargets))
+		for _, ip := range old.ArpIpTargets {
+			if ip == nil {
+				return false
+			}
+			counts[ip.String()]++
+		}
+		for _, ip := range new.ArpIpTargets {
+			if ip == nil {
+				return false
+			}
+			counts[ip.String()]--
+			if counts[ip.String()] < 0 {
+				return false
+			}
+		}
+		for _, v := range counts {
+			if v != 0 {
+				return false
 			}
 		}
 	}
-
 	// handle change on arp_validate
 	if old.ArpValidate != new.ArpValidate {
 		return false

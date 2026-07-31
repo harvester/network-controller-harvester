@@ -315,7 +315,7 @@ func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 
 	// if bond options are not defined use defaults and create bond
 	if vc.Spec.Uplink.BondOptions == nil {
-		bond.Mode = netlink.BOND_MODE_BALANCE_RR
+		bond.Mode = netlink.BOND_MODE_ACTIVE_BACKUP
 		bond.Miimon = utils.DefaultValueMiimon
 
 		goto CreateBond
@@ -327,8 +327,11 @@ func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 	}
 
 	// set miimon
-	if vc.Spec.Uplink.BondOptions.Miimon != -1 {
-		bond.Miimon = vc.Spec.Uplink.BondOptions.Miimon
+	if vc.Spec.Uplink.BondOptions.ArpInterval == -1 {
+		bond.Miimon = utils.DefaultValueMiimon
+		if vc.Spec.Uplink.BondOptions.Miimon != -1 {
+			bond.Miimon = vc.Spec.Uplink.BondOptions.Miimon
+		}
 	}
 
 	// set  xmit_hash_policy
@@ -355,7 +358,13 @@ func setUplink(vc *networkv1.VlanConfig) (*iface.Link, error) {
 	if len(vc.Spec.Uplink.BondOptions.ArpIpTargets) > 0 {
 		var arpIpTargets []net.IP
 		for _, target := range vc.Spec.Uplink.BondOptions.ArpIpTargets {
-			arpIpTargets = append(arpIpTargets, net.ParseIP(target))
+
+			ip := net.ParseIP(target)
+			if ip == nil {
+				return nil, fmt.Errorf("invalid arpIpTarget %q", target)
+			}
+
+			arpIpTargets = append(arpIpTargets, ip)
 		}
 		bond.ArpIpTargets = arpIpTargets
 	}

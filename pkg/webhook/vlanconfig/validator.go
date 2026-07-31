@@ -131,6 +131,10 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return fmt.Errorf(updateErr, newVc.Name, err)
 	}
 
+	if err := v.validateBondOptions(newVc); err != nil {
+		return fmt.Errorf(createErr, newVc.Name, err)
+	}
+
 	oldNodes, err := getMatchNodes(oldVc)
 	if err != nil {
 		return fmt.Errorf(updateErr, oldVc.Name, err)
@@ -321,11 +325,11 @@ func (v *Validator) validateBondOptions(vc *networkv1.VlanConfig) error {
 		return fmt.Errorf("arp_interval can't be set if mode is 802.3ad")
 	}
 
-	if vc.Spec.Uplink.BondOptions.ArpInterval != -1 && vc.Spec.Uplink.BondOptions.ArpIpTargets == nil {
+	if vc.Spec.Uplink.BondOptions.ArpInterval != -1 && len(vc.Spec.Uplink.BondOptions.ArpIpTargets) == 0 {
 		return fmt.Errorf("arp_interval can't be set if arp_ip_targets is not set")
 	}
 
-	if vc.Spec.Uplink.BondOptions.ArpValidate != "" && vc.Spec.Uplink.BondOptions.ArpInterval <= 0 {
+	if vc.Spec.Uplink.BondOptions.ArpValidate != "" && vc.Spec.Uplink.BondOptions.ArpValidate != "none" && vc.Spec.Uplink.BondOptions.ArpInterval <= 0 {
 		return fmt.Errorf("arp_validate can't be set if arp_interval is 0 or not set")
 	}
 
