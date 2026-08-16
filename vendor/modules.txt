@@ -93,7 +93,7 @@ github.com/harvester/webhook/pkg/error
 github.com/harvester/webhook/pkg/server
 github.com/harvester/webhook/pkg/server/admission
 github.com/harvester/webhook/pkg/server/conversion
-# github.com/insomniacslk/dhcp v0.0.0-20260603135910-a415979eb11e
+# github.com/insomniacslk/dhcp v0.0.0-20260719225207-c76316d4aa82
 ## explicit; go 1.23.0
 github.com/insomniacslk/dhcp/dhcpv4
 github.com/insomniacslk/dhcp/dhcpv4/nclient4
