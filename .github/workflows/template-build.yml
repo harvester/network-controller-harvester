@@ -12,10 +12,7 @@ on:
         type: boolean
 
 env:
-  repo: "rancher"
-  controllerImageName: "harvester-network-controller"
-  helperImageName: "harvester-network-helper"
-  webhookImageName: "harvester-network-webhook"
+  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   dapper-build:
@@ -23,6 +20,16 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: harvester-network-controller
+            dockerfile: package/Dockerfile
+          - image: harvester-network-helper
+            dockerfile: package/Dockerfile.helper
+          - image: harvester-network-webhook
+            dockerfile: package/Dockerfile.webhook
     steps:
     - name: Checkout code without refs
       if: ${{ inputs.refs == '' }}
@@ -43,47 +50,65 @@ jobs:
     - name: Run dapper
       run: make ci
 
-    - name: Read some Secrets
-      uses: rancher-eio/read-vault-secrets@7282bf97898cd1c16c89f837e0bb442e6d384c89 # main
-      if: ${{ inputs.push == true }}
+    - name: Resolve registries
+      id: resolve
+      uses: harvester/harvester-actions/actions/resolve-registries@a6fc1cfb81904c08e2267675fd5ac7b11a5092a9 # main
       with:
-        secrets: |
-          secret/data/github/repo/${{ github.repository }}/dockerhub/rancher/credentials username | DOCKER_USERNAME ;
-          secret/data/github/repo/${{ github.repository }}/dockerhub/rancher/credentials password | DOCKER_PASSWORD
+        release-tag-name: ${{ inputs.release-tag-name }}
+        is-release: ${{ github.event_name == 'release' && github.event.action == 'published' }}
+
+    - name: Set image tag
+      run: echo "IMAGE_TAG=${RELEASE_TAG_NAME#prime-}" >> "$GITHUB_ENV"
+      env:
+        RELEASE_TAG_NAME: ${{ inputs.release-tag-name }}
 
     - name: Login to Docker Hub
-      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
-      if: ${{ inputs.push == true }}
-      with:
-        username: ${{ env.DOCKER_USERNAME }}
-        password: ${{ env.DOCKER_PASSWORD }}
+      id: login-docker
+      if: ${{ inputs.push == true && steps.resolve.outputs.use-docker-io == 'true' }}
+      uses: harvester/harvester-actions/actions/login-docker-hub@a6fc1cfb81904c08e2267675fd5ac7b11a5092a9 # main
 
-    - name: Docker Build (Controller)
-      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+    - name: Publish public ${{ matrix.image }} image
+      if: ${{ inputs.push == true && steps.resolve.outputs.use-docker-io == 'true' }}
+      uses: harvester/harvester-actions/actions/publish-public-image@a6fc1cfb81904c08e2267675fd5ac7b11a5092a9 # main
       with:
-        provenance: false
         context: .
-        platforms: linux/amd64,linux/arm64
-        file: package/Dockerfile
-        push: ${{ inputs.push }}
-        tags: ${{ env.repo }}/${{ env.controllerImageName }}:${{ inputs.release-tag-name }}
+        dockerfile: ${{ matrix.dockerfile }}
+        image: ${{ matrix.image }}
+        tag: ${{ env.IMAGE_TAG }}
+        platforms: ${{ env.PLATFORMS }}
+        registry: ${{ steps.login-docker.outputs.registry }}
+        repository: ${{ steps.login-docker.outputs.repository }}
 
-    - name: Docker Build (Helper)
-      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
-      with:
-        provenance: false
-        context: .
-        platforms: linux/amd64,linux/arm64
-        file: package/Dockerfile.helper
-        push: ${{ inputs.push }}
-        tags: ${{ env.repo }}/${{ env.helperImageName }}:${{ inputs.release-tag-name }}
+    - name: Login to Staging Registry
+      id: login-staging
+      if: ${{ inputs.push == true && steps.resolve.outputs.use-staging == 'true' }}
+      uses: harvester/harvester-actions/actions/login-staging-registry@a6fc1cfb81904c08e2267675fd5ac7b11a5092a9 # main
 
-    - name: Docker Build (Webhook)
-      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+    - name: Publish staging ${{ matrix.image }} image
+      if: ${{ inputs.push == true && steps.resolve.outputs.use-staging == 'true' }}
+      uses: harvester/harvester-actions/actions/publish-prime-image@a6fc1cfb81904c08e2267675fd5ac7b11a5092a9 # main
       with:
-        provenance: false
         context: .
-        platforms: linux/amd64,linux/arm64
-        file: package/Dockerfile.webhook
-        push: ${{ inputs.push }}
-        tags: ${{ env.repo }}/${{ env.webhookImageName }}:${{ inputs.release-tag-name }}
+        dockerfile: ${{ matrix.dockerfile }}
+        image: ${{ matrix.image }}
+        tag: ${{ env.IMAGE_TAG }}
+        platforms: ${{ env.PLATFORMS }}
+        registry: ${{ steps.login-staging.outputs.registry }}
+        repository: ${{ steps.login-staging.outputs.repository }}
+
+    - name: Login to Prime Registry
+      id: login-prime
+      if: ${{ inputs.push == true && steps.resolve.outputs.use-prime == 'true' }}
+      uses: harvester/harvester-actions/actions/login-prime-registry@a6fc1cfb81904c08e2267675fd5ac7b11a5092a9 # main
+
+    - name: Publish prime ${{ matrix.image }} image
+      if: ${{ inputs.push == true && steps.resolve.outputs.use-prime == 'true' }}
+      uses: harvester/harvester-actions/actions/publish-prime-image@a6fc1cfb81904c08e2267675fd5ac7b11a5092a9 # main
+      with:
+        context: .
+        dockerfile: ${{ matrix.dockerfile }}
+        image: ${{ matrix.image }}
+        tag: ${{ env.IMAGE_TAG }}
+        platforms: ${{ env.PLATFORMS }}
+        registry: ${{ steps.login-prime.outputs.registry }}
+        repository: ${{ steps.login-prime.outputs.repository }}
