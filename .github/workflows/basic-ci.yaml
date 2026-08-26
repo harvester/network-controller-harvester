@@ -1,0 +1,98 @@
+name: Harvester-Network-Controller CI
+
+# synchronize for pull request update
+on:
+  push:
+    branches:
+      - master
+      - 'v**'
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+env:
+  LIBVIRT_DEFAULT_URI: "qemu:///system"
+  VM_DEPLOYED: false
+
+jobs:
+  validation:
+    runs-on:
+      - self-hosted
+      - golang
+    steps:
+      - name: "Clone and check"
+        uses: actions/checkout@v3
+      - name: "Run validations"
+        run: |
+          make validate
+  job-new-installation:
+    needs: validation
+    runs-on:
+      - self-hosted
+      - golang
+    steps:
+      - name: "Clone and check"
+        uses: actions/checkout@v3
+      - name: "Build the Image for the Integration Test"
+        run: |
+          BUILD_FOR_CI=true make
+          ./ci/scripts/patch-ttl-repo.sh
+          echo "NCH override result as below:"
+          cat ci/charts/nch-override.yaml
+      - name: "Local Deployment (Harvester+NetworkController) for testing"
+        id: vm_deploy
+        run: |
+          rm -rf nch-new-vagrant-k3s
+          git clone https://github.com/bk201/vagrant-k3s nch-new-vagrant-k3s
+          pushd nch-new-vagrant-k3s
+          yq e -i ".cluster_size = 1" settings.yaml
+          ./new-cluster.sh
+          echo "VM_DEPLOYED=true" >> "$GITHUB_ENV"
+          yq e -i ".longhorn_version = \"1.7.1\"" settings.yaml
+          ./scripts/deploy_longhorn.sh
+          popd 
+      - name: "Patch Image target"
+        run: |
+          ./ci/scripts/patch-ttl-repo.sh
+          echo "NCH override result as below:"
+          cat ci/charts/nch-override.yaml
+      - name: "Deploy NCH"
+        run: |
+          pushd nch-new-vagrant-k3s
+          cp ../ci/scripts/deploy_nch_current.sh ./deploy_nch_current.sh
+          cp ../ci/charts/nch-override.yaml ./nch-override.yaml
+          ./deploy_nch_current.sh
+          popd
+      - name: "Add disk"
+        run: |
+          pushd nch-new-vagrant-k3s
+          ./scripts/attach-disk.sh node1 nch-new-vagrant-k3s
+          sleep 30
+          popd
+      - name: "Run Basic Test"
+        id: basic-test
+        run: |
+          pushd nch-new-vagrant-k3s
+          vagrant ssh-config node1 > ../ssh-config
+          cp kubeconfig ../kubeconfig
+          popd
+          echo Running integration tests
+          NCH_HOME=`pwd` go test -v ./tests/...
+      - name: "Get NCH logs"
+        if: always()
+        run: |
+          if [ ${{ env.VM_DEPLOYED }} != 'true' ]; then
+            echo "VM is not deployed, skip getting logs"
+            exit 0
+          fi
+          ./ci/scripts/get-debug-info.sh
+      - name: "Tear Down / Cleanup"
+        if: always()
+        run: |
+          if [ ${{ env.VM_DEPLOYED }} != 'true' ]; then
+            echo "VM is not deployed, skip VM destroy"
+            exit 0
+          fi
+          rm -rf /tmp/network-controller/nch-new-vagrant-k3s
+          pushd nch-new-vagrant-k3s
+          vagrant destroy -f --parallel
+          popd
