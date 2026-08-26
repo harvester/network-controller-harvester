@@ -1,6 +1,6 @@
 Harvester Network Controller
 ========
-[![Build Status](https://drone-publish.rancher.io/api/badges/harvester/network-controller-harvester/status.svg)](https://drone-publish.rancher.io/harvester/network-controller-harvester)
+[![Build Status](https://github.com/harvester/network-controller-harvester/actions/workflows/main.yml/badge.svg)](https://github.com/harvester/network-controller-harvester/actions/workflows/main.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/harvester/network-controller-harvester)](https://goreportcard.com/report/github.com/harvester/network-controller-harvester)
 [![Releases](https://img.shields.io/github/release/harvester/network-controller-harvester/all.svg)](https://github.com/harvester/network-controller-harvester/releases)
 
