@@ -72,30 +72,30 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func checkifHostNetworkInterfaceExists(hnc *networkv1.HostNetworkConfig) (bool, error) {
+func checkifHostNetworkInterfaceExists(hnc *networkv1.HostNetworkConfig) (bool, *iface.Link, error) {
 	v, err := vlan.GetVlan(hnc.Spec.ClusterNetwork)
 	if err != nil {
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			return false, nil
+			return false, nil, nil
 		}
-		return false, err
+		return false, nil, err
 	}
 
 	bridgelink, err := v.GetBridgelink()
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 
 	vlanIntf := utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID)
-	_, err = netlink.LinkByName(vlanIntf)
+	link, err := netlink.LinkByName(vlanIntf)
 	if err != nil {
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			return false, nil
+			return false, nil, nil
 		}
-		return false, err
+		return false, nil, err
 	}
 
-	return true, nil
+	return true, iface.NewLink(link), nil
 }
 
 func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*networkv1.HostNetworkConfig, error) {
@@ -110,7 +110,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return nil, err
 	}
 
-	intfExists, err := checkifHostNetworkInterfaceExists(hnc)
+	intfExists, curLink, err := checkifHostNetworkInterfaceExists(hnc)
 	if err != nil {
 		return nil, err
 	}
@@ -129,52 +129,42 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return hnc, nil
 	}
 
-	// node selector matches and host network interface already exists, skip processing
-	if intfExists {
-		logrus.Infof("hostnetwork config %s has been applied on this node already, update nodestatus,tunnel interface annotation and skip", hnc.Name)
-
-		// intf exists but there could be change in underlay, need to update node annotation with new interface if needed
-		if err := h.addNodeAnnotation(utils.GetClusterNetworkVlanDevice(hnc.Spec.ClusterNetwork, hnc.Spec.VlanID), hnc.Spec.Underlay); err != nil {
-			return nil, fmt.Errorf("add node annotation to node %s for host network config %s failed, error: %w", h.nodeName, hnc.Name, err)
-		}
-
-		err := h.setHostNetworkPerNodeStatus(hnc, true, nil)
-		if err != nil {
-			return nil, err
-		}
-		return hnc, nil
-	}
-
 	var addr string
 	var bridgelink *iface.Link
 
-	v, err := vlan.GetVlan(hnc.Spec.ClusterNetwork)
-	if err != nil {
-		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			logrus.Infof("cluster network %s is not set on this node, skip", hnc.Spec.ClusterNetwork)
-			//stop and delete all lease manaagers assosciated with the cluster network (if uplink removed due to vlanconfig changes/deletion)
-			h.stopLeaseManager(utils.GetClusterNetworkVlanDevice(hnc.Spec.ClusterNetwork, hnc.Spec.VlanID))
-			return nil, nil
+	// create new interface
+	if !intfExists {
+		v, err := vlan.GetVlan(hnc.Spec.ClusterNetwork)
+		if err != nil {
+			if errors.As(err, &netlink.LinkNotFoundError{}) {
+				logrus.Infof("cluster network %s is not set on this node, skip", hnc.Spec.ClusterNetwork)
+				//stop and delete all lease manaagers assosciated with the cluster network (if uplink removed due to vlanconfig changes/deletion)
+				h.stopLeaseManager(utils.GetClusterNetworkVlanDevice(hnc.Spec.ClusterNetwork, hnc.Spec.VlanID))
+				return nil, nil
+			}
+			return hnc, h.updateHostNetworkReadyStatus(hnc, err)
 		}
-		return hnc, h.updateHostNetworkReadyStatus(hnc, err)
-	}
 
-	bridgelink, err = v.GetBridgelink()
-	if err != nil {
-		return hnc, h.updateHostNetworkReadyStatus(hnc, err)
-	}
+		bridgelink, err = v.GetBridgelink()
+		if err != nil {
+			return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		}
 
-	if err = bridgelink.AddBridgeVlanSelf(hnc.Spec.VlanID); err != nil {
-		return hnc, h.updateHostNetworkReadyStatus(hnc, err)
-	}
+		if err = bridgelink.AddBridgeVlanSelf(hnc.Spec.VlanID); err != nil {
+			return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		}
 
-	if err = bridgelink.CreateVlanSubInterface(hnc.Spec.VlanID); err != nil {
-		return hnc, h.updateHostNetworkReadyStatus(hnc, err)
-	}
+		if err = bridgelink.CreateVlanSubInterface(hnc.Spec.VlanID); err != nil {
+			return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		}
 
-	// reconcile cluster network to add vid to the uplink(cluster-bo)
-	if err := h.wakeUpClusterNetwork(hnc.Spec.ClusterNetwork); err != nil {
-		return nil, fmt.Errorf("wake up cluster network %s failed, error: %w", hnc.Spec.ClusterNetwork, err)
+		// reconcile cluster network to add vid to the uplink(cluster-bo)
+		if err := h.wakeUpClusterNetwork(hnc.Spec.ClusterNetwork); err != nil {
+			return nil, fmt.Errorf("wake up cluster network %s failed, error: %w", hnc.Spec.ClusterNetwork, err)
+		}
+	} else {
+		// reuse existing link for following IP related operations
+		bridgelink = curLink
 	}
 
 	switch hnc.Spec.Mode {
