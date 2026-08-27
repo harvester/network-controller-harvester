@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
@@ -73,6 +75,7 @@ func (l *Link) DelVlanSubInterface(vid uint16) error {
 		}
 	}
 
+	logrus.Infof("prepare to delete vlan subinterface link: %v, vid: %v", linkName, vid)
 	if err := netlink.LinkDel(vlanLink); err != nil {
 		return fmt.Errorf("delete vlan subinterface failed, error: %v, link: %s, vid: %d", err, linkName, vid)
 	}
@@ -104,6 +107,8 @@ func (l *Link) SetIPAddress(cidr string, vid uint16) error {
 
 	for _, address := range addresses {
 		if !ipAddr.IP.Equal(address.IP) {
+			// essential to emit a log when delete an IP
+			logrus.Infof("prepare to delete stale IP %v from interface %v", address.IP, linkName)
 			if err := netlink.AddrDel(vlanLink, &address); err != nil {
 				return fmt.Errorf("delete ip address failed, error: %v, link: %s, ipNet: %v", err, l.Attrs().Name, address)
 			}
