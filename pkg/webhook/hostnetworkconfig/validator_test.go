@@ -251,6 +251,10 @@ func TestCreateHostNetworkConfig(t *testing.T) {
 				},
 			},
 			currentHostNetworkConfig: &networkv1.HostNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "testHNC-1",
+					Annotations: map[string]string{"test": "test"},
+				},
 				Spec: networkv1.HostNetworkConfigSpec{
 					ClusterNetwork: testCnName,
 					VlanID:         2012,
@@ -259,6 +263,10 @@ func TestCreateHostNetworkConfig(t *testing.T) {
 				},
 			},
 			newHostNetworkConfig: &networkv1.HostNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "testHNC-2",
+					Annotations: map[string]string{"test": "test"},
+				},
 				Spec: networkv1.HostNetworkConfigSpec{
 					ClusterNetwork: testCnName,
 					VlanID:         2012,
@@ -310,6 +318,10 @@ func TestCreateHostNetworkConfig(t *testing.T) {
 				},
 			},
 			currentHostNetworkConfig: &networkv1.HostNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "testHNC-1",
+					Annotations: map[string]string{"test": "test"},
+				},
 				Spec: networkv1.HostNetworkConfigSpec{
 					ClusterNetwork: testCnName,
 					VlanID:         2012,
@@ -318,6 +330,10 @@ func TestCreateHostNetworkConfig(t *testing.T) {
 				},
 			},
 			newHostNetworkConfig: &networkv1.HostNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "testHNC-2",
+					Annotations: map[string]string{"test": "test"},
+				},
 				Spec: networkv1.HostNetworkConfigSpec{
 					ClusterNetwork: testCnName11,
 					VlanID:         2013,
@@ -759,6 +775,91 @@ func TestUpdateHostNetworkConfig(t *testing.T) {
 			},
 		},
 		{
+			name:      "updating HostIPs for same hostnetworkconfig should be allowed",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testNadConfig,
+				},
+			},
+			currentNode: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node1",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "currentVC",
+					Annotations: map[string]string{utils.KeyMatchedNodes: "[\"node1\"]"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+					},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "currentVC",
+					Conditions: []networkv1.Condition{
+						{
+							Type:   networkv1.Ready,
+							Status: "True",
+						},
+					},
+				},
+			},
+			currentHostNetworkConfig: &networkv1.HostNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "testHNC",
+					Annotations: map[string]string{"test": "test"},
+				},
+				Spec: networkv1.HostNetworkConfigSpec{
+					ClusterNetwork: testCnName,
+					VlanID:         2012,
+					Mode:           "static",
+					HostIPs:        map[string]networkv1.IPAddr{"node1": "192.168.1.100/24"},
+					Underlay:       true,
+				},
+			},
+			newHostNetworkConfig: &networkv1.HostNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "testHNC",
+					Annotations: map[string]string{"test": "test2"},
+				},
+				Spec: networkv1.HostNetworkConfigSpec{
+					ClusterNetwork: testCnName,
+					VlanID:         2012,
+					Mode:           "static",
+					HostIPs:        map[string]networkv1.IPAddr{"node1": "192.168.2.100/24"},
+					Underlay:       true,
+				},
+			},
+		},
+		{
 			name:      "updating cluster network is not allowed",
 			returnErr: true,
 			errKey:    "cannot update",
@@ -1044,7 +1145,223 @@ func TestUpdateHostNetworkConfig(t *testing.T) {
 			validator := NewHostNetworkConfigValidator(nadCache, cnCache, hncCache, vcCache, vsCache, nodeCache, vmCache)
 
 			err := validator.Update(nil, tc.currentHostNetworkConfig, tc.newHostNetworkConfig)
-			assert.True(t, tc.returnErr == (err != nil))
+			assert.Equal(t, tc.returnErr, err != nil, "unexpected error result: %v", err)
+			if tc.returnErr {
+				assert.NotNil(t, err)
+				assert.True(t, strings.Contains(err.Error(), tc.errKey))
+			}
+		})
+	}
+}
+
+// Test that updating an existing HostNetworkConfig succeeds even if the cluster
+// contains a legacy duplicate VlanID (ensures op == ValidateCreate guard prevents false positives).
+func TestUpdateHostNetworkConfigWithMultipleCacheObjects(t *testing.T) {
+	tests := []struct {
+		name                      string
+		returnErr                 bool
+		errKey                    string
+		currentCN                 *networkv1.ClusterNetwork
+		currentVC                 *networkv1.VlanConfig
+		currentVS                 *networkv1.VlanStatus
+		currentNAD                *cniv1.NetworkAttachmentDefinition
+		currentHostNetworkConfigs []*networkv1.HostNetworkConfig
+		oldHostNetworkConfig      *networkv1.HostNetworkConfig
+		newHostNetworkConfig      *networkv1.HostNetworkConfig
+		currentNode               *v1.Node
+		currentNode2              *v1.Node
+		currentVM                 *kubevirtv1.VirtualMachine
+	}{
+		{
+			name:      "updating testHNC1 in a cluster with legacy duplicate VlanID on testHNC2 should succeed",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testCnName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testNadConfig,
+				},
+			},
+			currentNode: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node1",
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "currentVC",
+					Annotations: map[string]string{utils.KeyMatchedNodes: "[\"node1\"]"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: testCnName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: utils.DefaultMTU,
+						},
+					},
+				},
+			},
+			currentVS: &networkv1.VlanStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.Name("", testCnName, "node1"),
+					Annotations: map[string]string{"test": "test"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Status: networkv1.VlStatus{
+					ClusterNetwork: testCnName,
+					VlanConfig:     "currentVC",
+					Conditions: []networkv1.Condition{
+						{
+							Type:   networkv1.Ready,
+							Status: "True",
+						},
+					},
+				},
+			},
+			// Pre-existing cache state containing both duplicate HNCs (legacy state)
+			currentHostNetworkConfigs: []*networkv1.HostNetworkConfig{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        "testHNC1",
+						Annotations: map[string]string{"test": "v1"},
+					},
+					Spec: networkv1.HostNetworkConfigSpec{
+						ClusterNetwork: testCnName,
+						VlanID:         2012,
+						Mode:           "static",
+						HostIPs:        map[string]networkv1.IPAddr{"node1": "192.168.1.100/24"},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        "testHNC2",
+						Annotations: map[string]string{"test": "v1"},
+					},
+					Spec: networkv1.HostNetworkConfigSpec{
+						ClusterNetwork: testCnName,
+						VlanID:         2012, // Legacy duplicate VlanID due to known reasons
+						Mode:           "static",
+						HostIPs:        map[string]networkv1.IPAddr{"node1": "192.168.2.100/24"},
+					},
+				},
+			},
+
+			// The old object target being updated
+			oldHostNetworkConfig: &networkv1.HostNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "testHNC1",
+					Annotations: map[string]string{"test": "v1"},
+				},
+				Spec: networkv1.HostNetworkConfigSpec{
+					ClusterNetwork: testCnName,
+					VlanID:         2012,
+					Mode:           "static",
+					HostIPs:        map[string]networkv1.IPAddr{"node1": "192.168.1.100/24"},
+				},
+			},
+			// The updated object target
+			newHostNetworkConfig: &networkv1.HostNetworkConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "testHNC1",
+					Annotations: map[string]string{"test": "v2"},
+				},
+				Spec: networkv1.HostNetworkConfigSpec{
+					ClusterNetwork: testCnName,
+					VlanID:         2012,
+					Mode:           "static",
+					HostIPs:        map[string]networkv1.IPAddr{"node1": "192.168.3.100/24"},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+
+			assert.NotNil(t, tc.newHostNetworkConfig)
+			if tc.newHostNetworkConfig == nil {
+				return
+			}
+
+			assert.NotNil(t, tc.oldHostNetworkConfig)
+			if tc.oldHostNetworkConfig == nil {
+				return
+			}
+
+			nchclientset := fake.NewSimpleClientset()
+			vmCache := fakeclients.VirtualMachineCache(nchclientset.KubevirtV1().VirtualMachines)
+			nadCache := fakeclients.NetworkAttachmentDefinitionCache(nchclientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions)
+			hncCache := fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs)
+
+			// client to inject test data
+			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
+			vsClient := fakeclients.VlanStatusClient(nchclientset.NetworkV1beta1().VlanStatuses)
+			cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
+			nodeClient := fakeclients.NodeClient(nchclientset.CoreV1().Nodes)
+			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
+			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
+			vsCache := fakeclients.VlanStatusCache(nchclientset.NetworkV1beta1().VlanStatuses)
+			nodeCache := fakeclients.NodeCache(nchclientset.CoreV1().Nodes)
+
+			if tc.currentVC != nil {
+				_, err := vcClient.Create(tc.currentVC)
+				assert.NoError(t, err)
+			}
+			if tc.currentCN != nil {
+				_, err := cnClient.Create(tc.currentCN)
+				assert.NoError(t, err)
+			}
+			if tc.currentVS != nil {
+				_, err := vsClient.Create(tc.currentVS)
+				assert.NoError(t, err)
+			}
+			if tc.currentNode != nil {
+				_, err := nodeClient.Create(tc.currentNode)
+				assert.NoError(t, err)
+			}
+			if tc.currentNode2 != nil {
+				_, err := nodeClient.Create(tc.currentNode2)
+				assert.NoError(t, err)
+			}
+
+			if tc.currentVM != nil {
+				err := nchclientset.Tracker().Add(tc.currentVM)
+				assert.Nil(t, err, "mock resource vm should add into fake controller tracker")
+			}
+
+			if tc.currentNAD != nil {
+				nadGvr := schema.GroupVersionResource{
+					Group:    "k8s.cni.cncf.io",
+					Version:  "v1",
+					Resource: "network-attachment-definitions",
+				}
+
+				if err := nchclientset.Tracker().Create(nadGvr, tc.currentNAD.DeepCopy(), tc.currentNAD.Namespace); err != nil {
+					t.Fatalf("failed to add nad %+v", tc.currentNAD)
+				}
+			}
+			hncClient := fakeclients.HostNetworkConfigClient(nchclientset.NetworkV1beta1().HostNetworkConfigs)
+			for _, hnc := range tc.currentHostNetworkConfigs {
+				_, err := hncClient.Create(hnc)
+				assert.NoError(t, err)
+			}
+
+			validator := NewHostNetworkConfigValidator(nadCache, cnCache, hncCache, vcCache, vsCache, nodeCache, vmCache)
+
+			err := validator.Update(nil, tc.oldHostNetworkConfig, tc.newHostNetworkConfig)
+			assert.Equal(t, tc.returnErr, err != nil, "unexpected error result: %v", err)
 			if tc.returnErr {
 				assert.NotNil(t, err)
 				assert.True(t, strings.Contains(err.Error(), tc.errKey))
