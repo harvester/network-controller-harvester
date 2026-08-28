@@ -302,6 +302,11 @@ func (v *Validator) validateHostNetworkConfig(newhnc *networkv1.HostNetworkConfi
 			continue
 		}
 
+		// Skip comparing the CR against itself during updates
+		if hostnetworkconfig.Name == newhnc.Name {
+			continue
+		}
+
 		//no more than one underlay exists for overlay networks. If user has to change underlay setting, old underlay has to be disabled first.
 		if hostnetworkconfig.Spec.Underlay && newhnc.Spec.Underlay {
 			return fmt.Errorf("hostnetworkconfig %s already exists for cluster network %s vlanid %d with underlay enabled", hostnetworkconfig.Name, newhnc.Spec.ClusterNetwork, hostnetworkconfig.Spec.VlanID)
@@ -311,8 +316,10 @@ func (v *Validator) validateHostNetworkConfig(newhnc *networkv1.HostNetworkConfi
 			continue
 		}
 
+		// Enforce VLAN ID uniqueness on creation only to avoid blocking updates on existing duplicate states
 		if op == ValidateCreate && hostnetworkconfig.Spec.VlanID == newhnc.Spec.VlanID {
-			return fmt.Errorf("hostnetworkconfig %s already exists for cluster network %s with vlanID %d", hostnetworkconfig.Name, hostnetworkconfig.Spec.ClusterNetwork, hostnetworkconfig.Spec.VlanID)
+			return fmt.Errorf("hostnetworkconfig %s already exists for cluster network %s with vlanID %d",
+				hostnetworkconfig.Name, hostnetworkconfig.Spec.ClusterNetwork, hostnetworkconfig.Spec.VlanID)
 		}
 	}
 
