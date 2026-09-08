@@ -47,6 +47,10 @@ func NewLocalHostNetworkConfigState(configHash string, status ConfigState) Local
 
 // isValidState encapsulates the common validation logic across different target states.
 func (s LocalHostNetworkConfigState) isValidState(expectedStatus ConfigState, targetHash string, ttl time.Duration) bool {
+	// empty targetHash is always invalid
+	if targetHash == "" {
+		return false
+	}
 	if s.Status != expectedStatus {
 		return false
 	}
@@ -80,7 +84,7 @@ type LocalHostNetworkConfigStateManager struct {
 	// not protected by the mutex for lock-free read performance.
 	ttl time.Duration
 
-	nodes map[string]LocalHostNetworkConfigState
+	lhncs map[string]LocalHostNetworkConfigState
 }
 
 // NewLocalHostNetworkConfigStateManager creates a manager with a unified TTL for all node states.
@@ -88,7 +92,7 @@ type LocalHostNetworkConfigStateManager struct {
 func NewLocalHostNetworkConfigStateManager(ttl time.Duration) *LocalHostNetworkConfigStateManager {
 	return &LocalHostNetworkConfigStateManager{
 		ttl:   ttl,
-		nodes: make(map[string]LocalHostNetworkConfigState),
+		lhncs: make(map[string]LocalHostNetworkConfigState),
 	}
 }
 
@@ -102,27 +106,27 @@ func (m *LocalHostNetworkConfigStateManager) Get(nodeName string) (LocalHostNetw
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	state, exists := m.nodes[nodeName]
+	state, exists := m.lhncs[nodeName]
 	return state, exists
 }
 
 // CreateOrUpdate accepts the node name and a LocalHostNetworkConfigState object.
 // Returns true if a new entry was created, or false if an existing entry was updated.
-func (m *LocalHostNetworkConfigStateManager) CreateOrUpdate(nodeName string, state LocalHostNetworkConfigState) bool {
+func (m *LocalHostNetworkConfigStateManager) CreateOrUpdate(hnc string, state LocalHostNetworkConfigState) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	_, exists := m.nodes[nodeName]
-	m.nodes[nodeName] = state
+	_, exists := m.lhncs[hnc]
+	m.lhncs[hnc] = state
 	return !exists
 }
 
 // Delete removes a node state entry.
-func (m *LocalHostNetworkConfigStateManager) Delete(nodeName string) {
+func (m *LocalHostNetworkConfigStateManager) Delete(hnc string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	delete(m.nodes, nodeName)
+	delete(m.lhncs, hnc)
 }
 
 // getTTLFromEnvOrDefault returns the parsed time.Duration from the LOCAL_STATUS_TTL env var.
