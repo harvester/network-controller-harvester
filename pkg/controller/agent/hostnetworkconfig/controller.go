@@ -41,6 +41,8 @@ type Handler struct {
 	mu            sync.Mutex
 	leaseManagers map[string]*LeaseManager
 	mgmtIntfName  string
+
+	stateMgr *LocalHostNetworkConfigStateManager
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -49,6 +51,8 @@ func Register(ctx context.Context, management *config.Management) error {
 	cns := management.HarvesterNetworkFactory.Network().V1beta1().ClusterNetwork()
 	var mgmtIntf string
 	var err error
+
+	ttl := getTTLFromEnvOrDefault()
 
 	handler := &Handler{
 		nodeName:          management.Options.NodeName,
@@ -59,6 +63,7 @@ func Register(ctx context.Context, management *config.Management) error {
 		cnCache:           cns.Cache(),
 		cnController:      cns,
 		leaseManagers:     make(map[string]*LeaseManager),
+		stateMgr:          NewLocalHostNetworkConfigStateManager(ttl),
 	}
 
 	if mgmtIntf, err = iface.GetMgmtInterface(); err != nil {
