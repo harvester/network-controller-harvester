@@ -40,14 +40,16 @@ func GetClusterNetworkDevicePrefix(cnName string) string {
 	return fmt.Sprintf("%s%s%s", cnName, BridgeSuffix, VlanSubInterfaceSpliter)
 }
 
-// e.g. cn2-br.2025
-func GetClusterNetworkBrVlanDevice(cnBrName string, vlanId uint16) string {
-	return fmt.Sprintf("%s%s%s", cnBrName, VlanSubInterfaceSpliter, fmt.Sprint(vlanId))
+// GetClusterNetworkBrVlanDevice formats a VLAN sub-interface from a bridge name.
+// Example: "cn2-br", 2025 -> "cn2-br.2025"
+func GetClusterNetworkBrVlanDevice(cnBrName string, vlanID uint16) string {
+	return fmt.Sprintf("%s%s%d", cnBrName, VlanSubInterfaceSpliter, vlanID)
 }
 
-// e.g. cn2-br.2025
-func GetClusterNetworkVlanDevice(cnName string, vlanId uint16) string {
-	return fmt.Sprintf("%s%s", GetClusterNetworkDevicePrefix(cnName), fmt.Sprint(vlanId))
+// GetClusterNetworkVlanDevice formats a VLAN device using the cluster network device prefix.
+// Example: "cn2", 2025 -> "cn2-br.2025"
+func GetClusterNetworkVlanDevice(cnName string, vlanID uint16) string {
+	return fmt.Sprintf("%s%d", GetClusterNetworkDevicePrefix(cnName), vlanID)
 }
 
 func HasClusterNetworkDevicePrefix(link, prefix string) bool {
