@@ -54,6 +54,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	var err error
 
 	ttl := getTTLFromEnvOrDefault()
+	disabled := getDisableFromEnvOrDefault()
 
 	handler := &Handler{
 		nodeName:          management.Options.NodeName,
@@ -64,8 +65,10 @@ func Register(ctx context.Context, management *config.Management) error {
 		cnCache:           cns.Cache(),
 		cnController:      cns,
 		leaseManagers:     make(map[string]*LeaseManager),
-		stateMgr:          NewLocalHostNetworkConfigStateManager(ttl),
+		stateMgr:          NewLocalHostNetworkConfigStateManager(ttl, disabled),
 	}
+
+	logrus.Infof("Node %s stateMgr initialized: %s", handler.nodeName, handler.stateMgr.String())
 
 	if mgmtIntf, err = iface.GetMgmtInterface(); err != nil {
 		return fmt.Errorf("failed to get management interface for node %s, error: %w", handler.nodeName, err)
@@ -94,10 +97,17 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 
 	logrus.Infof("hostnetwork config %s is changed, spec: %+v", hnc.Name, hnc.Spec)
 
-	targetHash, err := utils.ComputeSpecHash(hnc.Spec)
-	if err != nil {
-		logrus.Debugf("failed to compute target spec hash for hostnetwork config %s, falling back to full process: %v", hnc.Name, err)
-		targetHash = ""
+	var targetHash string
+	var err error
+	// Skip hash computation when the state manager is disabled to save CPU cycles.
+	// When targetHash remains empty (""), all downstream state checks (IsReady/IsRemoved)
+	// immediately evaluate to false and safely fall back to full reconciliation.
+	if !h.stateMgr.Disabled() {
+		targetHash, err = utils.ComputeSpecHash(hnc.Spec)
+		if err != nil {
+			logrus.Debugf("failed to compute target spec hash for hostnetwork config %s, falling back to full process: %v", hnc.Name, err)
+			targetHash = ""
+		}
 	}
 
 	matchNodeSet, err := h.matchNode(hnc.Spec.NodeSelector)

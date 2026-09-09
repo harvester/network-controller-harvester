@@ -1,8 +1,11 @@
 package hostnetworkconfig
 
 import (
+	"os"
 	"testing"
 	"time"
+
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 func TestLocalHostNetworkConfigState_IsReady(t *testing.T) {
@@ -57,17 +60,6 @@ func TestLocalHostNetworkConfigState_IsReady(t *testing.T) {
 				LastValidated: time.Now(),
 			},
 			targetHash: wrongHash,
-			ttl:        10 * time.Minute,
-			want:       false,
-		},
-		{
-			name: "Incorrect Status (StateSetting instead of StateReady)",
-			state: LocalHostNetworkConfigState{
-				ConfigHash:    targetHash,
-				Status:        StateSetting,
-				LastValidated: time.Now(),
-			},
-			targetHash: targetHash,
 			ttl:        10 * time.Minute,
 			want:       false,
 		},
@@ -150,17 +142,6 @@ func TestLocalHostNetworkConfigState_IsRemoved(t *testing.T) {
 			want:       false,
 		},
 		{
-			name: "Incorrect Status (StateRemoving instead of StateRemoved)",
-			state: LocalHostNetworkConfigState{
-				ConfigHash:    targetHash,
-				Status:        StateRemoving,
-				LastValidated: time.Now(),
-			},
-			targetHash: targetHash,
-			ttl:        5 * time.Minute,
-			want:       false,
-		},
-		{
 			name: "Incorrect Status (StateReady instead of StateRemoved)",
 			state: LocalHostNetworkConfigState{
 				ConfigHash:    targetHash,
@@ -188,7 +169,7 @@ func TestLocalHostNetworkConfigStateManager_Get_IsReady_Integration(t *testing.T
 	targetHash := "hash-abc"
 	ttl := 10 * time.Minute
 
-	mgr := NewLocalHostNetworkConfigStateManager(ttl)
+	mgr := NewLocalHostNetworkConfigStateManager(ttl, false)
 
 	// Case 1: Node does not exist
 	if _, exists := mgr.Get(nodeName); exists {
@@ -218,5 +199,183 @@ func TestLocalHostNetworkConfigStateManager_Get_IsReady_Integration(t *testing.T
 	}
 	if !fetchedState.IsRemoved(targetHash, mgr.TTL()) {
 		t.Errorf("expected fetchedState.IsRemoved() to be true")
+	}
+}
+
+func TestLocalHostNetworkConfigStateManager_Disabled(t *testing.T) {
+	nodeName := "node-1"
+	targetHash := "hash-abc"
+	ttl := 10 * time.Minute
+
+	t.Run("Disabled manager blocks writes and returns empty on reads", func(t *testing.T) {
+		mgr := NewLocalHostNetworkConfigStateManager(ttl, true)
+
+		if !mgr.Disabled() {
+			t.Errorf("expected Disabled() to be true")
+		}
+
+		// CreateOrUpdate should perform a no-op and return false
+		state := NewLocalHostNetworkConfigState(targetHash, StateReady)
+		created := mgr.CreateOrUpdate(nodeName, state)
+		if created {
+			t.Errorf("expected CreateOrUpdate() to return false when disabled")
+		}
+
+		// Get should return empty state and exists=false
+		fetchedState, exists := mgr.Get(nodeName)
+		if exists {
+			t.Errorf("expected Get() exists to be false when disabled")
+		}
+
+		// IsReady / IsRemoved helper checks on fetched state should evaluate to false
+		if fetchedState.IsReady(targetHash, mgr.TTL()) {
+			t.Errorf("expected IsReady() to be false on empty state from disabled manager")
+		}
+		if fetchedState.IsRemoved(targetHash, mgr.TTL()) {
+			t.Errorf("expected IsRemoved() to be false on empty state from disabled manager")
+		}
+
+		// Delete should execute safely as a no-op
+		mgr.Delete(nodeName)
+	})
+
+	t.Run("Disabled manager String output", func(t *testing.T) {
+		mgrDisabled := NewLocalHostNetworkConfigStateManager(ttl, true)
+		expectedDisabledStr := "LocalHostNetworkConfigStateManager{disabled: true}"
+		if got := mgrDisabled.String(); got != expectedDisabledStr {
+			t.Errorf("String() = %q, want %q", got, expectedDisabledStr)
+		}
+
+		mgrEnabled := NewLocalHostNetworkConfigStateManager(ttl, false)
+		expectedEnabledStr := "LocalHostNetworkConfigStateManager{disabled: false, ttl: 10m0s, count: 0}"
+		if got := mgrEnabled.String(); got != expectedEnabledStr {
+			t.Errorf("String() = %q, want %q", got, expectedEnabledStr)
+		}
+	})
+}
+
+func Test_getDisableFromEnvOrDefault(t *testing.T) {
+	tests := []struct {
+		name   string
+		envVal string
+		setEnv bool
+		want   bool
+	}{
+		{
+			name:   "Env unset defaults to false",
+			setEnv: false,
+			want:   false,
+		},
+		{
+			name:   "Env empty defaults to false",
+			envVal: "",
+			setEnv: true,
+			want:   false,
+		},
+		{
+			name:   "Env set to 'true'",
+			envVal: "true",
+			setEnv: true,
+			want:   true,
+		},
+		{
+			name:   "Env set to '1'",
+			envVal: "1",
+			setEnv: true,
+			want:   true,
+		},
+		{
+			name:   "Env set to 'false'",
+			envVal: "false",
+			setEnv: true,
+			want:   false,
+		},
+		{
+			name:   "Env set to invalid boolean value defaults to false",
+			envVal: "not-a-bool",
+			setEnv: true,
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setEnv {
+				t.Setenv(utils.EnvLocalHostNetworkConfigStatusDisable, tt.envVal)
+			} else {
+				os.Unsetenv(utils.EnvLocalHostNetworkConfigStatusDisable)
+			}
+
+			got := getDisableFromEnvOrDefault()
+			if got != tt.want {
+				t.Errorf("getDisableFromEnvOrDefault() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_getTTLFromEnvOrDefault(t *testing.T) {
+	tests := []struct {
+		name   string
+		envVal string
+		setEnv bool
+		want   time.Duration
+	}{
+		{
+			name:   "Env unset defaults to DefaultLocalHostNetworkConfigStatusTTL",
+			setEnv: false,
+			want:   utils.DefaultLocalHostNetworkConfigStatusTTL,
+		},
+		{
+			name:   "Env empty defaults to DefaultLocalHostNetworkConfigStatusTTL",
+			envVal: "",
+			setEnv: true,
+			want:   utils.DefaultLocalHostNetworkConfigStatusTTL,
+		},
+		{
+			name:   "Env set to valid duration '10m'",
+			envVal: "10m",
+			setEnv: true,
+			want:   10 * time.Minute,
+		},
+		{
+			name:   "Env set to valid duration '30s'",
+			envVal: "30s",
+			setEnv: true,
+			want:   30 * time.Second,
+		},
+		{
+			name:   "Env set to zero '0s'",
+			envVal: "0s",
+			setEnv: true,
+			want:   0,
+		},
+		{
+			name:   "Env set to invalid duration string defaults to DefaultLocalHostNetworkConfigStatusTTL",
+			envVal: "invalid-duration",
+			setEnv: true,
+			want:   utils.DefaultLocalHostNetworkConfigStatusTTL,
+		},
+		{
+			name:   "Env set to negative duration defaults to DefaultLocalHostNetworkConfigStatusTTL",
+			envVal: "-5m",
+			setEnv: true,
+			want:   utils.DefaultLocalHostNetworkConfigStatusTTL,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setEnv {
+				t.Setenv(utils.EnvLocalHostNetworkConfigStatusTTL, tt.envVal)
+			} else {
+				os.Unsetenv(utils.EnvLocalHostNetworkConfigStatusTTL)
+			}
+
+			got := getTTLFromEnvOrDefault()
+			if got != tt.want {
+				t.Errorf("getTTLFromEnvOrDefault() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

@@ -19,4 +19,7 @@ const (
 
 	// EnvLocalHostNetworkConfigStatusTTL defines the environment variable key for configuring state TTL.
 	EnvLocalHostNetworkConfigStatusTTL = "LOCAL_HOST_NETWORK_CONFIG_STATUS_TTL"
+
+	// EnvLocalHostNetworkConfigStatusDisable defines the environment variable key to explicitly disable the local state cache.
+	EnvLocalHostNetworkConfigStatusDisable = "LOCAL_HOST_NETWORK_CONFIG_STATUS_DISABLE"
 )
