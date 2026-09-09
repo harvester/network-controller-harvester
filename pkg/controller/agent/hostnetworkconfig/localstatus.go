@@ -47,28 +47,27 @@ func NewLocalHostNetworkConfigState(configHash string, status ConfigState) Local
 
 // isValidState encapsulates the common validation logic across different target states.
 func (s LocalHostNetworkConfigState) isValidState(expectedStatus ConfigState, targetHash string, ttl time.Duration) bool {
-	// empty targetHash is always invalid
-	if targetHash == "" {
+	// Fast-path return for empty/zero-value states (such as when the state manager is disabled or an entry is missing),
+	// empty targetHash inputs, or mismatched hashes.
+	if s.ConfigHash == "" || targetHash == "" || s.ConfigHash != targetHash {
 		return false
 	}
 	if s.Status != expectedStatus {
 		return false
 	}
-	if s.ConfigHash != targetHash {
-		return false
-	}
+	// ttl value 0 means no expiration.
 	if ttl == 0 {
 		return true
 	}
 	return time.Now().Before(s.LastValidated.Add(ttl))
 }
 
-// IsReady checks if the node configuration is ready, matches targetHash, and has not expired according to ttl.
+// IsReady checks if the state is ready.
 func (s LocalHostNetworkConfigState) IsReady(targetHash string, ttl time.Duration) bool {
 	return s.isValidState(StateReady, targetHash, ttl)
 }
 
-// IsRemoved checks if the node cleanup is completed, matches targetHash, and has not expired according to ttl.
+// IsRemoved checks if the cleanup is completed.
 func (s LocalHostNetworkConfigState) IsRemoved(targetHash string, ttl time.Duration) bool {
 	return s.isValidState(StateRemoved, targetHash, ttl)
 }
@@ -113,7 +112,9 @@ func (m *LocalHostNetworkConfigStateManager) Disabled() bool {
 	return m.disabled
 }
 
-// Get returns a copy of the state for a given node.
+// Get returns a copy of the state for a given HostNetworkConfig name.
+// Returns an empty state and false immediately if the state manager is disabled.
+// The zero-value state guarantees IsReady and IsRemoved return false, allowing callers to check status without explicitly handling the disabled state.
 func (m *LocalHostNetworkConfigStateManager) Get(nodeName string) (LocalHostNetworkConfigState, bool) {
 	if m.disabled {
 		return LocalHostNetworkConfigState{}, false
@@ -125,8 +126,9 @@ func (m *LocalHostNetworkConfigStateManager) Get(nodeName string) (LocalHostNetw
 	return state, exists
 }
 
-// CreateOrUpdate accepts the node name and a LocalHostNetworkConfigState object.
+// CreateOrUpdate accepts a HostNetworkConfig name and a LocalHostNetworkConfigState object.
 // Returns true if a new entry was created, or false if an existing entry was updated.
+// Performs a no-op and returns false immediately if the state manager is disabled.
 func (m *LocalHostNetworkConfigStateManager) CreateOrUpdate(hnc string, state LocalHostNetworkConfigState) bool {
 	if m.disabled {
 		return false
@@ -139,7 +141,8 @@ func (m *LocalHostNetworkConfigStateManager) CreateOrUpdate(hnc string, state Lo
 	return !exists
 }
 
-// Delete removes a node state entry.
+// Delete removes a HostNetworkConfig state entry by name.
+// Performs a no-op immediately if the state manager is disabled.
 func (m *LocalHostNetworkConfigStateManager) Delete(hnc string) {
 	if m.disabled {
 		return

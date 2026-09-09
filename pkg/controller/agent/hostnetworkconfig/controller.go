@@ -68,12 +68,12 @@ func Register(ctx context.Context, management *config.Management) error {
 		stateMgr:          NewLocalHostNetworkConfigStateManager(ttl, disabled),
 	}
 
-	logrus.Infof("Node %s stateMgr initialized: %s", handler.nodeName, handler.stateMgr.String())
-
 	if mgmtIntf, err = iface.GetMgmtInterface(); err != nil {
 		return fmt.Errorf("failed to get management interface for node %s, error: %w", handler.nodeName, err)
 	}
 	handler.mgmtIntfName = mgmtIntf
+
+	logrus.Infof("Node %s, mgmt interface %s, stateMgr initialized: %s", handler.nodeName, mgmtIntf, handler.stateMgr.String())
 
 	hns.OnChange(ctx, ControllerName, handler.OnChange)
 	hns.OnRemove(ctx, ControllerName, handler.OnRemove)
@@ -126,7 +126,6 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 	if h.isAlreadyReady(hnc, targetHash) {
 		// update node annotation to set the vlan sub interface to be used as underlay (if underlay is enabled)
 		// and set to default mgmt interface if underlay is not enabled
-
 		if err := h.addNodeAnnotation(intfName, hnc.Spec.Underlay); err != nil {
 			return nil, fmt.Errorf("add node annotation to node %s for host network config %s failed, error: %w", h.nodeName, hnc.Name, err)
 		}
@@ -256,7 +255,7 @@ func (h *Handler) removeHostNetworkInterface(hnc *networkv1.HostNetworkConfig, o
 		return nil, fmt.Errorf("wake up cluster network %s failed, error: %w", hnc.Spec.ClusterNetwork, err)
 	}
 
-	// 5. Update per-node status nodestatus when interface deleted due to node selector changes.
+	// 5. Update per-node status when interface deleted due to node selector changes.
 	if onChange {
 		if err := h.removeHostNetworkPerNodeStatus(hnc); err != nil {
 			return nil, err
@@ -273,7 +272,7 @@ func (h *Handler) OnRemove(_ string, hnc *networkv1.HostNetworkConfig) (*network
 
 	logrus.Infof("hostnetwork config %s has been removed, spec: %+v", hnc.Name, hnc.Spec)
 
-	// OnRemove deletes the entry from the local cache unconditionally.
+	// Delete local state tracking entry when the CRD is being removed.
 	h.stateMgr.Delete(hnc.Name)
 
 	return h.removeHostNetworkInterface(hnc, false)
