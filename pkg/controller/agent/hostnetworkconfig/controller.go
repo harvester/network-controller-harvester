@@ -30,6 +30,13 @@ const (
 	IPModeStatic   = "static"
 )
 
+// Standard Domain Sentinel Errors
+var (
+	ErrL2NotReady           = errors.New("l2 interface or bridge not ready")
+	ErrL3NotReady           = errors.New("l3 address or dhcp allocation failed")
+	ErrConfigurationInvalid = errors.New("invalid host network spec")
+)
+
 type Handler struct {
 	nodeName          string
 	nodeClient        ctlcorev1.NodeClient
@@ -138,26 +145,27 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 	var addr string
 	var bridgelink *iface.Link
 
+	// --- L2 Setup Phase ---
 	v, err := vlan.GetVlan(hnc.Spec.ClusterNetwork)
 	if err != nil {
 		// hand over to framework to retry
 		logrus.Infof("cluster network %s is not set on this node, something might be wrong", hnc.Spec.ClusterNetwork)
 		//stop and delete all lease manaagers assosciated with the cluster network (if uplink removed due to vlanconfig changes/deletion)
 		// h.stopLeaseManager(utils.GetClusterNetworkVlanDevice(hnc.Spec.ClusterNetwork, hnc.Spec.VlanID))
-		return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err)
+		return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err, ErrL2NotReady)
 	}
 
 	bridgelink, err = v.GetBridgelink()
 	if err != nil {
-		return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err)
+		return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err, ErrL2NotReady)
 	}
 
 	if err = bridgelink.AddBridgeVlanSelf(hnc.Spec.VlanID); err != nil {
-		return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err)
+		return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err, ErrL2NotReady)
 	}
 
 	if err = bridgelink.CreateVlanSubInterface(hnc.Spec.VlanID); err != nil {
-		return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err)
+		return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err, ErrL2NotReady)
 	}
 
 	// reconcile cluster network to add vid to the uplink(cluster-bo)
@@ -165,10 +173,11 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return nil, fmt.Errorf("wake up cluster network %s failed, error: %w", hnc.Spec.ClusterNetwork, err)
 	}
 
+	// --- L3 Setup Phase ---
 	switch hnc.Spec.Mode {
 	case IPModeDHCP:
 		if err = h.startLeaseManager(bridgelink, hnc.Spec.VlanID); err != nil {
-			return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err)
+			return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err, ErrL3NotReady)
 		}
 
 	case IPModeStatic:
@@ -176,19 +185,19 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		h.stopLeaseManager(utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID))
 
 		if addr, err = findMatchingIPfromNode(h.nodeName, hnc.Spec.HostIPs); err != nil {
-			return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err)
+			return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err, ErrL3NotReady)
 		}
 
 		if err := bridgelink.SetIPAddress(addr, hnc.Spec.VlanID); err != nil {
-			return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err)
+			return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err, ErrL3NotReady)
 		}
 	default:
 		err = fmt.Errorf("unsupported ip assignment mode %s for host network config %s", hnc.Spec.Mode, hnc.Name)
-		return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err)
+		return hnc, h.updateHostNetworkReadyStatus(hnc, targetHash, err, ErrConfigurationInvalid)
 	}
 
 	//success case, update host network config status to ready
-	if updateErr := h.updateHostNetworkReadyStatus(hnc, targetHash, nil); updateErr != nil {
+	if updateErr := h.updateHostNetworkReadyStatus(hnc, targetHash, nil, nil); updateErr != nil {
 		return hnc, updateErr
 	}
 
@@ -201,16 +210,20 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 	return hnc, nil
 }
 
-func (h *Handler) updateHostNetworkReadyStatus(hnc *networkv1.HostNetworkConfig, targetHash string, l3setupErr error) error {
-	if statusUpdateErr := h.setHostNetworkStatus(hnc, l3setupErr); statusUpdateErr != nil {
+// updateHostNetworkReadyStatus handles local cache state transitions and applies API status updates.
+// 'l3setupErr' carries the detailed contextual error returned to the controller framework for logging and retry handling.
+// 'categoryErr' specifies the high-level sentinel error (ErrL2NotReady, ErrL3NotReady, ErrConfigurationInvalid).
+func (h *Handler) updateHostNetworkReadyStatus(hnc *networkv1.HostNetworkConfig, targetHash string, l3setupErr error, categoryErr error) error {
+	if statusUpdateErr := h.setHostNetworkStatus(hnc, l3setupErr, categoryErr); statusUpdateErr != nil {
 		// Mark cache as Unknown if status update fails
 		h.stateMgr.CreateOrUpdate(hnc.Name, NewLocalHostNetworkConfigState(targetHash, StateUnknown))
-		return fmt.Errorf("set host network %s ready (%v) failed, error: %w configErr: %v", hnc.Name, l3setupErr == nil, statusUpdateErr, l3setupErr)
+		return fmt.Errorf("set host network %s ready (%v) failed [%w], error: %w configErr: %w", hnc.Name, l3setupErr == nil, categoryErr, statusUpdateErr, l3setupErr)
 	}
 
 	if l3setupErr != nil {
 		h.stateMgr.CreateOrUpdate(hnc.Name, NewLocalHostNetworkConfigState(targetHash, StateUnknown))
-		return fmt.Errorf("setup host network config %s failed, error: %w", hnc.Name, l3setupErr)
+		// Include categoryErr alongside l3setupErr for immediate visibility in controller logs
+		return fmt.Errorf("setup host network config %s failed [%w]: configErr: %w", hnc.Name, categoryErr, l3setupErr)
 	}
 
 	// per node status is ready
@@ -335,12 +348,18 @@ func (h *Handler) removeHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfi
 	return nil
 }
 
-func (h *Handler) setHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfig, ready bool, setupErr error) error {
+// setHostNetworkPerNodeStatus updates the node status conditions for the HostNetworkConfig.
+// We use high-level category errors (sentinel errors like ErrL2NotReady or ErrL3NotReady)
+// rather than raw low-level syscall or netlink errors. CRDs are control-plane state signals,
+// not log aggregators; operators checking a degraded CRD status get a clear high-level
+// reason, while granular debugging details remain in the controller pod logs. This design
+// also prevents etcd write inflation and watch churn from transient, dynamic error text.
+func (h *Handler) setHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfig, ready bool, setupErr error, categoryErr error) error {
 	readyStatus := "True"
 	message := ""
 	if !ready {
 		readyStatus = "False"
-		message = fmt.Sprintf("setup l3 connectivity failed: %v", setupErr)
+		message = fmt.Sprintf("setup l3 connectivity failed: %v", categoryErr)
 	}
 
 	patchPayload := map[string]interface{}{
@@ -380,12 +399,12 @@ func (h *Handler) setHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfig, 
 	return nil
 }
 
-func (h *Handler) setHostNetworkStatus(hnc *networkv1.HostNetworkConfig, setupErr error) error {
+func (h *Handler) setHostNetworkStatus(hnc *networkv1.HostNetworkConfig, setupErr error, categoryErr error) error {
 	if setupErr != nil {
-		return h.setHostNetworkPerNodeStatus(hnc, false, setupErr)
+		return h.setHostNetworkPerNodeStatus(hnc, false, setupErr, categoryErr)
 	}
 
-	return h.setHostNetworkPerNodeStatus(hnc, true, nil)
+	return h.setHostNetworkPerNodeStatus(hnc, true, nil, categoryErr)
 }
 
 func (h *Handler) stopLeaseManager(vlanIntfName string) {
