@@ -1,7 +1,9 @@
 package hostnetworkconfig
 
 import (
+	"fmt"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -12,11 +14,9 @@ import (
 type ConfigState string
 
 const (
-	StateUnknown  ConfigState = ""         // Default zero-value (uninitialized or newly created)
-	StateSetting  ConfigState = "Setting"  // Setup in progress on the node
-	StateReady    ConfigState = "Ready"    // The node is involved in current HostNetworkConfig and setup is ready
-	StateRemoving ConfigState = "Removing" // Cleanup/teardown in progress on the node
-	StateRemoved  ConfigState = "Removed"  // The node is not involved in current HostNetworkConfig and cleanup is done
+	StateUnknown ConfigState = ""        // Default zero-value (uninitialized or newly created)
+	StateReady   ConfigState = "Ready"   // The node is involved in current HostNetworkConfig and setup is ready
+	StateRemoved ConfigState = "Removed" // The node is not involved in current HostNetworkConfig and cleanup is done
 )
 
 func (c ConfigState) String() string {
@@ -32,7 +32,7 @@ func (c ConfigState) String() string {
 // operational work or quickly exit early (fast exit) to minimize unnecessary processing overhead.
 type LocalHostNetworkConfigState struct {
 	ConfigHash    string      // SHA-256 of the relevant Spec configuration
-	Status        ConfigState // State: Initial, Setting, Ready, Cleaned
+	Status        ConfigState // State: Unknown(initial), Ready, Removed
 	LastValidated time.Time   // Timestamp when system status was last verified
 }
 
@@ -76,6 +76,12 @@ func (s LocalHostNetworkConfigState) IsRemoved(targetHash string, ttl time.Durat
 type LocalHostNetworkConfigStateManager struct {
 	mu sync.RWMutex
 
+	// disabled is set once during initialization and never modified.
+	// Originates from EnvLocalHostNetworkConfigStatusDisable env var.
+	// Treated as strictly immutable during the process lifetime and is deliberately
+	// not protected by the mutex for lock-free read performance.
+	disabled bool
+
 	// ttl is set once during initialization and never modified.
 	// The value originates from an environment variable passed to the pod runtime during initialization
 	// and passed into NewLocalHostNetworkConfigStateManager.
@@ -89,10 +95,11 @@ type LocalHostNetworkConfigStateManager struct {
 
 // NewLocalHostNetworkConfigStateManager creates a manager with a unified TTL for all node states.
 // Set ttl to 0 for no expiration.
-func NewLocalHostNetworkConfigStateManager(ttl time.Duration) *LocalHostNetworkConfigStateManager {
+func NewLocalHostNetworkConfigStateManager(ttl time.Duration, disabled bool) *LocalHostNetworkConfigStateManager {
 	return &LocalHostNetworkConfigStateManager{
-		ttl:   ttl,
-		lhncs: make(map[string]LocalHostNetworkConfigState),
+		disabled: disabled,
+		ttl:      ttl,
+		lhncs:    make(map[string]LocalHostNetworkConfigState),
 	}
 }
 
@@ -101,8 +108,16 @@ func (m *LocalHostNetworkConfigStateManager) TTL() time.Duration {
 	return m.ttl
 }
 
+// Disabled returns the configured disabled for the manager without mutex protection.
+func (m *LocalHostNetworkConfigStateManager) Disabled() bool {
+	return m.disabled
+}
+
 // Get returns a copy of the state for a given node.
 func (m *LocalHostNetworkConfigStateManager) Get(nodeName string) (LocalHostNetworkConfigState, bool) {
+	if m.disabled {
+		return LocalHostNetworkConfigState{}, false
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -113,6 +128,9 @@ func (m *LocalHostNetworkConfigStateManager) Get(nodeName string) (LocalHostNetw
 // CreateOrUpdate accepts the node name and a LocalHostNetworkConfigState object.
 // Returns true if a new entry was created, or false if an existing entry was updated.
 func (m *LocalHostNetworkConfigStateManager) CreateOrUpdate(hnc string, state LocalHostNetworkConfigState) bool {
+	if m.disabled {
+		return false
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -123,14 +141,30 @@ func (m *LocalHostNetworkConfigStateManager) CreateOrUpdate(hnc string, state Lo
 
 // Delete removes a node state entry.
 func (m *LocalHostNetworkConfigStateManager) Delete(hnc string) {
+	if m.disabled {
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	delete(m.lhncs, hnc)
 }
 
-// getTTLFromEnvOrDefault returns the parsed time.Duration from the LOCAL_STATUS_TTL env var.
-// If the variable is unset, empty, or fails to parse, it falls back to DefaultLocalStatusTTL.
+// String implements the fmt.Stringer interface for debug logging.
+func (m *LocalHostNetworkConfigStateManager) String() string {
+	if m.disabled {
+		return "LocalHostNetworkConfigStateManager{disabled: true}"
+	}
+
+	m.mu.RLock()
+	count := len(m.lhncs)
+	m.mu.RUnlock()
+
+	return fmt.Sprintf("LocalHostNetworkConfigStateManager{disabled: false, ttl: %s, count: %d}", m.ttl, count)
+}
+
+// getTTLFromEnvOrDefault returns the parsed time.Duration from the LOCAL_HOST_NETWORK_CONFIG_STATUS_TTL env var.
+// If the variable is unset, empty, fails to parse, or is negative, it falls back to DefaultLocalHostNetworkConfigStatusTTL.
 func getTTLFromEnvOrDefault() time.Duration {
 	envVal := os.Getenv(utils.EnvLocalHostNetworkConfigStatusTTL)
 	if envVal == "" {
@@ -143,5 +177,26 @@ func getTTLFromEnvOrDefault() time.Duration {
 		return utils.DefaultLocalHostNetworkConfigStatusTTL
 	}
 
+	if ttl < 0 {
+		logrus.Warnf("%s value %v is negative, defaulting to %v", utils.EnvLocalHostNetworkConfigStatusTTL, ttl, utils.DefaultLocalHostNetworkConfigStatusTTL)
+		return utils.DefaultLocalHostNetworkConfigStatusTTL
+	}
+
 	return ttl
+}
+
+// getDisableFromEnvOrDefault returns true if the state manager is explicitly disabled via env var.
+func getDisableFromEnvOrDefault() bool {
+	envVal := os.Getenv(utils.EnvLocalHostNetworkConfigStatusDisable)
+	if envVal == "" {
+		return false
+	}
+
+	disabled, err := strconv.ParseBool(envVal)
+	if err != nil {
+		logrus.Warnf("Failed to parse %s value %q as bool, defaulting to false: %v", utils.EnvLocalHostNetworkConfigStatusDisable, envVal, err)
+		return false
+	}
+
+	return disabled
 }
