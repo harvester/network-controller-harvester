@@ -115,14 +115,14 @@ func (m *LocalHostNetworkConfigStateManager) Disabled() bool {
 // Get returns a copy of the state for a given HostNetworkConfig name.
 // Returns an empty state and false immediately if the state manager is disabled.
 // The zero-value state guarantees IsReady and IsRemoved return false, allowing callers to check status without explicitly handling the disabled state.
-func (m *LocalHostNetworkConfigStateManager) Get(nodeName string) (LocalHostNetworkConfigState, bool) {
+func (m *LocalHostNetworkConfigStateManager) Get(hnc string) (LocalHostNetworkConfigState, bool) {
 	if m.disabled {
 		return LocalHostNetworkConfigState{}, false
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	state, exists := m.lhncs[nodeName]
+	state, exists := m.lhncs[hnc]
 	return state, exists
 }
 
