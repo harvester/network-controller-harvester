@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -86,6 +87,10 @@ func (v *Validator) Create(req *admission.Request, newObj runtime.Object) error 
 		return fmt.Errorf(createErr, vc.Name, err)
 	}
 
+	if err := v.validateBondOptions(vc); err != nil {
+		return fmt.Errorf(createErr, vc.Name, err)
+	}
+
 	return nil
 }
 
@@ -126,6 +131,10 @@ func (v *Validator) Update(req *admission.Request, oldObj, newObj runtime.Object
 
 	if err := v.checkOverlaps(newVc, newNodes); err != nil {
 		return fmt.Errorf(updateErr, newVc.Name, err)
+	}
+
+	if err := v.validateBondOptions(newVc); err != nil {
+		return fmt.Errorf(createErr, newVc.Name, err)
 	}
 
 	oldNodes, err := getMatchNodes(oldVc)
@@ -308,5 +317,62 @@ func (v *Validator) checkNetworkNadsAttached(vc *networkv1.VlanConfig, nodes map
 		return fmt.Errorf("the system network nad %s is still attached", nad.Name)
 	}
 
+	return nil
+}
+
+func (v *Validator) validateBondOptions(vc *networkv1.VlanConfig) error {
+
+	// using defaults
+	if vc.Spec.Uplink.BondOptions == nil {
+		return nil
+	}
+
+	if vc.Spec.Uplink.BondOptions.Miimon != -1 && vc.Spec.Uplink.BondOptions.ArpInterval != -1 {
+		return fmt.Errorf("miimon and arp_interval can't be set at the same time")
+	}
+
+	if vc.Spec.Uplink.BondOptions.Mode == networkv1.BondMode8023AD && vc.Spec.Uplink.BondOptions.ArpInterval != -1 {
+		return fmt.Errorf("arp_interval can't be set if mode is 802.3ad")
+	}
+
+	if vc.Spec.Uplink.BondOptions.ArpInterval != -1 && len(vc.Spec.Uplink.BondOptions.ArpIpTargets) == 0 {
+		return fmt.Errorf("arp_interval can't be set if arp_ip_targets is not set")
+	}
+
+	if vc.Spec.Uplink.BondOptions.ArpValidate != "" && vc.Spec.Uplink.BondOptions.ArpValidate != "none" && vc.Spec.Uplink.BondOptions.ArpInterval <= 0 {
+		return fmt.Errorf("arp_validate can't be set if arp_interval is 0 or not set")
+	}
+
+	if vc.Spec.Uplink.BondOptions.XmitHashPolicy != "" {
+		err := v.validateBondXmitHashPolicy(vc)
+		if err != nil {
+			return err
+		}
+	}
+
+	if vc.Spec.Uplink.BondOptions.Mode != networkv1.BondMode8023AD && vc.Spec.Uplink.BondOptions.LacpRate != "" {
+		return fmt.Errorf("lacp_rate can be set only if mode is 802.3ad")
+	}
+
+	if vc.Spec.Uplink.BondOptions.Mode != networkv1.BondMode8023AD && vc.Spec.Uplink.BondOptions.AdSelect != "" {
+		return fmt.Errorf("ad_select can be set only if mode is 802.3ad")
+	}
+
+	return nil
+
+}
+
+func (v *Validator) validateBondXmitHashPolicy(vc *networkv1.VlanConfig) error {
+	// xmit_hash_policy can be set if mode is one of balance-xor, 802.3ad, or tlb
+
+	var compatibleXmitHashPolicyBonds = []networkv1.BondMode{
+		networkv1.BondModeBalanceXor,
+		networkv1.BondMode8023AD,
+		networkv1.BondModeBalanceTlb,
+	}
+
+	if !slices.Contains(compatibleXmitHashPolicyBonds, vc.Spec.Uplink.BondOptions.Mode) && vc.Spec.Uplink.BondOptions.XmitHashPolicy != "" {
+		return fmt.Errorf("xmit_hash_policy can be set if mode is one of %v", compatibleXmitHashPolicyBonds)
+	}
 	return nil
 }
