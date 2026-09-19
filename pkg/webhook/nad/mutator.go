@@ -257,8 +257,10 @@ func (m *Mutator) patchMTU(nad *cniv1.NetworkAttachmentDefinition) (admission.Pa
 		getMtu = true
 	}
 
-	// get MTU value from vlanconfig
-	if !getMtu {
+	// get MTU value from vlanconfig only for non mgmt cluster networks.
+	// MTUs present in mgmt vlanconfig are used only by controller for user info and MTU values for nad
+	// should be derived only based on `KeyUplinkMTU` annotation on mgmt cluster network. So, we skip the vlanconfig check for mgmt cluster network.
+	if !getMtu && !utils.IsManagementClusterNetwork(clusterNetwork) {
 		vcs, err := m.vcCache.List(k8slabels.Set(map[string]string{
 			utils.KeyClusterNetworkLabel: clusterNetwork,
 		}).AsSelector())
