@@ -252,10 +252,12 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 		getMtu = true
 	}
 
-	// get MTU value from vlanconfig
-	if !getMtu {
+	// get MTU value from vlanconfig for non mgmt cluster networks.
+	// MTUs present in mgmt vlanconfig are used only by controller for displaying the values to user in UI and MTU values for nad
+	// should be derived only based on `KeyUplinkMTU` annotation on mgmt cluster network. So, we skip the vlanconfig check for mgmt cluster network.
+	if !getMtu && !utils.IsManagementClusterNetwork(cnName) {
 		vcs, err := v.vcCache.List(labels.Set(map[string]string{
-			utils.KeyClusterNetworkLabel: clusterNetwork,
+			utils.KeyClusterNetworkLabel: cnName,
 		}).AsSelector())
 		if err != nil {
 			return err

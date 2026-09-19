@@ -1,6 +1,7 @@
 package nad
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -21,6 +22,7 @@ const (
 	testNadConfigRouteInvalid = "{\"mode\":\"auto\", \"unknow\"}"
 	testNadConfigRouteManual  = "{\"mode\":\"manual\"}"
 	testNadConfigVlan300      = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
+	testMgmtNadConfigVlan300  = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"mgmt-br\",\"promiscMode\":true,\"vlan\":300,\"ipam\":{}}"
 	testNadConfigVlan350      = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":350,\"ipam\":{}}"
 	testNadConfigVlanUntag    = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":0,\"ipam\":{}}"
 	testNadConfigVlanTrunk    = "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"test-cn-br\",\"promiscMode\":true,\"vlan\":0,\"vlanTrunk\":[{\"minID\":300,\"maxID\":320}],\"ipam\":{}}"
@@ -506,6 +508,135 @@ func TestMutatorUpdateNAD(t *testing.T) {
 			}
 			if tc.patchLength > 0 {
 				assert.True(t, len(m) == tc.patchLength)
+			}
+		})
+	}
+}
+
+func TestMutatorCreateNADManagementNetworkMTU(t *testing.T) {
+	tests := []struct {
+		name               string
+		currentCN          *networkv1.ClusterNetwork
+		currentNAD         *cniv1.NetworkAttachmentDefinition
+		currentVC          *networkv1.VlanConfig
+		expectedPatchCount int
+		expectMTUInPatch   bool
+	}{
+		{
+			name: "ignore management vlanconfig mtu 9000 when clusternetwork annotation is absent",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: utils.ManagementClusterNetworkName,
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testNadName,
+					Namespace: testNamespace,
+					Labels: map[string]string{
+						utils.KeyClusterNetworkLabel: utils.ManagementClusterNetworkName,
+					},
+					Annotations: map[string]string{},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testMgmtNadConfigVlan300,
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "vc1",
+					Annotations: map[string]string{utils.KeyMatchedNodes: "[\"node1\"]"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: utils.ManagementClusterNetworkName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: 9000,
+						},
+					},
+				},
+			},
+			expectedPatchCount: 0, // No mtu patch, because the cluster network does not have uplink-mtu annotation
+			expectMTUInPatch:   false,
+		},
+		{
+			name: "uplink mtu annotation wins over management vlanconfig mtu 9000",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.ManagementClusterNetworkName,
+					Annotations: map[string]string{utils.KeyUplinkMTU: "9000"},
+				},
+			},
+			currentNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testNadName,
+					Namespace: testNamespace,
+					Labels: map[string]string{
+						utils.KeyClusterNetworkLabel: utils.ManagementClusterNetworkName,
+					},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: testMgmtNadConfigVlan300,
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "vc1",
+					Annotations: map[string]string{utils.KeyMatchedNodes: "[\"node1\"]"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: testCnName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: utils.ManagementClusterNetworkName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: 9000,
+						},
+					},
+				},
+			},
+			expectedPatchCount: 1, // mtu patched from uplink-mtu
+			expectMTUInPatch:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			nchclientset := fake.NewSimpleClientset()
+
+			cnCache := fakeclients.ClusterNetworkCache(nchclientset.NetworkV1beta1().ClusterNetworks)
+			vcCache := fakeclients.VlanConfigCache(nchclientset.NetworkV1beta1().VlanConfigs)
+			nodeCache := fakeclients.NodeCache(nchclientset.CoreV1().Nodes)
+			cnClient := fakeclients.ClusterNetworkClient(nchclientset.NetworkV1beta1().ClusterNetworks)
+			vcClient := fakeclients.VlanConfigClient(nchclientset.NetworkV1beta1().VlanConfigs)
+
+			mutator := NewNadMutator(cnCache, vcCache, nodeCache)
+
+			if tc.currentCN != nil {
+				_, err := cnClient.Create(tc.currentCN)
+				assert.NoError(t, err)
+			}
+
+			if tc.currentVC != nil {
+				_, err := vcClient.Create(tc.currentVC)
+				assert.NoError(t, err)
+			}
+
+			patches, err := mutator.Create(nil, tc.currentNAD)
+			assert.NoError(t, err)
+			assert.Len(t, patches, tc.expectedPatchCount)
+			patchText := ""
+			if len(patches) > 0 {
+				var b strings.Builder
+				for i := range patches {
+					fmt.Fprintf(&b, "%v", patches[i].Value)
+				}
+				patchText = b.String()
+			}
+
+			if tc.expectMTUInPatch {
+				assert.Contains(t, patchText, "mtu")
+				assert.Contains(t, patchText, "9000")
 			}
 		})
 	}

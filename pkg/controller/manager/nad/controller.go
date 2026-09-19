@@ -106,15 +106,23 @@ func (h Handler) OnCNChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.
 
 	// MTU annotation is not set
 	curMTU := cn.Annotations[utils.KeyUplinkMTU]
-	if curMTU == "" {
+	// return if uplink-mtu annotation is not set and the cluster network is non mgmt cluster network
+	if curMTU == "" && !utils.IsManagementClusterNetwork(cn.Name) {
 		return nil, nil
 	}
 
-	MTU, err := utils.GetMTUFromString(curMTU)
-	// skip if MTU is invalid
-	if err != nil {
-		logrus.Infof("cluster network %v has MTU annotation %v/%v with invalid value, skip to sync with nad %s", cn.Name, utils.KeyUplinkMTU, curMTU, err.Error())
-		return nil, nil
+	// Management cluster network defaults to MTU 1500 when annotation is absent.
+	MTU := utils.DefaultMTU
+	var err error
+	if curMTU != "" {
+		MTU, err = utils.GetMTUFromString(curMTU)
+		if err != nil {
+			logrus.Infof(
+				"cluster network %v has MTU annotation %v/%v with invalid value, skip to sync with nad: %v",
+				cn.Name, utils.KeyUplinkMTU, curMTU, err,
+			)
+			return nil, nil
+		}
 	}
 
 	nads, err := h.nadCache.List("", labels.Set(map[string]string{
@@ -131,7 +139,7 @@ func (h Handler) OnCNChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.
 			return nil, fmt.Errorf("failed to Unmarshal nad %v config %v error %w", nad.Name, nad.Spec.Config, err)
 		}
 
-		if utils.AreEqualMTUs(MTU, netConf.MTU) {
+		if utils.AreEqualMTUs(MTU, netConf.MTU) || utils.IsOverlayNad(nad) {
 			continue
 		}
 
