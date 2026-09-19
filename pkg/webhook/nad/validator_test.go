@@ -777,6 +777,42 @@ func TestCreateNAD(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:      "valid NAD can be created with mgmt cluster network and uplink mtu is set to 9000 in vlanconfig",
+			returnErr: false,
+			errKey:    "",
+			currentCN: &networkv1.ClusterNetwork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        utils.ManagementClusterNetworkName,
+					Annotations: map[string]string{"test": "test"},
+				},
+			},
+			currentVC: &networkv1.VlanConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "VC1",
+					Annotations: map[string]string{utils.KeyMatchedNodes: "[\"node1\"]"},
+					Labels:      map[string]string{utils.KeyClusterNetworkLabel: utils.ManagementClusterNetworkName},
+				},
+				Spec: networkv1.VlanConfigSpec{
+					ClusterNetwork: utils.ManagementClusterNetworkName,
+					Uplink: networkv1.Uplink{
+						LinkAttrs: &networkv1.LinkAttrs{
+							MTU: 9000,
+						},
+					},
+				},
+			},
+			newNAD: &cniv1.NetworkAttachmentDefinition{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        testNadName,
+					Namespace:   testNamespace,
+					Annotations: map[string]string{"test": "test"},
+				},
+				Spec: cniv1.NetworkAttachmentDefinitionSpec{
+					Config: "{\"cniVersion\":\"0.3.1\",\"name\":\"net1-vlan\",\"type\":\"bridge\",\"bridge\":\"mgmt-br\",\"promiscMode\":true,\"vlan\":300,\"mtu\":1500,\"ipam\":{}}",
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {
