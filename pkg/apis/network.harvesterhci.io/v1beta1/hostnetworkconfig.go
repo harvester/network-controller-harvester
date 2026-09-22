@@ -19,8 +19,8 @@ type HostNetworkConfig struct {
 	Status HostNetworkConfigStatus `json:"status,omitempty"`
 }
 
-// +kubebuilder:validation:MaxLength=50
-// +kubebuilder:validation:XValidation:rule="isCIDR(self)",message="Invalid CIDR format"
+// +kubebuilder:validation:MaxLength=80
+// +kubebuilder:validation:XValidation:rule="isCIDR(self) || (size(self.split(',')) == 2 && isCIDR(self.split(',')[0]) && isCIDR(self.split(',')[1]) && cidr(self.split(',')[0]).ip().family() != cidr(self.split(',')[1]).ip().family())",message="Invalid format. Must be a single CIDR or a dual-stack pair consisting of one IPv4 and one IPv6 CIDR (e.g. 10.0.1.5/24,2001:db8::5/64)"
 type IPAddr string
 
 type HostNetworkConfigSpec struct {
