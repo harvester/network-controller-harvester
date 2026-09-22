@@ -159,7 +159,10 @@ func getAffectedNodes(oldVc, newVc *networkv1.VlanConfig, oldNodes, newNodes map
 }
 
 func (v *Validator) Delete(req *admission.Request, oldObj runtime.Object) error {
-	vc := oldObj.(*networkv1.VlanConfig)
+	vc, ok := oldObj.(*networkv1.VlanConfig)
+	if !ok || vc == nil {
+		return nil
+	}
 
 	if utils.IsUserRequestForMgmtCluster(req, vc.Spec.ClusterNetwork) {
 		return fmt.Errorf(deleteErr, vc.Name, fmt.Errorf("users can't delete vlanConfig for %s cluster network",

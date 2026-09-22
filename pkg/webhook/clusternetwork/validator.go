@@ -76,7 +76,10 @@ func (c *CnValidator) Update(_ *admission.Request, oldObj, newObj runtime.Object
 }
 
 func (c *CnValidator) Delete(_ *admission.Request, oldObj runtime.Object) error {
-	cn := oldObj.(*networkv1.ClusterNetwork)
+	cn, ok := oldObj.(*networkv1.ClusterNetwork)
+	if !ok || cn == nil {
+		return nil
+	}
 
 	if cn.Name == utils.ManagementClusterNetworkName {
 		return fmt.Errorf(deleteErr, cn.Name, fmt.Errorf("it is not allowed"))
