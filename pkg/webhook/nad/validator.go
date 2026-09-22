@@ -138,7 +138,10 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 }
 
 func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
-	nad := oldObj.(*cniv1.NetworkAttachmentDefinition)
+	nad, ok := oldObj.(*cniv1.NetworkAttachmentDefinition)
+	if !ok || nad == nil {
+		return nil
+	}
 
 	nadConf, err := utils.DecodeNadConfigToNetConf(nad)
 	if err != nil {

@@ -163,7 +163,10 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 }
 
 func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
-	hnc := oldObj.(*networkv1.HostNetworkConfig)
+	hnc, ok := oldObj.(*networkv1.HostNetworkConfig)
+	if !ok || hnc == nil {
+		return nil
+	}
 
 	//since ovn is already using the interface as underlay, user should disable it first in hostnetworkconfig before deleting it.
 	if hnc.Spec.Underlay {

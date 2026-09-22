@@ -9,6 +9,7 @@ import (
 	v1 "k8s.io/api/admission/v1"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
@@ -1049,6 +1050,47 @@ func TestDeleteVlanConfig(t *testing.T) {
 				if err != nil {
 					assert.True(t, strings.Contains(err.Error(), tc.errKey))
 				}
+			}
+		})
+	}
+}
+
+func TestDeleteVlanConfig_NoPanic(t *testing.T) {
+	tests := []struct {
+		name      string
+		returnErr bool
+		errKey    string
+		oldObj    runtime.Object
+	}{
+		{
+			name:      "allow deletion when oldObj is untyped nil",
+			returnErr: false,
+			errKey:    "",
+			oldObj:    nil,
+		},
+		{
+			name:      "allow deletion when oldObj is typed nil pointer",
+			returnErr: false,
+			errKey:    "",
+			oldObj:    (*networkv1.VlanConfig)(nil),
+		},
+		{
+			name:      "allow deletion when oldObj is an invalid runtime object type",
+			returnErr: false,
+			errKey:    "",
+			oldObj:    &networkv1.HostNetworkConfig{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			validator := NewVlanConfigValidator(nil, nil, nil, nil, nil)
+
+			err := validator.Delete(nil, tc.oldObj)
+			assert.True(t, tc.returnErr == (err != nil))
+			if tc.returnErr {
+				assert.NotNil(t, err)
+				assert.True(t, strings.Contains(err.Error(), tc.errKey))
 			}
 		})
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	kubevirtv1 "kubevirt.io/api/core/v1"
@@ -585,6 +586,47 @@ func TestDeleteClusterNetwork(t *testing.T) {
 				if err != nil {
 					assert.True(t, strings.Contains(err.Error(), tc.errKey))
 				}
+			}
+		})
+	}
+}
+
+func TestDeleteClusterNetwork_NoPanic(t *testing.T) {
+	tests := []struct {
+		name      string
+		returnErr bool
+		errKey    string
+		oldObj    runtime.Object
+	}{
+		{
+			name:      "allow deletion when oldObj is untyped nil",
+			returnErr: false,
+			errKey:    "",
+			oldObj:    nil,
+		},
+		{
+			name:      "allow deletion when oldObj is typed nil pointer",
+			returnErr: false,
+			errKey:    "",
+			oldObj:    (*networkv1.ClusterNetwork)(nil),
+		},
+		{
+			name:      "allow deletion when oldObj is an invalid runtime object type",
+			returnErr: false,
+			errKey:    "",
+			oldObj:    &networkv1.VlanConfig{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			validator := NewCnValidator(nil, nil, nil)
+
+			err := validator.Delete(nil, tc.oldObj)
+			assert.True(t, tc.returnErr == (err != nil))
+			if tc.returnErr {
+				assert.NotNil(t, err)
+				assert.True(t, strings.Contains(err.Error(), tc.errKey))
 			}
 		})
 	}
