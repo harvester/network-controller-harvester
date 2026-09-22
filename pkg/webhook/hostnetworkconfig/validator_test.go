@@ -701,9 +701,9 @@ func TestUpdateHostNetworkConfig(t *testing.T) {
 		currentVM                *kubevirtv1.VirtualMachine
 	}{
 		{
-			name:      "updating mode for same vlan-id and cluster network should be allowed",
-			returnErr: false,
-			errKey:    "",
+			name:      "updating mode is not allowed",
+			returnErr: true,
+			errKey:    "cannot update mode",
 			currentCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testCnName,
@@ -988,7 +988,8 @@ func TestUpdateHostNetworkConfig(t *testing.T) {
 				Spec: networkv1.HostNetworkConfigSpec{
 					ClusterNetwork: testCnName,
 					VlanID:         2012,
-					Mode:           "dhcp",
+					Mode:           "static",
+					HostIPs:        map[string]networkv1.IPAddr{"node1": "192.168.1.100/24"},
 					Underlay:       false,
 				},
 			},
