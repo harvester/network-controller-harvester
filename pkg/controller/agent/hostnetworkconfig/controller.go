@@ -127,7 +127,8 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return h.handleNonMatchingNode(hnc, targetHash)
 	}
 
-	intfName := utils.GetClusterNetworkVlanDevice(hnc.Spec.ClusterNetwork, hnc.Spec.VlanID)
+	// The 15-character limit for Linux interface names (e.g., cn2-br.2026) is enforced by the webhook.
+	intfName := utils.GetClusterNetworkBrVlanDevice(utils.GenerateBridgeName(hnc.Spec.ClusterNetwork), hnc.Spec.VlanID)
 
 	// node selector matches, when fully ready, return quickly
 	if h.isAlreadyReady(hnc, targetHash) {
@@ -217,13 +218,18 @@ func (h *Handler) updateHostNetworkReadyStatus(hnc *networkv1.HostNetworkConfig,
 	if statusUpdateErr := h.setHostNetworkStatus(hnc, l3setupErr, categoryErr); statusUpdateErr != nil {
 		// Mark cache as Unknown if status update fails
 		h.stateMgr.CreateOrUpdate(hnc.Name, NewLocalHostNetworkConfigState(targetHash, StateUnknown))
-		return fmt.Errorf("set host network %s ready (%t) failed [category=%v]: %w (setupErr=%v)", hnc.Name, l3setupErr == nil, categoryErr, statusUpdateErr, l3setupErr)
+		combinedErr := errors.Join(categoryErr, statusUpdateErr)
+		if l3setupErr != nil {
+			combinedErr = errors.Join(combinedErr, l3setupErr)
+		}
+		return fmt.Errorf("set host network %s ready status (%t) failed: %w", hnc.Name, l3setupErr == nil, combinedErr)
 	}
 
 	if l3setupErr != nil {
 		h.stateMgr.CreateOrUpdate(hnc.Name, NewLocalHostNetworkConfigState(targetHash, StateUnknown))
 		// Include categoryErr alongside l3setupErr for immediate visibility in controller logs
-		return fmt.Errorf("setup host network config %s failed [%w]: configErr: %w", hnc.Name, categoryErr, l3setupErr)
+		combinedErr := errors.Join(categoryErr, l3setupErr)
+		return fmt.Errorf("setup host network config %s failed: %w", hnc.Name, combinedErr)
 	}
 
 	// per node status is ready
