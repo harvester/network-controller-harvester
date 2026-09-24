@@ -80,6 +80,9 @@ func (l *Link) DelVlanSubInterface(vid uint16) error {
 	return nil
 }
 
+// SetIPAddress configures the given CIDR on the VLAN subinterface.
+// It applies the new IP address before removing any stale IP addresses
+// on the link. Designed for DHCP renewals; caller loops/retries on error.
 func (l *Link) SetIPAddress(cidr string, vid uint16) error {
 	linkName := utils.GetClusterNetworkBrVlanDevice(l.Attrs().Name, vid)
 	vlanLink, err := netlink.LinkByName(linkName)
@@ -108,6 +111,44 @@ func (l *Link) SetIPAddress(cidr string, vid uint16) error {
 				return fmt.Errorf("delete ip address failed, error: %v, link: %s, ipNet: %v", err, l.Attrs().Name, address)
 			}
 		}
+	}
+
+	return nil
+}
+
+// SetIPAddressRemoveOldFirst flushes existing IP addresses on the VLAN subinterface
+// before applying the newly leased CIDR. Designed for initial DHCP lease allocation;
+// the caller is responsible for releasing the lease if an error occurs.
+func (l *Link) SetIPAddressRemoveOldFirst(cidr string, vid uint16) error {
+	ipAddr, err := netlink.ParseAddr(cidr)
+	if err != nil {
+		return err
+	}
+
+	linkName := utils.GetClusterNetworkBrVlanDevice(l.Attrs().Name, vid)
+	vlanLink, err := netlink.LinkByName(linkName)
+	if err != nil {
+		return fmt.Errorf("finding vlan subinterface failed, error: %v, link: %s, vid: %d", err, linkName, vid)
+	}
+
+	// delete other ip addresses (configured by previous DHCP lease or other static IPs)
+	addresses, err := netlink.AddrList(vlanLink, netlink.FAMILY_V4)
+	if err != nil {
+		return err
+	}
+
+	for _, address := range addresses {
+		if !ipAddr.IP.Equal(address.IP) {
+			if err := netlink.AddrDel(vlanLink, &address); err != nil {
+				return fmt.Errorf("delete ip address failed, error: %v, link: %s, ipNet: %v", err, l.Attrs().Name, address)
+			}
+		}
+	}
+
+	// set IP in the last step
+	// if it fails, the dhcp client could release current lease and retry
+	if err := netlink.AddrReplace(vlanLink, ipAddr); err != nil {
+		return fmt.Errorf("set ip address failed, error: %v, link: %s, ipNet: %v", err, l.Attrs().Name, ipAddr)
 	}
 
 	return nil
