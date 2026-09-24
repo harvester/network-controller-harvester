@@ -207,3 +207,9 @@ func ipAddrFromLease(lease *nclient4.Lease) (string, error) {
 
 	return ipAddr, nil
 }
+
+func (lm *LeaseManager) IsRunning() bool {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+	return lm.running
+}
