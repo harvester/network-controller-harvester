@@ -131,6 +131,10 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return fmt.Errorf(updateErr, newhnc.Name, fmt.Errorf("cannot update clusterNetwork or vlanID field,instead delete the old hostnetworkconfig and create a new one"))
 	}
 
+	if oldhnc.Spec.Mode != newhnc.Spec.Mode {
+		return fmt.Errorf(updateErr, newhnc.Name, fmt.Errorf("cannot update mode from %s to %s,instead delete the old hostnetworkconfig and create a new one", oldhnc.Spec.Mode, newhnc.Spec.Mode))
+	}
+
 	//do not disable underlay if vms are still using overlay nads
 	if oldhnc.Spec.Underlay != newhnc.Spec.Underlay && !newhnc.Spec.Underlay {
 		if err := v.checkifVMExistsForOverlayNADs(); err != nil {
