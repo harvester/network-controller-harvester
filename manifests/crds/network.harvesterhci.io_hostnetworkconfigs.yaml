@@ -48,11 +48,14 @@ spec:
                 type: string
               ips:
                 additionalProperties:
-                  maxLength: 50
+                  maxLength: 80
                   type: string
                   x-kubernetes-validations:
-                  - message: Invalid CIDR format
-                    rule: isCIDR(self)
+                  - message: Invalid format. Must be a single CIDR or a dual-stack
+                      pair consisting of one IPv4 and one IPv6 CIDR (e.g. 10.0.1.5/24,2001:db8::5/64)
+                    rule: isCIDR(self) || (size(self.split(',')) == 2 && isCIDR(self.split(',')[0])
+                      && isCIDR(self.split(',')[1]) && cidr(self.split(',')[0]).ip().family()
+                      != cidr(self.split(',')[1]).ip().family())
                 description: Optional map, validated if mode=static
                 maxProperties: 500
                 type: object
