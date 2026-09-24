@@ -119,6 +119,18 @@ func (l *Link) SetIPAddress(cidr string, vid uint16) error {
 // SetIPAddressRemoveOldFirst flushes existing IP addresses on the VLAN subinterface
 // before applying the newly leased CIDR. Designed for initial DHCP lease allocation;
 // the caller is responsible for releasing the lease if an error occurs.
+//
+// When the HNC controller restarts (e.g., during a pod replacement), a new DHCP agent is spawned.
+// Because IP assignments are not persisted in the CRD status, the controller cannot track or renew previously allocated IPs.
+// Consequently, any existing sub-interface IPs—other than one matching the current lease—are flushed to ensure a clean state.
+//
+// Order of Operations & Rollback Caveat:
+// Applying the new IP before flushing old ones (SetIPAddress) makes rollback complex if either step fails.
+// Handling this cleanly would require either:
+//   - Rollback logic: Dropping the newly applied IP (if distinct) and releasing the lease.
+//   - Failure recording: Tracking execution state to let the controller retry safely.
+//
+// Both approaches require richer state tracking in the CRD and local lease manager.
 func (l *Link) SetIPAddressRemoveOldFirst(cidr string, vid uint16) error {
 	ipAddr, err := netlink.ParseAddr(cidr)
 	if err != nil {
