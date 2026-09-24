@@ -2,6 +2,7 @@ package hostnetworkconfig
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -41,11 +42,13 @@ func NewLeaseManager(iface string, link *iface.Link, vlanID uint16) (*LeaseManag
 	}, nil
 }
 
-func (lm *LeaseManager) Start(ctx context.Context) error {
+// return ip, error
+func (lm *LeaseManager) Start(ctx context.Context) (string, error) {
 	lm.mu.Lock()
 	if lm.running {
+		ip := lm.ipAddr
 		lm.mu.Unlock()
-		return nil
+		return ip, nil
 	}
 	lm.mu.Unlock()
 
@@ -53,20 +56,25 @@ func (lm *LeaseManager) Start(ctx context.Context) error {
 
 	lease, err := lm.client.Request(lm.ctx)
 	if err != nil {
-		return err
+		return "", fmt.Errorf("failed to get ip from dhcp server, error: %w", err)
 	}
 
 	ipAddr, err := ipAddrFromLease(lease)
 	if err != nil {
-		return err
+		releaseErr := lm.client.Release(lease)
+		// errors.Join handle nil error gracefully
+		return "", errors.Join(err, releaseErr)
 	}
 
-	if ipAddr == "" {
-		return fmt.Errorf("no IP address obtained from DHCP server")
-	}
+	// ipAddrFromLease won't return empty addr, skip check ipAddr is empty;
+	// and SetIPAddressRemoveOldFirst will check if ipAddr is valid
 
-	if err := lm.link.SetIPAddress(ipAddr, lm.vlanID); err != nil {
-		return err
+	// SetIPAddressRemoveOldFirst will clear all remaining address on the interface first
+	// and finally apply the new lease IP
+	if err = lm.link.SetIPAddressRemoveOldFirst(ipAddr, lm.vlanID); err != nil {
+		// if unlucky to set ip onto interface, release the IP to avoid dhcp ip leaking
+		releaseErr := lm.client.Release(lease)
+		return "", errors.Join(fmt.Errorf("failed to set the dhcp ip %s, error: %w", ipAddr, err), releaseErr)
 	}
 
 	lm.mu.Lock()
@@ -77,7 +85,7 @@ func (lm *LeaseManager) Start(ctx context.Context) error {
 
 	go lm.renewLoop()
 
-	return nil
+	return ipAddr, nil
 }
 
 func renewalDelay(lease *dhcpv4.DHCPv4) time.Duration {
