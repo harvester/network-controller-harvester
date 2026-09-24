@@ -179,8 +179,11 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 
 	switch hnc.Spec.Mode {
 	case IPModeDHCP:
-		if err = h.startLeaseManager(bridgelink, hnc.Spec.VlanID); err != nil {
+		ip := ""
+		if ip, err = h.startLeaseManager(bridgelink, hnc.Spec.VlanID); err != nil {
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		} else {
+			logrus.Infof("hostnetwork config %s/%s on node %s get ip %s from dhcp server", hnc.Namespace, hnc.Name, h.nodeName, ip)
 		}
 
 	case IPModeStatic:
@@ -431,17 +434,13 @@ func (h *Handler) getOrCreateLeaseManager(bridgelink *iface.Link, vlanID uint16)
 	return newLM, nil
 }
 
-func (h *Handler) startLeaseManager(bridgelink *iface.Link, vlanID uint16) (err error) {
+func (h *Handler) startLeaseManager(bridgelink *iface.Link, vlanID uint16) (ip string, err error) {
 	lm, err := h.getOrCreateLeaseManager(bridgelink, vlanID)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	if err := lm.Start(context.Background()); err != nil {
-		return err
-	}
-
-	return nil
+	return lm.Start(context.Background())
 }
 
 func (h *Handler) addNodeAnnotation(underlayIntfName string, underlay bool) error {
