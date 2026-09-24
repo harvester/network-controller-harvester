@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 
 	"github.com/sirupsen/logrus"
@@ -87,12 +88,17 @@ func checkifHostNetworkInterfaceExists(hnc *networkv1.HostNetworkConfig) (bool, 
 	}
 
 	vlanIntf := utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID)
-	_, err = netlink.LinkByName(vlanIntf)
+	vlanlink, err := netlink.LinkByName(vlanIntf)
 	if err != nil {
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
 			return false, nil
 		}
 		return false, err
+	}
+
+	// Check if the interface has the UP flag set
+	if vlanlink.Attrs().Flags&net.FlagUp == 0 {
+		return false, nil
 	}
 
 	return true, nil
@@ -109,6 +115,8 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 	if err != nil {
 		return nil, err
 	}
+
+	intfName := utils.GetClusterNetworkBrVlanDevice(utils.GenerateBridgeName(hnc.Spec.ClusterNetwork), hnc.Spec.VlanID)
 
 	intfExists, err := checkifHostNetworkInterfaceExists(hnc)
 	if err != nil {
@@ -129,12 +137,13 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return hnc, nil
 	}
 
-	// node selector matches and host network interface already exists, skip processing
-	if intfExists {
+	// node selector matches and host network interface already exists, dhcp lease is runing in dhcp mode, or static mode
+	// skip processing
+	if intfExists && ((hnc.Spec.Mode == IPModeDHCP && h.isLeaseManagerRunning(intfName)) || hnc.Spec.Mode == IPModeStatic) {
 		logrus.Infof("hostnetwork config %s has been applied on this node already, update nodestatus,tunnel interface annotation and skip", hnc.Name)
 
 		// intf exists but there could be change in underlay, need to update node annotation with new interface if needed
-		if err := h.addNodeAnnotation(utils.GetClusterNetworkVlanDevice(hnc.Spec.ClusterNetwork, hnc.Spec.VlanID), hnc.Spec.Underlay); err != nil {
+		if err := h.addNodeAnnotation(intfName, hnc.Spec.Underlay); err != nil {
 			return nil, fmt.Errorf("add node annotation to node %s for host network config %s failed, error: %w", h.nodeName, hnc.Name, err)
 		}
 
@@ -153,7 +162,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
 			logrus.Infof("cluster network %s is not set on this node, skip", hnc.Spec.ClusterNetwork)
 			//stop and delete all lease manaagers assosciated with the cluster network (if uplink removed due to vlanconfig changes/deletion)
-			h.stopLeaseManager(utils.GetClusterNetworkVlanDevice(hnc.Spec.ClusterNetwork, hnc.Spec.VlanID))
+			h.stopLeaseManager(intfName)
 			return nil, nil
 		}
 		return hnc, h.updateHostNetworkReadyStatus(hnc, err)
@@ -188,7 +197,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 
 	case IPModeStatic:
 		// stop lease manager if exists (previously in dhcp mode)
-		h.stopLeaseManager(utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID))
+		h.stopLeaseManager(intfName)
 
 		if addr, err = findMatchingIPfromNode(h.nodeName, hnc.Spec.HostIPs); err != nil {
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err)
@@ -209,7 +218,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 
 	// update node annotation to set the vlan sub interface to be used as underlay (if underlay is enabled)
 	// and set to default mgmt interface if underlay is not enabled
-	if err := h.addNodeAnnotation(utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID), hnc.Spec.Underlay); err != nil {
+	if err := h.addNodeAnnotation(intfName, hnc.Spec.Underlay); err != nil {
 		return nil, fmt.Errorf("add node annotation to node %s for host network config %s failed, error: %w", h.nodeName, hnc.Name, err)
 	}
 
@@ -510,4 +519,16 @@ func (h *Handler) matchNode(nodeSelector *metav1.LabelSelector) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (h *Handler) isLeaseManagerRunning(vlanIntfName string) bool {
+	h.mu.Lock()
+	lm := h.leaseManagers[vlanIntfName]
+	h.mu.Unlock()
+
+	if lm == nil {
+		return false
+	}
+
+	return lm.IsRunning()
 }
