@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 
 	"github.com/sirupsen/logrus"
@@ -72,30 +73,35 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func checkifHostNetworkInterfaceExists(hnc *networkv1.HostNetworkConfig) (bool, error) {
+func checkifHostNetworkInterfaceExists(hnc *networkv1.HostNetworkConfig) (exists bool, isUp bool, err error) {
 	v, err := vlan.GetVlan(hnc.Spec.ClusterNetwork)
 	if err != nil {
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			return false, nil
+			return false, false, nil
 		}
-		return false, err
+		return false, false, err
 	}
 
 	bridgelink, err := v.GetBridgelink()
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	vlanIntf := utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID)
-	_, err = netlink.LinkByName(vlanIntf)
+	vlanlink, err := netlink.LinkByName(vlanIntf)
 	if err != nil {
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			return false, nil
+			return false, false, nil
 		}
-		return false, err
+		return false, false, err
 	}
 
-	return true, nil
+	// Check if the interface has the UP flag set
+	if vlanlink.Attrs().Flags&net.FlagUp == 0 {
+		return true, false, nil
+	}
+
+	return true, true, nil
 }
 
 func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*networkv1.HostNetworkConfig, error) {
@@ -110,7 +116,9 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return nil, err
 	}
 
-	intfExists, err := checkifHostNetworkInterfaceExists(hnc)
+	intfName := utils.GetClusterNetworkBrVlanDevice(utils.GenerateBridgeName(hnc.Spec.ClusterNetwork), hnc.Spec.VlanID)
+
+	intfExists, intfUp, err := checkifHostNetworkInterfaceExists(hnc)
 	if err != nil {
 		return nil, err
 	}
@@ -129,12 +137,19 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return hnc, nil
 	}
 
-	// node selector matches and host network interface already exists, skip processing
-	if intfExists {
+	// For DHCP mode: Skip processing only if the interface exists, up AND the LeaseManager is running.
+	// For Static mode: Do NOT shortcut. Interface presence does not guarantee that IP/routes are applied
+	// or that spec changes (e.g., updating to a new IP) are handled. `findMatchingIPfromNode` could also fail.
+	//
+	// Mode transitions is also secured by the reduced shortcut scope:
+	// - DHCP to Static: Bypasses shortcut to ensure full reconciliation stops the LeaseManager.
+	// - Static to DHCP: Won't trigger shortcut because LeaseManager isn't running yet, ensuring
+	//   the new DHCP process starts properly.
+	if intfExists && intfUp && (hnc.Spec.Mode == IPModeDHCP && h.isLeaseManagerRunning(intfName)) {
 		logrus.Infof("hostnetwork config %s has been applied on this node already, update nodestatus,tunnel interface annotation and skip", hnc.Name)
 
 		// intf exists but there could be change in underlay, need to update node annotation with new interface if needed
-		if err := h.addNodeAnnotation(utils.GetClusterNetworkVlanDevice(hnc.Spec.ClusterNetwork, hnc.Spec.VlanID), hnc.Spec.Underlay); err != nil {
+		if err := h.addNodeAnnotation(intfName, hnc.Spec.Underlay); err != nil {
 			return nil, fmt.Errorf("add node annotation to node %s for host network config %s failed, error: %w", h.nodeName, hnc.Name, err)
 		}
 
@@ -153,7 +168,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
 			logrus.Infof("cluster network %s is not set on this node, skip", hnc.Spec.ClusterNetwork)
 			//stop and delete all lease manaagers assosciated with the cluster network (if uplink removed due to vlanconfig changes/deletion)
-			h.stopLeaseManager(utils.GetClusterNetworkVlanDevice(hnc.Spec.ClusterNetwork, hnc.Spec.VlanID))
+			h.stopLeaseManager(intfName)
 			return nil, nil
 		}
 		return hnc, h.updateHostNetworkReadyStatus(hnc, err)
@@ -179,13 +194,16 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 
 	switch hnc.Spec.Mode {
 	case IPModeDHCP:
-		if err = h.startLeaseManager(bridgelink, hnc.Spec.VlanID); err != nil {
+		ip := ""
+		if ip, err = h.startLeaseManager(bridgelink, hnc.Spec.VlanID); err != nil {
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		} else {
+			logrus.Infof("hostnetwork config %s on node %s gets ip %s from dhcp server", hnc.Name, h.nodeName, ip)
 		}
 
 	case IPModeStatic:
 		// stop lease manager if exists (previously in dhcp mode)
-		h.stopLeaseManager(utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID))
+		h.stopLeaseManager(intfName)
 
 		if addr, err = findMatchingIPfromNode(h.nodeName, hnc.Spec.HostIPs); err != nil {
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err)
@@ -206,7 +224,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 
 	// update node annotation to set the vlan sub interface to be used as underlay (if underlay is enabled)
 	// and set to default mgmt interface if underlay is not enabled
-	if err := h.addNodeAnnotation(utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID), hnc.Spec.Underlay); err != nil {
+	if err := h.addNodeAnnotation(intfName, hnc.Spec.Underlay); err != nil {
 		return nil, fmt.Errorf("add node annotation to node %s for host network config %s failed, error: %w", h.nodeName, hnc.Name, err)
 	}
 
@@ -431,17 +449,13 @@ func (h *Handler) getOrCreateLeaseManager(bridgelink *iface.Link, vlanID uint16)
 	return newLM, nil
 }
 
-func (h *Handler) startLeaseManager(bridgelink *iface.Link, vlanID uint16) (err error) {
+func (h *Handler) startLeaseManager(bridgelink *iface.Link, vlanID uint16) (ip string, err error) {
 	lm, err := h.getOrCreateLeaseManager(bridgelink, vlanID)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	if err := lm.Start(context.Background()); err != nil {
-		return err
-	}
-
-	return nil
+	return lm.Start(context.Background())
 }
 
 func (h *Handler) addNodeAnnotation(underlayIntfName string, underlay bool) error {
@@ -511,4 +525,16 @@ func (h *Handler) matchNode(nodeSelector *metav1.LabelSelector) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (h *Handler) isLeaseManagerRunning(vlanIntfName string) bool {
+	h.mu.Lock()
+	lm := h.leaseManagers[vlanIntfName]
+	h.mu.Unlock()
+
+	if lm == nil {
+		return false
+	}
+
+	return lm.IsRunning()
 }
