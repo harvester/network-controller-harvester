@@ -73,35 +73,35 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func checkifHostNetworkInterfaceExists(hnc *networkv1.HostNetworkConfig) (bool, error) {
+func checkifHostNetworkInterfaceExists(hnc *networkv1.HostNetworkConfig) (exists bool, isUp bool, err error) {
 	v, err := vlan.GetVlan(hnc.Spec.ClusterNetwork)
 	if err != nil {
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			return false, nil
+			return false, false, nil
 		}
-		return false, err
+		return false, false, err
 	}
 
 	bridgelink, err := v.GetBridgelink()
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	vlanIntf := utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID)
 	vlanlink, err := netlink.LinkByName(vlanIntf)
 	if err != nil {
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			return false, nil
+			return false, false, nil
 		}
-		return false, err
+		return false, false, err
 	}
 
 	// Check if the interface has the UP flag set
 	if vlanlink.Attrs().Flags&net.FlagUp == 0 {
-		return false, nil
+		return true, false, nil
 	}
 
-	return true, nil
+	return true, true, nil
 }
 
 func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*networkv1.HostNetworkConfig, error) {
@@ -118,7 +118,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 
 	intfName := utils.GetClusterNetworkBrVlanDevice(utils.GenerateBridgeName(hnc.Spec.ClusterNetwork), hnc.Spec.VlanID)
 
-	intfExists, err := checkifHostNetworkInterfaceExists(hnc)
+	intfExists, intfUp, err := checkifHostNetworkInterfaceExists(hnc)
 	if err != nil {
 		return nil, err
 	}
@@ -137,11 +137,15 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return hnc, nil
 	}
 
-	// For DHCP mode: If the interface exists and the LeaseManager is running, skip processing.
-	// For Static mode: Do NOT shortcut. Interface existence does not guarantee that the IP and
-	// routes are applied, nor does it catch spec changes (e.g., the user updating to a new IP).
-	// Static mode must run through to ensure full reconciliation and self-healing.
-	if intfExists && (hnc.Spec.Mode == IPModeDHCP && h.isLeaseManagerRunning(intfName)) {
+	// For DHCP mode: Skip processing only if the interface exists, up AND the LeaseManager is running.
+	// For Static mode: Do NOT shortcut. Interface presence does not guarantee that IP/routes are applied
+	// or that spec changes (e.g., updating to a new IP) are handled. `findMatchingIPfromNode` could also fail.
+	//
+	// Mode transitions is also secured by the reduced shortcut scope:
+	// - DHCP to Static: Bypasses shortcut to ensure full reconciliation stops the LeaseManager.
+	// - Static to DHCP: Won't trigger shortcut because LeaseManager isn't running yet, ensuring
+	//   the new DHCP process starts properly.
+	if intfExists && intfUp && (hnc.Spec.Mode == IPModeDHCP && h.isLeaseManagerRunning(intfName)) {
 		logrus.Infof("hostnetwork config %s has been applied on this node already, update nodestatus,tunnel interface annotation and skip", hnc.Name)
 
 		// intf exists but there could be change in underlay, need to update node annotation with new interface if needed
@@ -194,7 +198,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		if ip, err = h.startLeaseManager(bridgelink, hnc.Spec.VlanID); err != nil {
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err)
 		} else {
-			logrus.Infof("hostnetwork config %s/%s on node %s get ip %s from dhcp server", hnc.Namespace, hnc.Name, h.nodeName, ip)
+			logrus.Infof("hostnetwork config %s on node %s gets ip %s from dhcp server", hnc.Name, h.nodeName, ip)
 		}
 
 	case IPModeStatic:
