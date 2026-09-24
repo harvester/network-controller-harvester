@@ -137,9 +137,11 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return hnc, nil
 	}
 
-	// node selector matches and host network interface already exists, dhcp lease is runing in dhcp mode, or static mode
-	// skip processing
-	if intfExists && ((hnc.Spec.Mode == IPModeDHCP && h.isLeaseManagerRunning(intfName)) || hnc.Spec.Mode == IPModeStatic) {
+	// For DHCP mode: If the interface exists and the LeaseManager is running, skip processing.
+	// For Static mode: Do NOT shortcut. Interface existence does not guarantee that the IP and
+	// routes are applied, nor does it catch spec changes (e.g., the user updating to a new IP).
+	// Static mode must run through to ensure full reconciliation and self-healing.
+	if intfExists && (hnc.Spec.Mode == IPModeDHCP && h.isLeaseManagerRunning(intfName)) {
 		logrus.Infof("hostnetwork config %s has been applied on this node already, update nodestatus,tunnel interface annotation and skip", hnc.Name)
 
 		// intf exists but there could be change in underlay, need to update node annotation with new interface if needed
