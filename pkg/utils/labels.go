@@ -38,6 +38,8 @@ const (
 	StorageNetworkNetAttachDefPrefix = "storagenetwork-"
 	RWXNetworkAnnotation             = "rwx-network.settings.harvesterhci.io"
 	RWXNetworkNetAttachDefPrefix     = "rwx-network-"
+	// RWXNetworkManagedLabel marks the HostNetworkConfig which Harvester creates and owns for the rwx-network setting
+	RWXNetworkManagedLabel           = RWXNetworkAnnotation + "/managed"
 	ExclusiveVlanStorageNetworkLabel = StorageNetworkAnnotation + "/exclusivevlan"
 
 	// K8s well known annotation, RKE2 annotates the Harvester node
@@ -50,6 +52,10 @@ func GetLabelKeyOfClusterNetwork(clusterNetwork string) string {
 
 func HasWitnessNodeLabelKey(lbs map[string]string) bool {
 	return HasLabelKey(lbs, HarvesterWitnessNodeLabelKey, ValueTrue)
+}
+
+func HasRWXNetworkManagedLabelKey(lbs map[string]string) bool {
+	return HasLabelKey(lbs, RWXNetworkManagedLabel, ValueTrue)
 }
 
 func HasMgmtClusterNetworkLabelKey(lbs map[string]string) bool {
