@@ -262,11 +262,12 @@ func (h *Handler) removeHostNetworkInterface(hnc *networkv1.HostNetworkConfig, o
 		}
 	}
 
+	// Release the dhcp lease before tearing down the vlan
+	h.stopLeaseManager(utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID))
+
 	if err := bridgelink.DelBridgeVlanSelf(hnc.Spec.VlanID); err != nil {
 		return nil, fmt.Errorf("del bridge vlanconfig %d failed for %s, error: %w", hnc.Spec.VlanID, v.Bridge().Name, err)
 	}
-
-	h.stopLeaseManager(utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID))
 
 	if err := bridgelink.DelVlanSubInterface(hnc.Spec.VlanID); err != nil {
 		return nil, fmt.Errorf("del vlan subinterface %d failed for %s, error: %w", hnc.Spec.VlanID, v.Bridge().Name, err)
