@@ -66,15 +66,11 @@ func (lm *LeaseManager) Start(ctx context.Context) (string, error) {
 		return "", errors.Join(err, releaseErr)
 	}
 
-	// ipAddrFromLease won't return empty addr, skip check ipAddr is empty;
-	// and SetIPAddressRemoveOldFirst will check if ipAddr is valid
+	// ipAddrFromLease won't return empty addr, skip check ipAddr is empty
 
-	// SetIPAddressRemoveOldFirst will clear all remaining address on the interface first
-	// and finally apply the new lease IP
-	if err = lm.link.SetIPAddressRemoveOldFirst(ipAddr, lm.vlanID); err != nil {
-		// if unlucky to set ip onto interface, release the IP to avoid dhcp ip leaking
-		releaseErr := lm.client.Release(lease)
-		return "", errors.Join(fmt.Errorf("failed to set the dhcp ip %s, error: %w", ipAddr, err), releaseErr)
+	// Note: when SetIPAddress fails, the lease could be leaked, will be fixed later
+	if err := lm.link.SetIPAddress(ipAddr, lm.vlanID); err != nil {
+		return "", err
 	}
 
 	lm.mu.Lock()
