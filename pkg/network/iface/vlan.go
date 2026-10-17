@@ -80,6 +80,9 @@ func (l *Link) DelVlanSubInterface(vid uint16) error {
 	return nil
 }
 
+// SetIPAddress configures the given CIDR on the VLAN subinterface.
+// It applies the new IP address before removing any stale IP addresses
+// on the link.
 func (l *Link) SetIPAddress(cidr string, vid uint16) error {
 	linkName := utils.GetClusterNetworkBrVlanDevice(l.Attrs().Name, vid)
 	vlanLink, err := netlink.LinkByName(linkName)
@@ -96,7 +99,7 @@ func (l *Link) SetIPAddress(cidr string, vid uint16) error {
 		return fmt.Errorf("set ip address failed, error: %v, link: %s, ipNet: %v", err, l.Attrs().Name, ipAddr)
 	}
 
-	//delete other ip addresses (configured by previous DHCP lease or other static IPs)
+	// delete other ip addresses (configured by previous DHCP lease or other static IPs)
 	addresses, err := netlink.AddrList(vlanLink, netlink.FAMILY_V4)
 	if err != nil {
 		return err
