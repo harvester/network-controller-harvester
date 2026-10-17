@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
@@ -166,14 +168,25 @@ func (lm *LeaseManager) Stop() {
 	lm.lease = nil
 	lm.mu.Unlock()
 
+	// if renew failed to get a lease
+	if lease == nil {
+		return
+	}
+
+	// 1. Cancel the long-running go thread to avoid conflicts with renewLoop
 	if cancel != nil {
 		cancel()
 	}
 
-	// Release DHCP lease
-	if lease != nil {
-		_ = lm.client.Release(lease)
+	// 2. Release DHCP and log
+	err := lm.client.Release(lease)
+	if err != nil {
+		logrus.Warnf("Failed to release dhcp lease %v err %v", lease, err.Error())
+	} else {
+		logrus.Infof("Released dhcp lease %v", lease)
 	}
+
+	_ = lm.client.Close()
 }
 
 func ipAddrFromLease(lease *nclient4.Lease) (string, error) {
