@@ -65,6 +65,11 @@ func (m *Mutator) Update(_ *admission.Request, oldObj, newObj runtime.Object) (a
 		return nil, fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
+	// cluster network labels and route annotations only apply to Harvester-managed NADs
+	if !newNetconf.IsHarvesterManagedCNI() {
+		return nil, nil
+	}
+
 	patch, err := m.ensureLabels(newNad, oldNetconf, newNetconf)
 	if err != nil {
 		return nil, fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
@@ -228,7 +233,8 @@ func (m *Mutator) patchMTU(nad *cniv1.NetworkAttachmentDefinition) (admission.Pa
 		return nil, err
 	}
 
-	if netConf.IsKubeOVNCNI() {
+	// the MTU comes from the bridge's cluster network, which only bridge NADs have
+	if !netConf.IsBridgeCNI() {
 		return nil, nil
 	}
 

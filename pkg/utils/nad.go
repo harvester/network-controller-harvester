@@ -487,6 +487,12 @@ func (nc *NetConf) IsKubeOVNCNI() bool {
 	return nc.Type == CNITypeKubeOVN
 }
 
+// IsHarvesterManagedCNI returns true for the CNI types whose NADs Harvester builds and manages
+// (bridge and kube-ovn). Other types (ipvlan, macvlan, host-device, sriov, ...) are left to the user.
+func (nc *NetConf) IsHarvesterManagedCNI() bool {
+	return nc.IsBridgeCNI() || nc.IsKubeOVNCNI()
+}
+
 func (nc *NetConf) GetVlanID() int {
 	if nc.IsVlanAccessMode() {
 		return nc.Vlan
