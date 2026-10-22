@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"strings"
+
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
@@ -23,6 +26,17 @@ func IsIsolatedClusterNetwork(cnName string, vcCache ctlnetworkv1.VlanConfigCach
 		}
 	}
 	return false, nil
+}
+
+// IsAllowedOnIsolatedClusterNetwork reports whether a NAD may use a cluster network with isolated uplinks. Such a
+// network only reaches direct neighbours and relays nothing, which suits the system networks whose traffic always
+// goes between two nodes: storage, RWX and VM live migration (source to target node).
+func IsAllowedOnIsolatedClusterNetwork(nad *nadv1.NetworkAttachmentDefinition) bool {
+	if IsSystemNetworkNad(nad) {
+		return true
+	}
+	return nad != nil && nad.Namespace == HarvesterSystemNamespaceName &&
+		strings.HasPrefix(nad.Name, VMMigrationNetworkNetAttachDefPrefix)
 }
 
 // UplinkModeOf returns the effective uplink mode of a VlanConfig ("" is reported as bond)

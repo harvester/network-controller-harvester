@@ -295,7 +295,7 @@ func (v *Validator) validateStaticIPs(hostIPs map[string]networkv1.IPAddr, nodeS
 }
 
 func (v *Validator) validateHostNetworkConfig(newhnc *networkv1.HostNetworkConfig, op ValidateOp) (err error) {
-	// a cluster network with isolated uplinks (switchless mesh) is reserved for the storage and RWX networks
+	// a cluster network with isolated uplinks (switchless mesh) is reserved for the storage, RWX and VM migration networks
 	isolated, err := utils.IsIsolatedClusterNetwork(newhnc.Spec.ClusterNetwork, v.vcCache)
 	if err != nil {
 		return err

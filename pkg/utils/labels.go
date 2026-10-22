@@ -41,6 +41,8 @@ const (
 	StorageNetworkNetAttachDefPrefix = "storagenetwork-"
 	RWXNetworkAnnotation             = "rwx-network.settings.harvesterhci.io"
 	RWXNetworkNetAttachDefPrefix     = "rwx-network-"
+	// defined in Harvester pkg/controller/master/kubevirt/vm_migration_network.go
+	VMMigrationNetworkNetAttachDefPrefix = "vm-migration-network-"
 	ExclusiveVlanStorageNetworkLabel = StorageNetworkAnnotation + "/exclusivevlan"
 )
 

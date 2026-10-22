@@ -239,14 +239,14 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 	}
 
 	// a cluster network with isolated uplinks (switchless mesh) only reaches direct neighbours and relays nothing,
-	// so it is reserved for the system networks (storage, RWX) that are built for it
-	if !utils.IsSystemNetworkNad(nad) {
+	// so it is reserved for the system networks (storage, RWX, VM migration) that are built for it
+	if !utils.IsAllowedOnIsolatedClusterNetwork(nad) {
 		isolated, err := utils.IsIsolatedClusterNetwork(cnName, v.vcCache)
 		if err != nil {
 			return err
 		}
 		if isolated {
-			return fmt.Errorf("cluster network %s uses isolated uplinks (switchless mesh) and only carries the storage and RWX networks", cnName)
+			return fmt.Errorf("cluster network %s uses isolated uplinks (switchless mesh) and only carries the storage, RWX and VM migration networks", cnName)
 		}
 	}
 

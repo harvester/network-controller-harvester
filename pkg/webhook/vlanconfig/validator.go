@@ -243,7 +243,7 @@ func (v *Validator) checkOverlaps(vc *networkv1.VlanConfig, nodes mapset.Set[str
 }
 
 // checkUplinkModeOnClusterNetwork keeps one uplink mode per cluster network, and only lets a cluster network become
-// isolated (switchless mesh) when it carries no networks besides the storage and RWX ones.
+// isolated (switchless mesh) when it carries no networks besides the storage, RWX and VM migration ones.
 func (v *Validator) checkUplinkModeOnClusterNetwork(vc *networkv1.VlanConfig) error {
 	mode := utils.UplinkModeOf(vc)
 
@@ -271,7 +271,7 @@ func (v *Validator) checkUplinkModeOnClusterNetwork(vc *networkv1.VlanConfig) er
 	}
 	var inUse []string
 	for _, nad := range nads {
-		if nad.DeletionTimestamp == nil && !utils.IsSystemNetworkNad(nad) {
+		if nad.DeletionTimestamp == nil && !utils.IsAllowedOnIsolatedClusterNetwork(nad) {
 			inUse = append(inUse, nad.Namespace+"/"+nad.Name)
 		}
 	}
@@ -286,7 +286,7 @@ func (v *Validator) checkUplinkModeOnClusterNetwork(vc *networkv1.VlanConfig) er
 	}
 
 	if len(inUse) > 0 {
-		return fmt.Errorf("uplink mode %s is reserved for the storage and RWX networks, but cluster network %s is used by %s",
+		return fmt.Errorf("uplink mode %s is reserved for the storage, RWX and VM migration networks, but cluster network %s is used by %s",
 			networkv1.UplinkModeIsolated, vc.Spec.ClusterNetwork, strings.Join(inUse, ", "))
 	}
 

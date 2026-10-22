@@ -25,6 +25,8 @@ func TestCreateNadOnIsolatedClusterNetwork(t *testing.T) {
 	}{
 		{name: "storage network nad on isolated cluster network", namespace: utils.HarvesterSystemNamespaceName, nadName: "storagenetwork-abcde", isolated: true},
 		{name: "rwx network nad on isolated cluster network", namespace: utils.HarvesterSystemNamespaceName, nadName: "rwx-network-abcde", isolated: true},
+		{name: "vm migration network nad on isolated cluster network", namespace: utils.HarvesterSystemNamespaceName, nadName: "vm-migration-network-abcde", isolated: true},
+		{name: "migration-like name outside harvester-system on isolated cluster network", namespace: "default", nadName: "vm-migration-network-abcde", isolated: true, wantErr: true},
 		{name: "vm network nad on isolated cluster network", namespace: "default", nadName: "vm-net", isolated: true, wantErr: true},
 		{name: "vm network nad on bond cluster network", namespace: "default", nadName: "vm-net"},
 	}
