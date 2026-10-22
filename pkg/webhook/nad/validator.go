@@ -238,6 +238,18 @@ func (v *Validator) checkNadConfig(nadConf *utils.NetConf, nad *cniv1.NetworkAtt
 		return fmt.Errorf("nad refers to a none-existing cluster network %s or error %w", cnName, err)
 	}
 
+	// a cluster network with isolated uplinks (switchless mesh) only reaches direct neighbours and relays nothing,
+	// so it is reserved for the system networks (storage, RWX) that are built for it
+	if !utils.IsSystemNetworkNad(nad) {
+		isolated, err := utils.IsIsolatedClusterNetwork(cnName, v.vcCache)
+		if err != nil {
+			return err
+		}
+		if isolated {
+			return fmt.Errorf("cluster network %s uses isolated uplinks (switchless mesh) and only carries the storage and RWX networks", cnName)
+		}
+	}
+
 	// for new NAD, the mutator patchs the MTU
 	// for updated NAD, the MTU should keep same with cluster network
 	targetMTU := utils.DefaultMTU

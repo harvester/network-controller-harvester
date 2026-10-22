@@ -17,6 +17,9 @@ const (
 	KeyNetworkRouteSourceVID = network.GroupName + "/route-source-vid" // the source vid of this route
 	KeyMTUSourceVlanConfig   = network.GroupName + "/mtu-source-vc"    // the VC which syncs MTU to CN
 	KeyUplinkMTU             = network.GroupName + "/uplink-mtu"       // configured MTU on the VC'uplink
+	// KeyUplinkModeLabel marks a cluster network whose VlanConfigs attach NICs as isolated bridge ports
+	// (switchless full mesh). Such a cluster network only carries system networks (storage, RWX).
+	KeyUplinkModeLabel = network.GroupName + "/uplink-mode"
 
 	KeyMatchedNodes = network.GroupName + "/matched-nodes"
 

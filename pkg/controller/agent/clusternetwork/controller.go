@@ -81,25 +81,12 @@ func (h Handler) OnChange(_ string, cn *networkv1.ClusterNetwork) (*networkv1.Cl
 		}
 	}
 
-	// get current set vlan
-	existingVlans, err := v.ToVlanIDSet()
+	// sync the vlans of every uplink (one bond, or one entry per NIC with isolated uplinks)
+	added, removed, err := v.SyncLocalAreas(cnVlans)
 	if err != nil {
 		return nil, err
 	}
-	added, removed, err := cnVlans.Diff(existingVlans)
-	if err != nil {
-		return nil, err
-	}
-	logrus.Infof("cluster network %s will add %v vlans, remove %v vlans", cn.Name, added.GetVlanCount(), removed.GetVlanCount())
-
-	err = v.AddLocalAreas(added)
-	if err != nil {
-		return nil, err
-	}
-	err = v.RemoveLocalAreas(removed)
-	if err != nil {
-		return nil, err
-	}
+	logrus.Infof("cluster network %s added %v vlans, removed %v vlans", cn.Name, added, removed)
 
 	return cn, nil
 }

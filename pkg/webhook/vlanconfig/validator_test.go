@@ -314,7 +314,7 @@ func TestCreateVlanConfig(t *testing.T) {
 				_, err := vsClient.Create(tc.currentVS)
 				assert.NoError(t, err)
 			}
-			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
+			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache, fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs))
 
 			var username string
 			if tc.userReq {
@@ -730,7 +730,7 @@ func TestUpdateVlanConfig(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
+			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache, fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs))
 
 			err := validator.Update(nil, tc.oldVC, tc.newVC)
 			assert.True(t, tc.returnErr == (err != nil))
@@ -758,7 +758,7 @@ func TestUpdateVlanConfig_NoMatchedNodesAnnotationDoesNotPanic(t *testing.T) {
 	_, err := cnClient.Create(&networkv1.ClusterNetwork{ObjectMeta: metav1.ObjectMeta{Name: testCnName}})
 	assert.NoError(t, err)
 
-	validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
+	validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache, fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs))
 
 	oldVC := &networkv1.VlanConfig{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1040,7 +1040,7 @@ func TestDeleteVlanConfig(t *testing.T) {
 				_, err := hncClient.Create(tc.currentHostNetworkConfig)
 				assert.NoError(t, err)
 			}
-			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache)
+			validator := NewVlanConfigValidator(nadCache, vcCache, vsCache, vmiCache, cnCache, fakeclients.HostNetworkConfigCache(nchclientset.NetworkV1beta1().HostNetworkConfigs))
 
 			err := validator.Delete(nil, tc.currentVC)
 			assert.True(t, tc.returnErr == (err != nil))
@@ -1084,7 +1084,7 @@ func TestDeleteVlanConfig_NoPanic(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			validator := NewVlanConfigValidator(nil, nil, nil, nil, nil)
+			validator := NewVlanConfigValidator(nil, nil, nil, nil, nil, nil)
 
 			err := validator.Delete(nil, tc.oldObj)
 			assert.True(t, tc.returnErr == (err != nil))

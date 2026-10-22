@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"sort"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -36,6 +39,8 @@ type Handler struct {
 	hostNetworkCache  ctlnetworkv1.HostNetworkConfigCache
 	hostNetworkClient ctlnetworkv1.HostNetworkConfigClient
 	nodeCache         ctlcorev1.NodeCache
+	vcCache           ctlnetworkv1.VlanConfigCache
+	cnController      ctlnetworkv1.ClusterNetworkController
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -44,6 +49,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	nads := management.CniFactory.K8s().V1().NetworkAttachmentDefinition()
 	hns := management.HarvesterNetworkFactory.Network().V1beta1().HostNetworkConfig()
 	nodes := management.CoreFactory.Core().V1().Node()
+	vcs := management.HarvesterNetworkFactory.Network().V1beta1().VlanConfig()
 
 	h := Handler{
 		lmClient:          lms,
@@ -54,6 +60,7 @@ func Register(ctx context.Context, management *config.Management) error {
 		hostNetworkCache:  hns.Cache(),
 		hostNetworkClient: hns,
 		nodeCache:         nodes.Cache(),
+		vcCache:           vcs.Cache(),
 	}
 
 	if err := h.initialize(); err != nil {
@@ -64,8 +71,20 @@ func Register(ctx context.Context, management *config.Management) error {
 	cns.OnChange(ctx, controllerName, h.SetNadReadyLabel)
 	cns.OnChange(ctx, controllerName, h.SetHostNetworkStatus)
 	cns.OnRemove(ctx, controllerName, h.DeleteLinkMonitor)
+	// the link monitor of an isolated cluster network lists the VlanConfig NICs, so re-check it when they change
+	h.cnController = cns
+	vcs.OnChange(ctx, controllerName+"-vc", h.EnqueueClusterNetworkOfVlanConfig)
 
 	return nil
+}
+
+// EnqueueClusterNetworkOfVlanConfig re-checks the cluster network of a changed VlanConfig, e.g. to refresh the
+// link monitor rule of an isolated cluster network when its NICs change
+func (h Handler) EnqueueClusterNetworkOfVlanConfig(_ string, vc *networkv1.VlanConfig) (*networkv1.VlanConfig, error) {
+	if vc != nil && vc.Spec.ClusterNetwork != "" {
+		h.cnController.Enqueue(vc.Spec.ClusterNetwork)
+	}
+	return vc, nil
 }
 
 func (h Handler) EnsureLinkMonitor(_ string, cn *networkv1.ClusterNetwork) (*networkv1.ClusterNetwork, error) {
@@ -109,11 +128,25 @@ func (h Handler) SetNadReadyLabel(_ string, cn *networkv1.ClusterNetwork) (*netw
 }
 
 func (h Handler) ensureLinkMonitor(name string) error {
-	_, err := h.lmCache.Get(name)
+	nameRule, err := h.linkMonitorNameRule(name)
+	if err != nil {
+		return err
+	}
+
+	lm, err := h.lmCache.Get(name)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 	if err == nil {
+		if lm.Spec.TargetLinkRule.NameRule == nameRule {
+			return nil
+		}
+		lmCopy := lm.DeepCopy()
+		lmCopy.Spec.TargetLinkRule.NameRule = nameRule
+		if _, err := h.lmClient.Update(lmCopy); err != nil {
+			return err
+		}
+		logrus.Infof("link monitor %s name rule updated to %s", name, nameRule)
 		return nil
 	}
 
@@ -123,13 +156,49 @@ func (h Handler) ensureLinkMonitor(name string) error {
 		},
 		Spec: networkv1.LinkMonitorSpec{
 			TargetLinkRule: networkv1.TargetLinkRule{
-				NameRule: name + "(" + utils.BridgeSuffix + "|" + utils.BondSuffix + ")",
+				NameRule: nameRule,
 			}},
 	}); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// linkMonitorNameRule matches the bridge and bond of the cluster network. With isolated uplinks there is no bond and
+// every NIC is its own uplink, so the NICs of the cluster network's VlanConfigs are matched too, to report the
+// state of each link.
+func (h Handler) linkMonitorNameRule(name string) (string, error) {
+	rule := name + "(" + utils.BridgeSuffix + "|" + utils.BondSuffix + ")"
+
+	isolated, err := utils.IsIsolatedClusterNetwork(name, h.vcCache)
+	if err != nil || !isolated {
+		return rule, err
+	}
+
+	vcs, err := h.vcCache.List(labels.Set{utils.KeyClusterNetworkLabel: name}.AsSelector())
+	if err != nil {
+		return "", err
+	}
+	nics := make(map[string]bool)
+	for _, vc := range vcs {
+		if vc.DeletionTimestamp != nil {
+			continue
+		}
+		for _, nic := range vc.Spec.Uplink.NICs {
+			nics[regexp.QuoteMeta(nic)] = true
+		}
+	}
+	if len(nics) == 0 {
+		return rule, nil
+	}
+	names := make([]string, 0, len(nics))
+	for nic := range nics {
+		names = append(names, nic)
+	}
+	sort.Strings(names)
+
+	return "^" + rule + "$|^(" + strings.Join(names, "|") + ")$", nil
 }
 
 func (h Handler) deleteLinkMonitor(name string) error {

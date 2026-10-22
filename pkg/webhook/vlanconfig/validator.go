@@ -34,6 +34,7 @@ type Validator struct {
 	vsCache  ctlnetworkv1.VlanStatusCache
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache
 	cnCache  ctlnetworkv1.ClusterNetworkCache
+	hncCache ctlnetworkv1.HostNetworkConfigCache
 }
 
 func NewVlanConfigValidator(
@@ -42,6 +43,7 @@ func NewVlanConfigValidator(
 	vsCache ctlnetworkv1.VlanStatusCache,
 	vmiCache ctlkubevirtv1.VirtualMachineInstanceCache,
 	cnCache ctlnetworkv1.ClusterNetworkCache,
+	hncCache ctlnetworkv1.HostNetworkConfigCache,
 ) *Validator {
 	return &Validator{
 		nadCache: nadCache,
@@ -49,6 +51,7 @@ func NewVlanConfigValidator(
 		vsCache:  vsCache,
 		vmiCache: vmiCache,
 		cnCache:  cnCache,
+		hncCache: hncCache,
 	}
 }
 
@@ -73,6 +76,14 @@ func (v *Validator) Create(req *admission.Request, newObj runtime.Object) error 
 	}
 
 	if err := v.validateMTU(vc); err != nil {
+		return fmt.Errorf(createErr, vc.Name, err)
+	}
+
+	if err := validateUplinkMode(vc); err != nil {
+		return fmt.Errorf(createErr, vc.Name, err)
+	}
+
+	if err := v.checkUplinkModeOnClusterNetwork(vc); err != nil {
 		return fmt.Errorf(createErr, vc.Name, err)
 	}
 
@@ -115,6 +126,14 @@ func (v *Validator) Update(req *admission.Request, oldObj, newObj runtime.Object
 	}
 
 	if err := v.validateMTU(newVc); err != nil {
+		return fmt.Errorf(updateErr, newVc.Name, err)
+	}
+
+	if err := validateUplinkMode(newVc); err != nil {
+		return fmt.Errorf(updateErr, newVc.Name, err)
+	}
+
+	if err := v.checkUplinkModeOnClusterNetwork(newVc); err != nil {
 		return fmt.Errorf(updateErr, newVc.Name, err)
 	}
 
@@ -223,6 +242,57 @@ func (v *Validator) checkOverlaps(vc *networkv1.VlanConfig, nodes mapset.Set[str
 	return nil
 }
 
+// checkUplinkModeOnClusterNetwork keeps one uplink mode per cluster network, and only lets a cluster network become
+// isolated (switchless mesh) when it carries no networks besides the storage and RWX ones.
+func (v *Validator) checkUplinkModeOnClusterNetwork(vc *networkv1.VlanConfig) error {
+	mode := utils.UplinkModeOf(vc)
+
+	vcs, err := v.vcCache.List(labels.Set{utils.KeyClusterNetworkLabel: vc.Spec.ClusterNetwork}.AsSelector())
+	if err != nil {
+		return err
+	}
+	for _, other := range vcs {
+		if other.Name == vc.Name || other.DeletionTimestamp != nil {
+			continue
+		}
+		if otherMode := utils.UplinkModeOf(other); otherMode != mode {
+			return fmt.Errorf("cluster network %s already uses uplink mode %s in vlanconfig %s, all its vlanconfigs must use the same mode",
+				vc.Spec.ClusterNetwork, otherMode, other.Name)
+		}
+	}
+
+	if mode != networkv1.UplinkModeIsolated {
+		return nil
+	}
+
+	nads, err := utils.NewNadGetter(v.nadCache).ListNadsOnClusterNetwork(vc.Spec.ClusterNetwork)
+	if err != nil {
+		return err
+	}
+	var inUse []string
+	for _, nad := range nads {
+		if nad.DeletionTimestamp == nil && !utils.IsSystemNetworkNad(nad) {
+			inUse = append(inUse, nad.Namespace+"/"+nad.Name)
+		}
+	}
+	hncs, err := v.hncCache.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	for _, hnc := range hncs {
+		if hnc.DeletionTimestamp == nil && hnc.Spec.ClusterNetwork == vc.Spec.ClusterNetwork {
+			inUse = append(inUse, "hostnetworkconfig "+hnc.Name)
+		}
+	}
+
+	if len(inUse) > 0 {
+		return fmt.Errorf("uplink mode %s is reserved for the storage and RWX networks, but cluster network %s is used by %s",
+			networkv1.UplinkModeIsolated, vc.Spec.ClusterNetwork, strings.Join(inUse, ", "))
+	}
+
+	return nil
+}
+
 // checkVmi is to confirm if any VMI exists on the affected nodes. Those VMIs must be stopped in advance.
 func (v *Validator) checkVmi(vc *networkv1.VlanConfig, nodes mapset.Set[string]) error {
 	// note: the vlanconfig's selector may select empty node, e.g. a place-holder vlanconfig
@@ -261,6 +331,30 @@ func getMatchNodes(vc *networkv1.VlanConfig) (mapset.Set[string], error) {
 	}
 
 	return mapset.NewSet(matchedNodes...), nil
+}
+
+// validateUplinkMode checks the isolated uplink mode: it attaches each NIC directly to the bridge, so it needs at
+// least one NIC, and it is not allowed on the mgmt cluster network, whose uplink is set up at installation.
+func validateUplinkMode(vc *networkv1.VlanConfig) error {
+	switch vc.Spec.Uplink.Mode {
+	case "", networkv1.UplinkModeBond:
+		return nil
+	case networkv1.UplinkModeIsolated:
+		if vc.Spec.ClusterNetwork == utils.ManagementClusterNetworkName {
+			return fmt.Errorf("uplink mode %s is not allowed on the %s cluster network",
+				networkv1.UplinkModeIsolated, utils.ManagementClusterNetworkName)
+		}
+		if len(vc.Spec.Uplink.NICs) == 0 {
+			return fmt.Errorf("uplink mode %s requires at least one NIC", networkv1.UplinkModeIsolated)
+		}
+		if la := vc.Spec.Uplink.LinkAttrs; la != nil && len(la.HardwareAddr) > 0 {
+			return fmt.Errorf("uplink mode %s doesn't support linkAttributes.hardwareAddr, each NIC keeps its own MAC address",
+				networkv1.UplinkModeIsolated)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown uplink mode %q", vc.Spec.Uplink.Mode)
+	}
 }
 
 func (v *Validator) validateMTU(current *networkv1.VlanConfig) error {
