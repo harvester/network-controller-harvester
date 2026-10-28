@@ -3,6 +3,7 @@ package manager
 import (
 	"github.com/harvester/harvester-network-controller/pkg/config"
 	"github.com/harvester/harvester-network-controller/pkg/controller/manager/clusternetwork"
+	bgp "github.com/harvester/harvester-network-controller/pkg/controller/manager/kubeovnbgp"
 	"github.com/harvester/harvester-network-controller/pkg/controller/manager/nad"
 	"github.com/harvester/harvester-network-controller/pkg/controller/manager/node"
 	"github.com/harvester/harvester-network-controller/pkg/controller/manager/vlanconfig"
@@ -13,4 +14,5 @@ var RegisterFuncList = []config.RegisterFunc{
 	vlanconfig.Register,
 	node.Register,
 	clusternetwork.Register,
+	bgp.Register,
 }
