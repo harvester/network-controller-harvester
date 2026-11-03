@@ -3,7 +3,7 @@ package hostnetworkconfig
 import (
 	"encoding/json"
 	"fmt"
-	"net"
+	"net/netip"
 	"reflect"
 	"strings"
 
@@ -208,90 +208,168 @@ func (v *Validator) checkifVMExistsForOverlayNADs() (err error) {
 	return nil
 }
 
-func sameSubnet(cidrs []string) (bool, error) {
+// sameSubnet validates CIDR formats, enforces family conformance, and ensures all entries belong to the same subnet.
+func sameSubnet(cidrs []string, familyName string) error {
 	if len(cidrs) == 0 {
-		return true, nil
+		return nil
 	}
-	var refMaskLength int
 
-	// Parse the first CIDR as the reference subnet
-	_, refNet, err := net.ParseCIDR(cidrs[0])
-	if err != nil {
-		return false, err
-	}
-	refMaskLength, _ = refNet.Mask.Size()
+	isIPv4 := familyName == "IPv4"
 
-	for _, c := range cidrs[1:] {
-		_, net1, err := net.ParseCIDR(c)
+	// Helper closure to parse, format-check, and enforce IP family conformance
+	parseAndValidate := func(cidr string) (netip.Prefix, error) {
+		prefix, err := netip.ParsePrefix(cidr)
 		if err != nil {
-			return false, err
+			return netip.Prefix{}, fmt.Errorf("invalid %s CIDR format %q: %w", familyName, cidr, err)
 		}
-		m2, _ := net1.Mask.Size()
-
-		if refMaskLength != m2 || !refNet.IP.Equal(net1.IP) {
-			return false, nil
+		if isIPv4 && !prefix.Addr().Is4() {
+			return netip.Prefix{}, fmt.Errorf("expected IPv4 address for %s, got %q", familyName, cidr)
 		}
+		if !isIPv4 && !prefix.Addr().Is6() {
+			return netip.Prefix{}, fmt.Errorf("expected IPv6 address for %s, got %q", familyName, cidr)
+		}
+		return prefix, nil
 	}
 
-	return true, nil
-}
-
-func validateStaticIPsForAllNodes(nodes []*v1.Node, hostIPs map[string]networkv1.IPAddr) error {
-	cidrs := make([]string, 0, len(hostIPs))
-	for _, node := range nodes {
-		if _, ok := hostIPs[node.Name]; !ok {
-			return fmt.Errorf("static IP not found for node %s", node.Name)
-		}
-		cidrs = append(cidrs, string(hostIPs[node.Name]))
-	}
-
-	//check if all static IPs are in the same subnet
-	if ok, err := sameSubnet(cidrs); !ok {
-		return fmt.Errorf("static IPs are not in the same subnet: %v", err)
-	}
-
-	return nil
-}
-
-func validateStaticIPsForNodeWithLabel(nodes []*v1.Node, hostIPs map[string]networkv1.IPAddr, selector labels.Selector) error {
-	cidrs := make([]string, 0, len(hostIPs))
-	for _, node := range nodes {
-		matched, err := matchNode(node, selector)
-		if err != nil {
-			return fmt.Errorf("error matching node %s with node selector: %w", node.Name, err)
-		}
-		if matched {
-			_, ok := hostIPs[node.Name]
-			if !ok {
-				return fmt.Errorf("static IP not found for node %s", node.Name)
-			}
-			cidrs = append(cidrs, string(hostIPs[node.Name]))
-		}
-	}
-
-	//check if all static IPs are in the same subnet
-	if ok, err := sameSubnet(cidrs); !ok {
-		return fmt.Errorf("static IPs are not in the same subnet: %v", err)
-	}
-
-	return nil
-}
-
-func (v *Validator) validateStaticIPs(hostIPs map[string]networkv1.IPAddr, nodeSelector *metav1.LabelSelector) error {
-	nodes, err := v.nodeCache.List(labels.Everything())
+	// Always parse and validate the first CIDR
+	refPrefix, err := parseAndValidate(cidrs[0])
 	if err != nil {
 		return err
 	}
 
-	if nodeSelector == nil {
-		return validateStaticIPsForAllNodes(nodes, hostIPs)
-	} else {
-		selector, err := metav1.LabelSelectorAsSelector(nodeSelector)
+	if len(cidrs) == 1 {
+		return nil
+	}
+
+	// The reset should be in same subnet
+	refSubnet := refPrefix.Masked()
+	for i := 1; i < len(cidrs); i++ {
+		prefix, err := parseAndValidate(cidrs[i])
 		if err != nil {
 			return err
 		}
-		return validateStaticIPsForNodeWithLabel(nodes, hostIPs, selector)
+		if prefix.Bits() != refPrefix.Bits() || prefix.Masked().Addr() != refSubnet.Addr() {
+			return fmt.Errorf("static %ss are not in the same subnet", familyName)
+		}
 	}
+	return nil
+}
+
+func validateStaticIPsForNodes(hnc *networkv1.HostNetworkConfig, nodes []*v1.Node) error {
+	// Refuse HNCs with completely empty IP maps upfront. While a node selector
+	// might match 0 nodes (e.g., if the object serves as an unassigned placeholder or template),
+	// having zero static IP configurations in static mode is strictly a user mistake
+	// that would otherwise create unnecessary reconciliation burdens for the controller.
+	if len(hnc.Spec.HostIPs) == 0 && len(hnc.Spec.HostMultiFamilyIPs) == 0 {
+		return fmt.Errorf("at least one static IP configuration must be provided")
+	}
+
+	ipFamily := hnc.Spec.IPFamily
+	if ipFamily == "" {
+		ipFamily = networkv1.IPFamilyIPv4 // Default fallback
+	}
+
+	legacyMode := len(hnc.Spec.HostIPs) > 0
+
+	// 1. Ensure every matched node has an entry in the map (map cannot have fewer entries than nodes,
+	// but it is allowed to contain extra placeholder/leftover records).
+	for _, node := range nodes {
+		if legacyMode {
+			if _, ok := hnc.Spec.HostIPs[node.Name]; !ok {
+				return fmt.Errorf("static IP not found for node %s", node.Name)
+			}
+			continue
+		}
+
+		mfConfig, ok := hnc.Spec.HostMultiFamilyIPs[node.Name]
+		if !ok {
+			return fmt.Errorf("static IP configuration not found for node %s", node.Name)
+		}
+
+		switch ipFamily {
+		case networkv1.IPFamilyIPv4:
+			if mfConfig.IPv4 == nil {
+				return fmt.Errorf("IPv4 address is required for node %s under ipv4 family", node.Name)
+			}
+		case networkv1.IPFamilyIPv6:
+			if mfConfig.IPv6 == nil {
+				return fmt.Errorf("IPv6 address is required for node %s under ipv6 family", node.Name)
+			}
+		case networkv1.IPFamilyDualIPv4First:
+			if mfConfig.IPv4 == nil || mfConfig.IPv6 == nil {
+				return fmt.Errorf("both IPv4 and IPv6 addresses are required for node %s under dual-stack family", node.Name)
+			}
+		default:
+			return fmt.Errorf("unsupported IP family: %s", ipFamily)
+		}
+	}
+
+	// 2. Collect ALL entries from the map for validation
+	ipv4CIDRs, ipv6CIDRs := collectAllIPCIDRs(hnc)
+
+	// 3. Enforce strict family conformance on all collected map entries
+	switch ipFamily {
+	case networkv1.IPFamilyIPv4:
+		if len(ipv6CIDRs) > 0 {
+			return fmt.Errorf("IPv6 addresses are not allowed when IP family is IPv4")
+		}
+	case networkv1.IPFamilyIPv6:
+		if len(ipv4CIDRs) > 0 {
+			return fmt.Errorf("IPv4 addresses are not allowed when IP family is IPv6")
+		}
+	case networkv1.IPFamilyDualIPv4First:
+		if len(ipv4CIDRs) != len(ipv6CIDRs) {
+			return fmt.Errorf("dual-stack static IPs count mismatch: IPv4 count (%d) and IPv6 count (%d) must match", len(ipv4CIDRs), len(ipv6CIDRs))
+		}
+	}
+
+	// 4. Validate subnet consistency and CIDR formatting independently per family.
+	// No matter how many records are present (including placeholders/leftovers),
+	// all of them must strictly follow the same subnet rule.
+	if err := sameSubnet(ipv4CIDRs, "IPv4"); err != nil {
+		return err
+	}
+	if err := sameSubnet(ipv6CIDRs, "IPv6"); err != nil {
+		return err
+	}
+
+	// 5. Validate that no two nodes are assigned the exact same static IP address.
+	if err := validateUniqueIPs(ipv4CIDRs, "IPv4"); err != nil {
+		return err
+	}
+	if err := validateUniqueIPs(ipv6CIDRs, "IPv6"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (v *Validator) validateStaticIPs(hnc *networkv1.HostNetworkConfig) error {
+	// 1. Check ip faminly and ip map
+	if err := validateIPFamilyAndIP(hnc); err != nil {
+		return err
+	}
+
+	// 2. Resolve label selector into a usable selector
+	var selector labels.Selector
+	if hnc.Spec.NodeSelector != nil {
+		var err error
+		selector, err = metav1.LabelSelectorAsSelector(hnc.Spec.NodeSelector)
+		if err != nil {
+			return fmt.Errorf("failed to parse node selector: %w", err)
+		}
+	} else {
+		selector = labels.Everything()
+	}
+
+	// 3. Fetch only the nodes matching the selector directly from the cache
+	nodes, err := v.nodeCache.List(selector)
+	if err != nil {
+		return fmt.Errorf("failed to list nodes matching selector: %w", err)
+	}
+
+	// 3. Run validation on the filtered node slice
+	return validateStaticIPsForNodes(hnc, nodes)
 }
 
 func (v *Validator) validateHostNetworkConfig(newhnc *networkv1.HostNetworkConfig, op ValidateOp) (err error) {
@@ -327,7 +405,7 @@ func (v *Validator) validateHostNetworkConfig(newhnc *networkv1.HostNetworkConfi
 	}
 
 	if newhnc.Spec.Mode == IPModeStatic {
-		if err := v.validateStaticIPs(newhnc.Spec.HostIPs, newhnc.Spec.NodeSelector); err != nil {
+		if err := v.validateStaticIPs(newhnc); err != nil {
 			return err
 		}
 	}
@@ -416,6 +494,11 @@ func (v *Validator) nodeSelectorMatchesAllNodes(nodeSelector *metav1.LabelSelect
 
 	//check if nodeselector matches all nodes in the cluster if the underlay is enabled
 	for _, node := range nodes {
+		//skip witness node as vlanconfig does not span witness node, HostNetworkConfig too
+		if utils.HasWitnessNodeLabelKey(node.Labels) {
+			continue
+		}
+
 		matchNode, err := matchNode(node, selector)
 		if err != nil {
 			return false, fmt.Errorf("error matching node %s with node selector: %w", node.Name, err)
@@ -492,4 +575,86 @@ func (v *Validator) Resource() admission.Resource {
 			admissionregv1.Delete,
 		},
 	}
+}
+
+// High-level IP family vs. IP map fields validation
+// Detailed IPs are checked on validateStaticIPs
+func validateIPFamilyAndIP(hnc *networkv1.HostNetworkConfig) error {
+	hasLegacyHostIPs := len(hnc.Spec.HostIPs) > 0
+	hasMultiFamilyIPs := len(hnc.Spec.HostMultiFamilyIPs) > 0
+
+	// HostIPs and HostMultiFamilyIPs are strictly mutually exclusive
+	if hasLegacyHostIPs && hasMultiFamilyIPs {
+		return fmt.Errorf("cannot specify both HostIPs and HostMultiFamilyIPs")
+	}
+
+	ipFamily := hnc.Spec.IPFamily
+	if ipFamily == "" {
+		ipFamily = networkv1.IPFamilyIPv4 // Default fallback
+	}
+
+	switch ipFamily {
+	case networkv1.IPFamilyIPv4:
+		// IPv4-only family permits either legacy HostIPs or HostMultiFamilyIPs
+	case networkv1.IPFamilyIPv6, networkv1.IPFamilyDualIPv4First:
+		if hasLegacyHostIPs {
+			return fmt.Errorf("legacy HostIPs are not supported under %v family; use HostMultiFamilyIPs", ipFamily)
+		}
+		if !hasMultiFamilyIPs {
+			return fmt.Errorf("HostMultiFamilyIPs is required under %v family", ipFamily)
+		}
+	default:
+		return fmt.Errorf("unsupported IP family: %s", ipFamily)
+	}
+
+	return nil
+}
+
+// collectAllIPCIDRs extracts and returns all IPv4 and IPv6 CIDR strings from either HostIPs
+// or HostMultiFamilyIPs. Assumes input structure and IP families have already been validated.
+func collectAllIPCIDRs(hnc *networkv1.HostNetworkConfig) (ipv4CIDRs []string, ipv6CIDRs []string) {
+	if len(hnc.Spec.HostIPs) > 0 {
+		ipv4CIDRs = make([]string, 0, len(hnc.Spec.HostIPs))
+		for _, ip := range hnc.Spec.HostIPs {
+			ipv4CIDRs = append(ipv4CIDRs, string(ip))
+		}
+		return ipv4CIDRs, nil
+	}
+
+	// MultiFamilyMode
+	ipv4CIDRs = make([]string, 0, len(hnc.Spec.HostMultiFamilyIPs))
+	ipv6CIDRs = make([]string, 0, len(hnc.Spec.HostMultiFamilyIPs))
+
+	for _, mfConfig := range hnc.Spec.HostMultiFamilyIPs {
+		if mfConfig.IPv4 != nil {
+			ipv4CIDRs = append(ipv4CIDRs, string(*mfConfig.IPv4))
+		}
+		if mfConfig.IPv6 != nil {
+			ipv6CIDRs = append(ipv6CIDRs, string(*mfConfig.IPv6))
+		}
+	}
+	return ipv4CIDRs, ipv6CIDRs
+}
+
+// validateUniqueIPs ensures no duplicate static IP addresses are assigned.
+func validateUniqueIPs(cidrs []string, familyName string) error {
+	if len(cidrs) <= 1 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(cidrs))
+	expectedLen := 0
+
+	// Duplications happen rarely, so we avoid checking map existence on every iteration
+	// (which would add extra lookups in the common path). Instead, we unconditionally
+	// insert and increment our counter. Since Go's map len operation is O(1) with
+	// no lookup overhead, comparing sizes is extremely fast.
+	for _, cidr := range cidrs {
+		seen[cidr] = struct{}{}
+		expectedLen++
+		if len(seen) < expectedLen {
+			return fmt.Errorf("duplicate static %s %q is assigned to multiple nodes", familyName, cidr)
+		}
+	}
+	return nil
 }

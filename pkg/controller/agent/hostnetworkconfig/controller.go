@@ -9,6 +9,8 @@ import (
 	"sync"
 
 	"github.com/sirupsen/logrus"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -153,14 +155,13 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 			return nil, fmt.Errorf("add node annotation to node %s for host network config %s failed, error: %w", h.nodeName, hnc.Name, err)
 		}
 
-		err := h.setHostNetworkPerNodeStatus(hnc, true, nil)
+		err := h.setHostNetworkPerNodeStatus(hnc, true, nil, nil)
 		if err != nil {
 			return nil, err
 		}
 		return hnc, nil
 	}
 
-	var addr string
 	var bridgelink *iface.Link
 
 	v, err := vlan.GetVlan(hnc.Spec.ClusterNetwork)
@@ -171,20 +172,20 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 			h.stopLeaseManager(intfName)
 			return nil, nil
 		}
-		return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 	}
 
 	bridgelink, err = v.GetBridgelink()
 	if err != nil {
-		return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 	}
 
 	if err = bridgelink.AddBridgeVlanSelf(hnc.Spec.VlanID); err != nil {
-		return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 	}
 
 	if err = bridgelink.CreateVlanSubInterface(hnc.Spec.VlanID); err != nil {
-		return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 	}
 
 	// reconcile cluster network to add vid to the uplink(cluster-bo)
@@ -192,33 +193,36 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return nil, fmt.Errorf("wake up cluster network %s failed, error: %w", hnc.Spec.ClusterNetwork, err)
 	}
 
+	var nns *networkv1.NodeNetworkState
 	switch hnc.Spec.Mode {
 	case IPModeDHCP:
-		ip := ""
-		if ip, err = h.startLeaseManager(bridgelink, hnc.Spec.VlanID); err != nil {
-			return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		nns, err = h.startLeaseManager(bridgelink, hnc.Spec.VlanID, hnc.Spec.IPFamily)
+		if err != nil {
+			return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 		} else {
-			logrus.Infof("hostnetwork config %s on node %s gets ip %s from dhcp server", hnc.Name, h.nodeName, ip)
+			logrus.Infof("hostnetwork config %s on node %s gets ip %v from dhcp server", hnc.Name, h.nodeName, nns)
 		}
 
 	case IPModeStatic:
 		// stop lease manager if exists (previously in dhcp mode)
 		h.stopLeaseManager(intfName)
 
-		if addr, err = findMatchingIPfromNode(h.nodeName, hnc.Spec.HostIPs); err != nil {
-			return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		addr, err := findMatchingIPfromNode(h.nodeName, hnc)
+		if err != nil {
+			return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 		}
 
-		if err := bridgelink.SetIPAddress(addr, hnc.Spec.VlanID); err != nil {
-			return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		if err := bridgelink.SetMultiFamilyIPAddresses(addr, hnc.Spec.VlanID); err != nil {
+			return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 		}
+		nns = ConvertMultiFamilyIPToNodeNetworkState(addr)
 	default:
 		err = fmt.Errorf("unsupported ip assignment mode %s for host network config %s", hnc.Spec.Mode, hnc.Name)
-		return hnc, h.updateHostNetworkReadyStatus(hnc, err)
+		return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 	}
 
 	//success case, update host network config status to ready
-	if updateErr := h.updateHostNetworkReadyStatus(hnc, nil); updateErr != nil {
+	if updateErr := h.updateHostNetworkReadyStatus(hnc, nil, nns); updateErr != nil {
 		return hnc, updateErr
 	}
 
@@ -231,8 +235,8 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 	return hnc, nil
 }
 
-func (h *Handler) updateHostNetworkReadyStatus(hnc *networkv1.HostNetworkConfig, l3setupErr error) error {
-	if statusUpdateErr := h.setHostNetworkStatus(hnc, l3setupErr); statusUpdateErr != nil {
+func (h *Handler) updateHostNetworkReadyStatus(hnc *networkv1.HostNetworkConfig, l3setupErr error, nns *networkv1.NodeNetworkState) error {
+	if statusUpdateErr := h.setHostNetworkStatus(hnc, l3setupErr, nns); statusUpdateErr != nil {
 		return fmt.Errorf("set host network %s unready failed, error: %w configErr: %v", hnc.Name, statusUpdateErr, l3setupErr)
 	}
 
@@ -247,7 +251,7 @@ func (h *Handler) removeHostNetworkInterface(hnc *networkv1.HostNetworkConfig, o
 	v, err := vlan.GetVlan(hnc.Spec.ClusterNetwork)
 	if err != nil {
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			logrus.Infof("cluster network %s is not set on this node, skip", hnc.Spec.ClusterNetwork)
+			logrus.Debugf("cluster network %s is not set on this node, skip", hnc.Spec.ClusterNetwork)
 			return nil, nil
 		}
 		return nil, err
@@ -309,14 +313,24 @@ func (h *Handler) wakeUpClusterNetwork(clusterNetwork string) error {
 	return err
 }
 
-func findMatchingIPfromNode(nodeName string, hostIPs map[string]networkv1.IPAddr) (string, error) {
-	addr := hostIPs[nodeName]
-	if addr != "" {
-		return string(addr), nil
+func findMatchingIPfromNode(nodeName string, hnc *networkv1.HostNetworkConfig) (*networkv1.MultiFamilyIP, error) {
+	// legacy ipv4 mode
+	if len(hnc.Spec.HostIPs) != 0 {
+		ip := hnc.Spec.HostIPs[nodeName]
+		if ip == "" {
+			return nil, fmt.Errorf("no matching IP found for node %s", nodeName)
+		}
+		return &networkv1.MultiFamilyIP{IPv4: &ip}, nil
+	}
+
+	// multi-family IPs
+	ips, ok := hnc.Spec.HostMultiFamilyIPs[nodeName]
+	if ok {
+		return &ips, nil
 	}
 
 	// if no matching IP found for the node, return error to set host network config status to not ready
-	return "", fmt.Errorf("no matching IP found for node %s", nodeName)
+	return nil, fmt.Errorf("no matching multi-family IPs found for node %s", nodeName)
 }
 
 func (h *Handler) removeHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfig) error {
@@ -354,34 +368,88 @@ func (h *Handler) removeHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfi
 	return nil
 }
 
-func (h *Handler) setHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfig, ready bool, setupErr error) error {
+// setHostNetworkPerNodeStatus updates the node-specific status of the HostNetworkConfig.
+// Design Note: In error/failure cases (ready = false), the "network" field is intentionally omitted
+// from the patch payload. This preserves the last-known-good active network configuration on the server
+// for debugging, allowing operators to easily compare the desired spec against the old working state.
+func (h *Handler) setHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfig, ready bool, setupErr error, nns *networkv1.NodeNetworkState) error {
+	status := corev1.ConditionTrue
+	if !ready {
+		status = corev1.ConditionFalse
+	}
+
+	message := ""
+	if !ready {
+		message = fmt.Sprintf("setup l3 connectivity failed: %v", setupErr)
+	}
+
+	// 1. Retrieve the existing network state for this node if it already exists.
+	// This allows us to preserve it during failure scenarios and build an accurate
+	// desired state representation for the DeepEqual comparison.
+	var existingNetwork *networkv1.NodeNetworkState
+	if hnc.Status.NodeStatus != nil {
+		if existingNodeStatus, exists := hnc.Status.NodeStatus[h.nodeName]; exists {
+			existingNetwork = existingNodeStatus.Network
+		}
+	}
+
+	// 2. Determine the target network state:
+	// - If ready is true and a new nns is provided, use the new nns.
+	// - If ready is false (failure case), fall back to preserving the existing network
+	//   state for debugging visibility.
+	targetNetwork := existingNetwork
+	if ready && nns != nil {
+		targetNetwork = nns
+	}
+
+	// 3. Construct the desired node status struct for equality checking
+	desiredNodeStatus := networkv1.HostNetworkConfigNodeStatus{
+		Mode:     hnc.Spec.Mode,
+		IPFamily: hnc.Spec.IPFamily,
+		Network:  targetNetwork,
+		Conditions: []networkv1.Condition{
+			{
+				Type:    networkv1.Ready,
+				Status:  status,
+				Message: message,
+			},
+		},
+	}
+
+	// 4. Perform DeepEqual check to avoid redundant API server updates
+	if hnc.Status.NodeStatus != nil {
+		if existing, exists := hnc.Status.NodeStatus[h.nodeName]; exists {
+			if equality.Semantic.DeepEqual(existing, desiredNodeStatus) {
+				// Status is completely identical; skip patch call
+				return nil
+			}
+		}
+	}
+
+	// 5. Build the patch payload
+	nodeStatusMap := map[string]interface{}{
+		"mode":     hnc.Spec.Mode,
+		"ipFamily": hnc.Spec.IPFamily,
+		"conditions": []map[string]interface{}{
+			{
+				"type":    networkv1.Ready,
+				"status":  string(status),
+				"message": message,
+			},
+		},
+	}
+
+	// Only include the "network" field in the patch when ready is true and nns is present.
+	// Omitting it on failure ensures JSON Merge Patch leaves the server's existing
+	// network field untouched.
+	if ready && nns != nil {
+		nodeStatusMap["network"] = nns
+	}
+
 	patchPayload := map[string]interface{}{
 		"status": map[string]interface{}{
 			"nodeStatus": map[string]interface{}{
-				h.nodeName: map[string]interface{}{
-					"clusterNetwork": hnc.Spec.ClusterNetwork,
-					"vlanID":         hnc.Spec.VlanID,
-					"mode":           hnc.Spec.Mode,
-					"conditions": []map[string]interface{}{
-						{
-							"type": networkv1.Ready,
-							"status": func() string {
-								if ready {
-									return "True"
-								} else {
-									return "False"
-								}
-							}(),
-							"message": func() string {
-								if ready {
-									return ""
-								} else {
-									return fmt.Sprintf("setup l3 connectivity failed: %v", setupErr)
-								}
-							}(),
-						},
-					},
-				},
+				h.nodeName: nodeStatusMap,
 			},
 		},
 	}
@@ -391,6 +459,7 @@ func (h *Handler) setHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfig, 
 		return fmt.Errorf("failed to marshal patch: %w", err)
 	}
 
+	// 6. Submit the patch to the API server
 	_, err = h.hostNetworkClient.Patch(
 		hnc.Name,
 		types.MergePatchType,
@@ -404,11 +473,11 @@ func (h *Handler) setHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfig, 
 	return nil
 }
 
-func (h *Handler) setHostNetworkStatus(hnc *networkv1.HostNetworkConfig, setupErr error) error {
+func (h *Handler) setHostNetworkStatus(hnc *networkv1.HostNetworkConfig, setupErr error, nns *networkv1.NodeNetworkState) error {
 	if setupErr != nil {
-		return h.setHostNetworkPerNodeStatus(hnc, false, setupErr)
+		return h.setHostNetworkPerNodeStatus(hnc, false, setupErr, nns)
 	} else {
-		return h.setHostNetworkPerNodeStatus(hnc, true, nil)
+		return h.setHostNetworkPerNodeStatus(hnc, true, nil, nns)
 	}
 }
 
@@ -426,7 +495,7 @@ func (h *Handler) stopLeaseManager(vlanIntfName string) {
 	lm.Stop()
 }
 
-func (h *Handler) getOrCreateLeaseManager(bridgelink *iface.Link, vlanID uint16) (*LeaseManager, error) {
+func (h *Handler) getOrCreateLeaseManager(bridgelink *iface.Link, vlanID uint16, family networkv1.IPFamily) (*LeaseManager, error) {
 	vlanIntfName := utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, vlanID)
 
 	h.mu.Lock()
@@ -437,7 +506,7 @@ func (h *Handler) getOrCreateLeaseManager(bridgelink *iface.Link, vlanID uint16)
 		return lm, nil
 	}
 
-	newLM, err := NewLeaseManager(vlanIntfName, bridgelink, vlanID)
+	newLM, err := NewLeaseManager(vlanIntfName, bridgelink, vlanID, family)
 	if err != nil {
 		return nil, err
 	}
@@ -450,10 +519,10 @@ func (h *Handler) getOrCreateLeaseManager(bridgelink *iface.Link, vlanID uint16)
 	return newLM, nil
 }
 
-func (h *Handler) startLeaseManager(bridgelink *iface.Link, vlanID uint16) (ip string, err error) {
-	lm, err := h.getOrCreateLeaseManager(bridgelink, vlanID)
+func (h *Handler) startLeaseManager(bridgelink *iface.Link, vlanID uint16, family networkv1.IPFamily) (ip *networkv1.NodeNetworkState, err error) {
+	lm, err := h.getOrCreateLeaseManager(bridgelink, vlanID, family)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	return lm.Start(context.Background())
@@ -538,4 +607,25 @@ func (h *Handler) isLeaseManagerRunning(vlanIntfName string) bool {
 	}
 
 	return lm.IsRunning()
+}
+
+// ConvertMultiFamilyIPToNodeNetworkState converts a MultiFamilyIP configuration
+// into a NodeNetworkState containing the string representations of the IP addresses.
+func ConvertMultiFamilyIPToNodeNetworkState(mf *networkv1.MultiFamilyIP) *networkv1.NodeNetworkState {
+	nns := networkv1.NodeNetworkState{}
+	if mf == nil {
+		return nil
+	}
+
+	if mf.IPv4 != nil {
+		// Note: adjust `.String()` to match your IPAddr type's string method or field
+		// (e.g., mf.IPv4.IP.String() or mf.IPv4.String())
+		nns.IPv4 = mf.IPv4.String()
+	}
+
+	if mf.IPv6 != nil {
+		nns.IPv6 = mf.IPv6.String()
+	}
+
+	return &nns
 }
