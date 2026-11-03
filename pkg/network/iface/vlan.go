@@ -3,10 +3,16 @@ package iface
 import (
 	"errors"
 	"fmt"
+	"net"
+	"os"
+	"strings"
+	"syscall"
 
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+
+	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 )
 
 func (l *Link) GetVlanSubInterfaceAndOperState(vid uint16) (netlink.Link, bool, error) {
@@ -83,6 +89,7 @@ func (l *Link) DelVlanSubInterface(vid uint16) error {
 // SetIPAddress configures the given CIDR on the VLAN subinterface.
 // It applies the new IP address before removing any stale IP addresses
 // on the link.
+// SetIPAddress is the legacy API for single-IPv4 management.
 func (l *Link) SetIPAddress(cidr string, vid uint16) error {
 	linkName := utils.GetClusterNetworkBrVlanDevice(l.Attrs().Name, vid)
 	vlanLink, err := netlink.LinkByName(linkName)
@@ -99,18 +106,113 @@ func (l *Link) SetIPAddress(cidr string, vid uint16) error {
 		return fmt.Errorf("set ip address failed, error: %v, link: %s, ipNet: %v", err, l.Attrs().Name, ipAddr)
 	}
 
-	// delete other ip addresses (configured by previous DHCP lease or other static IPs)
-	addresses, err := netlink.AddrList(vlanLink, netlink.FAMILY_V4)
-	if err != nil {
+	// Clean up stale IPv4 addresses using the member helper
+	if err := l.syncFamilyIPs(vlanLink, netlink.FAMILY_V4, ipAddr.IP, l.Attrs().Name); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+// syncFamilyIPs clears stale addresses of a given family, keeping only the expectedIP.
+// It requires a non-nil expectedIP to execute; if expectedIP is nil, it skips cleanup entirely
+// to protect unmanaged or other-family addresses during partial/single-family updates.
+func (l *Link) syncFamilyIPs(vlanLink netlink.Link, family int, expectedIP net.IP, linkName string) error {
+	// If no expected IP is provided for this family, skip syncing/cleaning up.
+	if expectedIP == nil {
+		return nil
+	}
+
+	// The local check is cheaper than a reconciler cycle; all system calls are expensive.
+	isNotFound := func(err error) bool {
+		errMsg := err.Error()
+		// Check wrapped errors or standard os/syscall errors
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH) || errors.Is(err, syscall.ENODEV) {
+			return true
+		}
+		return strings.Contains(errMsg, "no such process") ||
+			strings.Contains(errMsg, "address not found") ||
+			strings.Contains(errMsg, "does not exist")
+	}
+
+	addresses, err := netlink.AddrList(vlanLink, family)
+	if err != nil {
+		return fmt.Errorf("listing addresses for family %d failed: %v", family, err)
+	}
+
 	for _, address := range addresses {
-		if !ipAddr.IP.Equal(address.IP) {
+		// CRITICAL: Never touch or delete IPv6 link-local addresses (fe80::/10) managed by the kernel
+		if family == netlink.FAMILY_V6 && address.IP.IsLinkLocalUnicast() {
+			continue
+		}
+
+		if expectedIP == nil || !expectedIP.Equal(address.IP) {
 			if err := netlink.AddrDel(vlanLink, &address); err != nil {
-				return fmt.Errorf("delete ip address failed, error: %v, link: %s, ipNet: %v", err, l.Attrs().Name, address)
+				if isNotFound(err) {
+					continue
+				}
+				return fmt.Errorf("delete stale ip address failed, error: %v, link: %s, ipNet: %v", err, linkName, address)
 			}
 		}
+	}
+	return nil
+}
+
+// SetMultiFamilyIPAddresses handles multi-family IP configurations.
+func (l *Link) SetMultiFamilyIPAddresses(ips *networkv1.MultiFamilyIP, vid uint16) error {
+	if ips == nil {
+		return fmt.Errorf("SetMultiFamilyIPAddresses: the input ips is nil")
+	}
+	linkName := utils.GetClusterNetworkBrVlanDevice(l.Attrs().Name, vid)
+	vlanLink, err := netlink.LinkByName(linkName)
+	if err != nil {
+		return fmt.Errorf("finding vlan subinterface failed, error: %v, link: %s, vid: %d", err, linkName, vid)
+	}
+
+	// --- Step 1: Parse both IPs first and validate before any 'write' actions ---
+	var desiredIPv4Addr, desiredIPv6Addr *netlink.Addr
+	var desiredIPv4, desiredIPv6 net.IP
+
+	if ips.IPv4 != nil && string(*ips.IPv4) != "" {
+		ipv4Str := string(*ips.IPv4)
+		ipv4Addr, err := netlink.ParseAddr(ipv4Str)
+		if err != nil {
+			return fmt.Errorf("invalid ipv4 cidr %q: %v", ipv4Str, err)
+		}
+		desiredIPv4Addr = ipv4Addr
+		desiredIPv4 = ipv4Addr.IP
+	}
+
+	if ips.IPv6 != nil && string(*ips.IPv6) != "" {
+		ipv6Str := string(*ips.IPv6)
+		ipv6Addr, err := netlink.ParseAddr(ipv6Str)
+		if err != nil {
+			return fmt.Errorf("invalid ipv6 cidr %q: %v", ipv6Str, err)
+		}
+		desiredIPv6Addr = ipv6Addr
+		desiredIPv6 = ipv6Addr.IP
+	}
+
+	// --- Step 2: Apply valid IPv4 and IPv6 addresses ---
+	if desiredIPv4Addr != nil {
+		if err := netlink.AddrReplace(vlanLink, desiredIPv4Addr); err != nil {
+			return fmt.Errorf("set ipv4 address failed, error: %v, link: %s, ipNet: %v", err, linkName, desiredIPv4Addr)
+		}
+	}
+
+	if desiredIPv6Addr != nil {
+		if err := netlink.AddrReplace(vlanLink, desiredIPv6Addr); err != nil {
+			return fmt.Errorf("set ipv6 address failed, error: %v, link: %s, ipNet: %v", err, linkName, desiredIPv6Addr)
+		}
+	}
+
+	// --- Step 3: Clear stale addresses using the member helper (skipped automatically if the desired IP is nil/empty) ---
+	if err := l.syncFamilyIPs(vlanLink, netlink.FAMILY_V4, desiredIPv4, l.Attrs().Name); err != nil {
+		return err
+	}
+
+	if err := l.syncFamilyIPs(vlanLink, netlink.FAMILY_V6, desiredIPv6, l.Attrs().Name); err != nil {
+		return err
 	}
 
 	return nil
