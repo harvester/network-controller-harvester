@@ -244,6 +244,7 @@ func (lm *LeaseManager) renewLoopV4() {
 	// Cache the interface name for clean, common usage across the loop
 	iface := lm.iface
 	var lease *nclient4.Lease
+	failedToApplyIP := false
 
 	// Handle a single renewal tick action
 	handleTick := func() {
@@ -277,7 +278,7 @@ func (lm *LeaseManager) renewLoopV4() {
 		lm.mu.Unlock()
 
 		// If the IP and gateway are unchanged, skip low-level kernel netlink manipulations to avoid unnecessary churn.
-		if !leaseChanged {
+		if !leaseChanged && !failedToApplyIP {
 			logrus.Debugf("DHCPv4 lease for interface %s unchanged (IP: %s, Gateway: %s), skipping netlink re-application", iface, ipStr, gwStr)
 			return
 		}
@@ -290,8 +291,10 @@ func (lm *LeaseManager) renewLoopV4() {
 
 		if err := lm.link.SetMultiFamilyIPAddresses(multiIP, lm.vlanID); err != nil {
 			logrus.Errorf("Failed to apply DHCPv4 lease for interface %s (IP: %s, Gateway: %s): %v", iface, ipStr, gwStr, err)
+			failedToApplyIP = true
 		} else {
 			logrus.Infof("Successfully applied DHCPv4 lease for interface %s (IP: %s, Gateway: %s)", iface, ipStr, gwStr)
+			failedToApplyIP = false
 		}
 
 	}
@@ -350,20 +353,67 @@ func (lm *LeaseManager) renewLoopV6() {
 	// Cache the interface name for clean, common usage across the loop
 	iface := lm.iface
 	var lease dhcpv6.DHCPv6
+	failedToApplyIP := false
 
 	// Handle a single renewal tick action
 	handleTickV6 := func() {
-		var advMsg *dhcpv6.Message
+		var newPacket dhcpv6.DHCPv6
+		var err error
+
+		// Attempt DHCPv6 RENEW if we have an existing lease stored
 		if lease != nil {
-			if msg, ok := lease.(*dhcpv6.Message); ok {
-				advMsg = msg
+			if replyMsg, ok := lease.(*dhcpv6.Message); ok {
+				clientID := replyMsg.Options.ClientID()
+				serverID := replyMsg.Options.ServerID()
+				ianas := replyMsg.Options.IANA()
+
+				if clientID != nil && serverID != nil && len(ianas) > 0 {
+					modifiers := make([]dhcpv6.Modifier, 0, 2+len(ianas))
+					modifiers = append(modifiers,
+						dhcpv6.WithClientID(clientID),
+						dhcpv6.WithServerID(serverID),
+					)
+					for _, iana := range ianas {
+						ianaOpt := iana
+						modifiers = append(modifiers, dhcpv6.WithOption(ianaOpt))
+					}
+
+					renewMsg, buildErr := dhcpv6.NewMessage(modifiers...)
+					if buildErr == nil {
+						renewMsg.MessageType = dhcpv6.MessageTypeRenew
+						newPacket, err = lm.client6.SendAndRead(lm.ctx, nil, renewMsg, nil)
+					} else {
+						err = buildErr
+					}
+				} else {
+					err = fmt.Errorf("missing client ID, server ID, or IANA in existing lease for renewal")
+				}
+			} else {
+				err = fmt.Errorf("invalid lease type stored for renewal")
 			}
+		} else {
+			err = fmt.Errorf("no existing lease available for renewal")
 		}
 
-		newPacket, err := lm.client6.Request(lm.ctx, advMsg)
+		// Fallback to initial reacquisition (Solicit + Request) if RENEW failed or no lease existed
 		if err != nil {
-			logrus.Warnf("Failed to renew or request DHCPv6 lease for interface %s (will retry next cycle): %v", iface, err)
-			return
+			logrus.Warnf("DHCPv6 RENEW failed for interface %s, falling back to initial reacquisition (Solicit/Request): %v", iface, err)
+
+			advertiseMsg, solErr := lm.client6.Solicit(lm.ctx)
+			if solErr != nil {
+				logrus.Errorf("Failed to send DHCPv6 SOLICIT during reacquisition fallback on interface %s: %v", iface, solErr)
+				return
+			}
+			if advertiseMsg == nil {
+				logrus.Errorf("DHCPv6 ADVERTISE response cannot be nil during reacquisition fallback on interface %s", iface)
+				return
+			}
+
+			newPacket, err = lm.client6.Request(lm.ctx, advertiseMsg)
+			if err != nil {
+				logrus.Errorf("Failed to get DHCPv6 lease via REQUEST during reacquisition fallback on interface %s: %v", iface, err)
+				return
+			}
 		}
 
 		ipStr, err := ipAddrFromLeaseV6(newPacket)
@@ -380,7 +430,7 @@ func (lm *LeaseManager) renewLoopV6() {
 		lm.mu.Unlock()
 
 		// If the IPv6 address is unchanged, skip low-level kernel netlink manipulations to avoid unnecessary churn.
-		if !leaseChanged {
+		if !leaseChanged && !failedToApplyIP {
 			logrus.Debugf("DHCPv6 lease for interface %s unchanged (IP: %s), skipping netlink re-application", iface, ipStr)
 			return
 		}
@@ -392,8 +442,10 @@ func (lm *LeaseManager) renewLoopV6() {
 
 		if err := lm.link.SetMultiFamilyIPAddresses(multiIP, lm.vlanID); err != nil {
 			logrus.Errorf("Failed to apply DHCPv6 lease for interface %s (IP: %s): %v", iface, ipStr, err)
+			failedToApplyIP = true
 		} else {
 			logrus.Infof("Successfully applied DHCPv6 lease for interface %s (IP: %s)", iface, ipStr)
+			failedToApplyIP = false
 		}
 	}
 
