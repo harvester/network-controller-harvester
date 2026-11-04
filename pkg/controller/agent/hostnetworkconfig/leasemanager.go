@@ -16,6 +16,9 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
+	"github.com/insomniacslk/dhcp/iana"
+
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
 type LeaseManager struct {
@@ -26,10 +29,12 @@ type LeaseManager struct {
 
 	client4 *nclient4.Client
 	client6 *nclient6.Client
+	duid    *dhcpv6.DUIDLLT // only initialized and exists for IPv6 or Dual-Stack
 
 	mu     sync.RWMutex
 	lease4 *nclient4.Lease
 	lease6 dhcpv6.DHCPv6
+
 	// netState explicitly books and records the active DHCP lease info
 	// (such as assigned IP addresses and custom server-offered gateways).
 	netState networkv1.NodeNetworkState
@@ -39,7 +44,8 @@ type LeaseManager struct {
 	cancel context.CancelFunc
 }
 
-func NewLeaseManager(iface string, link *iface.Link, vlanID uint16, family networkv1.IPFamily) (*LeaseManager, error) {
+func NewLeaseManager(iface string, link *iface.Link, hnc *networkv1.HostNetworkConfig) (*LeaseManager, error) {
+	family := hnc.Spec.IPFamily
 	if family == "" {
 		family = networkv1.IPFamilyIPv4 // Default fallback
 	}
@@ -47,7 +53,7 @@ func NewLeaseManager(iface string, link *iface.Link, vlanID uint16, family netwo
 	lm := &LeaseManager{
 		iface:  iface,
 		link:   link,
-		vlanID: vlanID,
+		vlanID: hnc.Spec.VlanID,
 		family: family,
 	}
 
@@ -61,11 +67,17 @@ func NewLeaseManager(iface string, link *iface.Link, vlanID uint16, family netwo
 	case networkv1.IPFamilyIPv6:
 		// 1. Brief pause to allow the kernel to assign the IPv6 link-local address on the newly created interface
 		time.Sleep(200 * time.Millisecond)
+		if err := lm.initDUID(hnc); err != nil {
+			return nil, err
+		}
 		lm.client6, err = nclient6.New(iface)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create DHCPv6 client: %w", err)
 		}
 	case networkv1.IPFamilyDualIPv4First:
+		if err := lm.initDUID(hnc); err != nil {
+			return nil, err
+		}
 		lm.client4, err = nclient4.New(iface)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create DHCPv4 client: %w", err)
@@ -141,8 +153,15 @@ func (lm *LeaseManager) Start(ctx context.Context) (*networkv1.NodeNetworkState,
 	v6Task := ipTask{
 		isV4: false,
 		reqFunc: func() (string, *string, error) {
+
+			// Build modifiers ensuring our stable persistent DUID is always sent
+			var clientModifiers []dhcpv6.Modifier
+			if lm.duid != nil {
+				clientModifiers = append(clientModifiers, dhcpv6.WithClientID(lm.duid))
+			}
+
 			// Step 1: Send Solicit and receive the server's Advertise packet
-			advertiseMsg, err := lm.client6.Solicit(lm.ctx)
+			advertiseMsg, err := lm.client6.Solicit(lm.ctx, clientModifiers...)
 			if err != nil {
 				return "", nil, fmt.Errorf("failed to send DHCPv6 SOLICIT: %w", err)
 			}
@@ -151,7 +170,7 @@ func (lm *LeaseManager) Start(ctx context.Context) (*networkv1.NodeNetworkState,
 			}
 
 			// Step 2: Send Request using the received Advertise message to get the Reply
-			packet6, err := lm.client6.Request(lm.ctx, advertiseMsg)
+			packet6, err := lm.client6.Request(lm.ctx, advertiseMsg, clientModifiers...)
 			if err != nil {
 				return "", nil, fmt.Errorf("failed to get DHCPv6 lease via REQUEST: %w", err)
 			}
@@ -363,14 +382,13 @@ func (lm *LeaseManager) renewLoopV6() {
 		// Attempt DHCPv6 RENEW if we have an existing lease stored
 		if lease != nil {
 			if replyMsg, ok := lease.(*dhcpv6.Message); ok {
-				clientID := replyMsg.Options.ClientID()
 				serverID := replyMsg.Options.ServerID()
 				ianas := replyMsg.Options.IANA()
 
-				if clientID != nil && serverID != nil && len(ianas) > 0 {
+				if serverID != nil && len(ianas) > 0 {
 					modifiers := make([]dhcpv6.Modifier, 0, 2+len(ianas))
 					modifiers = append(modifiers,
-						dhcpv6.WithClientID(clientID),
+						dhcpv6.WithClientID(lm.duid), // Reuse persistent stable DUID
 						dhcpv6.WithServerID(serverID),
 					)
 					for _, iana := range ianas {
@@ -381,7 +399,13 @@ func (lm *LeaseManager) renewLoopV6() {
 					renewMsg, buildErr := dhcpv6.NewMessage(modifiers...)
 					if buildErr == nil {
 						renewMsg.MessageType = dhcpv6.MessageTypeRenew
-						newPacket, err = lm.client6.SendAndRead(lm.ctx, nil, renewMsg, nil)
+						// Explicitly target the DHCPv6 All Servers multicast address scoped to our interface
+						dstAddr := &net.UDPAddr{
+							IP:   dhcpv6.AllDHCPRelayAgentsAndServers, // ff02::1:2
+							Port: dhcpv6.DefaultServerPort,            // 547
+							Zone: iface,                               // e.g. "mgmt-br.100"
+						}
+						newPacket, err = lm.client6.SendAndRead(lm.ctx, dstAddr, renewMsg, nil)
 					} else {
 						err = buildErr
 					}
@@ -399,7 +423,13 @@ func (lm *LeaseManager) renewLoopV6() {
 		if err != nil {
 			logrus.Warnf("DHCPv6 RENEW failed for interface %s, falling back to initial reacquisition (Solicit/Request): %v", iface, err)
 
-			advertiseMsg, solErr := lm.client6.Solicit(lm.ctx)
+			// Build client modifiers to preserve our persistent stable DUID during fallback
+			var clientModifiers []dhcpv6.Modifier
+			if lm.duid != nil {
+				clientModifiers = append(clientModifiers, dhcpv6.WithClientID(lm.duid))
+			}
+
+			advertiseMsg, solErr := lm.client6.Solicit(lm.ctx, clientModifiers...)
 			if solErr != nil {
 				logrus.Errorf("Failed to send DHCPv6 SOLICIT during reacquisition fallback on interface %s: %v", iface, solErr)
 				return
@@ -409,7 +439,7 @@ func (lm *LeaseManager) renewLoopV6() {
 				return
 			}
 
-			newPacket, err = lm.client6.Request(lm.ctx, advertiseMsg)
+			newPacket, err = lm.client6.Request(lm.ctx, advertiseMsg, clientModifiers...)
 			if err != nil {
 				logrus.Errorf("Failed to get DHCPv6 lease via REQUEST during reacquisition fallback on interface %s: %v", iface, err)
 				return
@@ -604,5 +634,36 @@ func (lm *LeaseManager) ReleaseIPv4Lease(lease *nclient4.Lease) error {
 	}
 
 	logrus.Infof("successfully sent DHCPRELEASE for IP %s on interface %s", assignedIP.String(), lm.iface)
+	return nil
+}
+
+func (lm *LeaseManager) initDUID(hnc *networkv1.HostNetworkConfig) error {
+	if lm.link == nil || lm.link.Attrs() == nil {
+		return fmt.Errorf("link or link attributes are not initialized for DUID generation")
+	}
+	hwAddr := lm.link.Attrs().HardwareAddr
+	if len(hwAddr) == 0 {
+		return fmt.Errorf("interface %s has no hardware address for DUID generation", lm.iface)
+	}
+
+	// RFC 8415 DUID-LLT epoch: Jan 1, 2000 00:00:00 UTC (Unix timestamp 946684800)
+	creationTime := hnc.CreationTimestamp
+	var duidTime uint32
+	if !creationTime.IsZero() {
+		unixSecs := creationTime.Unix()
+		if unixSecs > utils.DUIDLLTEPOCHSeconds {
+			delta := unixSecs - utils.DUIDLLTEPOCHSeconds
+			// Ensure delta fits within uint32 max value to satisfy gosec G115
+			if delta > 0 && delta <= 0xFFFFFFFF {
+				duidTime = uint32(delta)
+			}
+		}
+	}
+
+	lm.duid = &dhcpv6.DUIDLLT{
+		HWType:        iana.HWTypeEthernet,
+		Time:          duidTime,
+		LinkLayerAddr: hwAddr,
+	}
 	return nil
 }
