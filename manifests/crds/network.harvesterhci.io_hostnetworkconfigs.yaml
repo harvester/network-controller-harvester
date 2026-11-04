@@ -79,7 +79,6 @@ spec:
                 - ipv4
                 - ipv6
                 - dual-ipv4-ipv6
-                - dual-ipv6-ipv4
                 type: string
               ips:
                 additionalProperties:
@@ -229,7 +228,6 @@ spec:
                       - ipv4
                       - ipv6
                       - dual-ipv4-ipv6
-                      - dual-ipv6-ipv4
                       type: string
                     mode:
                       description: Mode static or dhcp. If empty (e.g., on upgrade
