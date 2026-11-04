@@ -196,7 +196,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 	var nns *networkv1.NodeNetworkState
 	switch hnc.Spec.Mode {
 	case IPModeDHCP:
-		nns, err = h.startLeaseManager(bridgelink, hnc.Spec.VlanID, hnc.Spec.IPFamily)
+		nns, err = h.startLeaseManager(bridgelink, hnc)
 		if err != nil {
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 		} else {
@@ -500,8 +500,8 @@ func (h *Handler) stopLeaseManager(vlanIntfName string) {
 	lm.Stop()
 }
 
-func (h *Handler) startLeaseManager(bridgelink *iface.Link, vlanID uint16, family networkv1.IPFamily) (ip *networkv1.NodeNetworkState, err error) {
-	vlanIntfName := utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, vlanID)
+func (h *Handler) startLeaseManager(bridgelink *iface.Link, hnc *networkv1.HostNetworkConfig) (ip *networkv1.NodeNetworkState, err error) {
+	vlanIntfName := utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID)
 
 	h.mu.Lock()
 	lm := h.leaseManagers[vlanIntfName]
@@ -509,7 +509,7 @@ func (h *Handler) startLeaseManager(bridgelink *iface.Link, vlanID uint16, famil
 
 	created := false
 	if lm == nil {
-		lm, err = NewLeaseManager(vlanIntfName, bridgelink, vlanID, family)
+		lm, err = NewLeaseManager(vlanIntfName, bridgelink, hnc)
 		if err != nil {
 			return nil, err
 		}
