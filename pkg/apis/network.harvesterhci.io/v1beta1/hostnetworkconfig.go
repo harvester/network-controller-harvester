@@ -32,7 +32,7 @@ func (ip IPAddr) String() string {
 	return string(ip)
 }
 
-// +kubebuilder:validation:Enum=ipv4;ipv6;dual-ipv4-ipv6;dual-ipv6-ipv4
+// +kubebuilder:validation:Enum=ipv4;ipv6;dual-ipv4-ipv6
 type IPFamily string
 
 const (
