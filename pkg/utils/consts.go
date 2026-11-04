@@ -9,4 +9,7 @@ const (
 	HarvesterSystemNamespaceName = "harvester-system" // don't import harvester/pkg/util to avoid loop importing, define it directly
 
 	EnvLogLevel = "LOGLEVEL"
+
+	// RFC 8415 DUID-LLT epoch: Jan 1, 2000 00:00:00 UTC (Unix timestamp 946684800)
+	DUIDLLTEPOCHSeconds = 946684800
 )
