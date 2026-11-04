@@ -74,6 +74,8 @@ func NewLeaseManager(iface string, link *iface.Link, vlanID uint16, family netwo
 		time.Sleep(200 * time.Millisecond)
 		lm.client6, err = nclient6.New(iface)
 		if err != nil {
+			// close the above ready client4
+			_ = lm.client4.Close()
 			return nil, fmt.Errorf("failed to create DHCPv6 client: %w", err)
 		}
 	}
@@ -329,10 +331,10 @@ func renewalDelayV6(packet dhcpv6.DHCPv6) time.Duration {
 			// ianaOpt.Options is of type IdentityOptions, which provides Addresses()
 			for _, addrOpt := range ianaOpt.Options.Addresses() {
 				if addrOpt.PreferredLifetime > 0 {
-					return time.Duration(addrOpt.PreferredLifetime/2) * time.Second
+					return addrOpt.PreferredLifetime / 2
 				}
 				if addrOpt.ValidLifetime > 0 {
-					return time.Duration(addrOpt.ValidLifetime/4) * time.Second
+					return addrOpt.ValidLifetime / 4
 				}
 			}
 		}
@@ -485,6 +487,7 @@ func ipAddrFromLeaseV4(lease *nclient4.Lease) (string, error) {
 	return fmt.Sprintf("%s/%d", lease.ACK.YourIPAddr.String(), ones), nil
 }
 
+// An IA_NA address does not carry an on-link prefix length, use `/128`
 func ipAddrFromLeaseV6(packet dhcpv6.DHCPv6) (string, error) {
 	msg, err := packet.GetInnerMessage()
 	if err != nil {
@@ -499,7 +502,7 @@ func ipAddrFromLeaseV6(packet dhcpv6.DHCPv6) (string, error) {
 	for _, iana := range ias {
 		addrs := iana.Options.Addresses()
 		if len(addrs) > 0 && addrs[0].IPv6Addr != nil {
-			return fmt.Sprintf("%s/64", addrs[0].IPv6Addr.String()), nil
+			return fmt.Sprintf("%s/128", addrs[0].IPv6Addr.String()), nil
 		}
 	}
 

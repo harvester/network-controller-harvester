@@ -2009,7 +2009,7 @@ func TestValidateStaticIPs(t *testing.T) {
 				},
 			},
 			expectError:  true,
-			errSubstring: "dual-stack static IPs count mismatch",
+			errSubstring: "both IPv4 and IPv6 addresses are required",
 		},
 		{
 			name:  "Invalid: Subnet inconsistency across node entries",

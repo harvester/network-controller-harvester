@@ -443,7 +443,12 @@ func (h *Handler) setHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfig, 
 	// Omitting it on failure ensures JSON Merge Patch leaves the server's existing
 	// network field untouched.
 	if ready && nns != nil {
-		nodeStatusMap["network"] = nns
+		nodeStatusMap["network"] = map[string]interface{}{
+			"ipv4":           nns.IPv4,
+			"ipv6":           nns.IPv6,
+			"gatewayIPv4":    nns.GatewayIPv4,
+			"dhcpServerIPv4": nns.DHCPServerIPv4,
+		}
 	}
 
 	patchPayload := map[string]interface{}{
@@ -495,37 +500,36 @@ func (h *Handler) stopLeaseManager(vlanIntfName string) {
 	lm.Stop()
 }
 
-func (h *Handler) getOrCreateLeaseManager(bridgelink *iface.Link, vlanID uint16, family networkv1.IPFamily) (*LeaseManager, error) {
+func (h *Handler) startLeaseManager(bridgelink *iface.Link, vlanID uint16, family networkv1.IPFamily) (ip *networkv1.NodeNetworkState, err error) {
 	vlanIntfName := utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, vlanID)
 
 	h.mu.Lock()
 	lm := h.leaseManagers[vlanIntfName]
 	h.mu.Unlock()
 
-	if lm != nil {
-		return lm, nil
+	created := false
+	if lm == nil {
+		lm, err = NewLeaseManager(vlanIntfName, bridgelink, vlanID, family)
+		if err != nil {
+			return nil, err
+		}
+		created = true
 	}
 
-	newLM, err := NewLeaseManager(vlanIntfName, bridgelink, vlanID, family)
+	// if failed in middle way, Start will call Stop automatically
+	state, err := lm.Start(context.Background())
 	if err != nil {
 		return nil, err
 	}
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	h.leaseManagers[vlanIntfName] = newLM
-
-	return newLM, nil
-}
-
-func (h *Handler) startLeaseManager(bridgelink *iface.Link, vlanID uint16, family networkv1.IPFamily) (ip *networkv1.NodeNetworkState, err error) {
-	lm, err := h.getOrCreateLeaseManager(bridgelink, vlanID, family)
-	if err != nil {
-		return nil, err
+	// fully ready, add to map
+	if created {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		h.leaseManagers[vlanIntfName] = lm
 	}
 
-	return lm.Start(context.Background())
+	return state, nil
 }
 
 func (h *Handler) addNodeAnnotation(underlayIntfName string, underlay bool) error {

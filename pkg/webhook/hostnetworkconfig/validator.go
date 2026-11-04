@@ -318,8 +318,10 @@ func validateStaticIPsForNodes(hnc *networkv1.HostNetworkConfig, nodes []*v1.Nod
 			return fmt.Errorf("IPv4 addresses are not allowed when IP family is IPv6")
 		}
 	case networkv1.IPFamilyDualIPv4First:
-		if len(ipv4CIDRs) != len(ipv6CIDRs) {
-			return fmt.Errorf("dual-stack static IPs count mismatch: IPv4 count (%d) and IPv6 count (%d) must match", len(ipv4CIDRs), len(ipv6CIDRs))
+		for nodeName, config := range hnc.Spec.HostMultiFamilyIPs {
+			if config.IPv4 == nil || config.IPv6 == nil {
+				return fmt.Errorf("both IPv4 and IPv6 addresses are required for node %s under dual-stack family", nodeName)
+			}
 		}
 	}
 
@@ -650,7 +652,12 @@ func validateUniqueIPs(cidrs []string, familyName string) error {
 	// insert and increment our counter. Since Go's map len operation is O(1) with
 	// no lookup overhead, comparing sizes is extremely fast.
 	for _, cidr := range cidrs {
-		seen[cidr] = struct{}{}
+		// Handle case like 2001:db8::1/64 and 2001:0db8:0:0:0:0:0:1/64, they are indeed same
+		prefix, err := netip.ParsePrefix(cidr)
+		if err != nil {
+			return err
+		}
+		seen[prefix.Addr().String()] = struct{}{}
 		expectedLen++
 		if len(seen) < expectedLen {
 			return fmt.Errorf("duplicate static %s %q is assigned to multiple nodes", familyName, cidr)
