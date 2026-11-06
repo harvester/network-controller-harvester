@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/vishvananda/netlink"
@@ -14,6 +15,15 @@ import (
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 )
+
+// LeasedMultiFamilyIP wraps MultiFamilyIP with IPv6 lifetime metadata (if get from DHCP server)
+// to ensure the kernel natively manages address expiration and deprecation.
+// if lease is not set (defaults to 0), it means static IPv6, no lease times
+type MultiFamilyIPWithLease struct {
+	*networkv1.MultiFamilyIP
+	V6PreferredLifetime time.Duration
+	V6ValidLifetime     time.Duration
+}
 
 func (l *Link) GetVlanSubInterfaceAndOperState(vid uint16) (netlink.Link, bool, error) {
 	linkName := utils.GetClusterNetworkBrVlanDevice(l.Attrs().Name, vid)
@@ -159,7 +169,7 @@ func (l *Link) syncFamilyIPs(vlanLink netlink.Link, family int, expectedIP net.I
 }
 
 // SetMultiFamilyIPAddresses handles multi-family IP configurations.
-func (l *Link) SetMultiFamilyIPAddresses(ips *networkv1.MultiFamilyIP, vid uint16) error {
+func (l *Link) SetMultiFamilyIPAddresses(ips *MultiFamilyIPWithLease, vid uint16) error {
 	if ips == nil {
 		return fmt.Errorf("SetMultiFamilyIPAddresses: the input ips is nil")
 	}
@@ -189,6 +199,13 @@ func (l *Link) SetMultiFamilyIPAddresses(ips *networkv1.MultiFamilyIP, vid uint1
 		if err != nil {
 			return fmt.Errorf("invalid ipv6 cidr %q: %v", ipv6Str, err)
 		}
+		// Apply DHCPv6 lifetimes directly using the v6 prefixed fields if it is leased IP
+		if ips.V6PreferredLifetime > 0 {
+			ipv6Addr.PreferedLft = int(ips.V6PreferredLifetime.Seconds())
+		}
+		if ips.V6ValidLifetime > 0 {
+			ipv6Addr.ValidLft = int(ips.V6ValidLifetime.Seconds())
+		}
 		desiredIPv6Addr = ipv6Addr
 		desiredIPv6 = ipv6Addr.IP
 	}
@@ -216,4 +233,28 @@ func (l *Link) SetMultiFamilyIPAddresses(ips *networkv1.MultiFamilyIP, vid uint1
 	}
 
 	return nil
+}
+
+func NewMultiFamilyIPWithLeaseFromStaticIPs(ips *networkv1.MultiFamilyIP) *MultiFamilyIPWithLease {
+	return &MultiFamilyIPWithLease{
+		MultiFamilyIP: ips,
+	}
+}
+
+func NewMultiFamilyIPWithLeaseFromIPv4(ipv4 *networkv1.IPAddr) *MultiFamilyIPWithLease {
+	return &MultiFamilyIPWithLease{
+		MultiFamilyIP: &networkv1.MultiFamilyIP{
+			IPv4: ipv4,
+		},
+	}
+}
+
+func NewMultiFamilyIPWithLeaseFromIPv6(ipv6 *networkv1.IPAddr, prefLft, validLft time.Duration) *MultiFamilyIPWithLease {
+	return &MultiFamilyIPWithLease{
+		MultiFamilyIP: &networkv1.MultiFamilyIP{
+			IPv6: ipv6,
+		},
+		V6PreferredLifetime: prefLft,
+		V6ValidLifetime:     validLft,
+	}
 }
