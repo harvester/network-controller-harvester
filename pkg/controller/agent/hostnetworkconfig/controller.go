@@ -212,7 +212,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 		}
 
-		if err := bridgelink.SetMultiFamilyIPAddresses(addr, hnc.Spec.VlanID); err != nil {
+		if err := bridgelink.SetMultiFamilyIPAddresses(iface.NewMultiFamilyIPWithLeaseFromStaticIPs(addr), hnc.Spec.VlanID); err != nil {
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 		}
 		nns = ConvertMultiFamilyIPToNodeNetworkState(addr)
