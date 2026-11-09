@@ -21,6 +21,12 @@ import (
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 )
 
+const (
+	// Brief pause to allow the kernel to assign the IPv6 link-local address on the newly created interface
+	ipv6SleepMillisecond   = 200
+	cancelSleepMillisecond = 100
+)
+
 type LeaseManager struct {
 	iface  string
 	link   *iface.Link
@@ -44,89 +50,91 @@ type LeaseManager struct {
 	cancel context.CancelFunc
 }
 
-func NewLeaseManager(iface string, link *iface.Link, hnc *networkv1.HostNetworkConfig) (*LeaseManager, error) {
+// NewLeaseManager atomically handles the entire lifecycle of lease acquisition.
+// It performs instance creation, socket/client initialization, DHCP lease requests,
+// multi-family IP address application to the link, and background renewal loop spawning.
+// Follows an all-or-nothing transactional pattern: if any step fails, StopLease() is
+// automatically invoked via defer to clean up all allocated sockets and resources.
+func NewLeaseManager(iface string, link *iface.Link, hnc *networkv1.HostNetworkConfig) (*LeaseManager, *networkv1.NodeNetworkState, error) {
 	family := hnc.Spec.IPFamily
 	if family == "" {
 		family = networkv1.IPFamilyIPv4 // Default fallback
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	lm := &LeaseManager{
 		iface:  iface,
 		link:   link,
 		vlanID: hnc.Spec.VlanID,
 		family: family,
+		ctx:    ctx,
+		cancel: cancel,
 	}
 
+	// Ensure all-or-nothing cleanup of clients/sockets if anything fails midway.
+	// Parent function is solely responsible for cleanup during initialization.
+	var success bool
+	defer func() {
+		if !success {
+			lm.StopLease()
+		}
+	}()
+
+	// 1. Initialize Network Clients based on IP family
 	var err error
 	switch family {
 	case networkv1.IPFamilyIPv4:
 		lm.client4, err = nclient4.New(iface)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create DHCPv4 client: %w", err)
+			return nil, nil, fmt.Errorf("failed to create DHCPv4 client: %w", err)
 		}
 	case networkv1.IPFamilyIPv6:
-		// 1. Brief pause to allow the kernel to assign the IPv6 link-local address on the newly created interface
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(ipv6SleepMillisecond * time.Millisecond)
 		if err := lm.initDUID(hnc); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		lm.client6, err = nclient6.New(iface)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create DHCPv6 client: %w", err)
+			return nil, nil, fmt.Errorf("failed to create DHCPv6 client: %w", err)
 		}
 	case networkv1.IPFamilyDualIPv4First:
 		if err := lm.initDUID(hnc); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		lm.client4, err = nclient4.New(iface)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create DHCPv4 client: %w", err)
+			return nil, nil, fmt.Errorf("failed to create DHCPv4 client: %w", err)
 		}
-		// 1. Brief pause to allow the kernel to assign the IPv6 link-local address on the newly created interface
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(ipv6SleepMillisecond * time.Millisecond)
 		lm.client6, err = nclient6.New(iface)
 		if err != nil {
-			// close the above ready client4
-			_ = lm.client4.Close()
-			return nil, fmt.Errorf("failed to create DHCPv6 client: %w", err)
+			return nil, nil, fmt.Errorf("failed to create DHCPv6 client: %w", err)
 		}
+	default:
+		return nil, nil, fmt.Errorf("unsupported network family %v", family)
 	}
 
-	return lm, nil
+	// 2. Execute internal start logic: request leases, apply to link, and start background loops
+	state, err := lm.start()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	success = true
+	return lm, state, nil
 }
 
-func (lm *LeaseManager) Start(ctx context.Context) (*networkv1.NodeNetworkState, error) {
-	// Use RLock for the read-only check of running status and existing netState
-	lm.mu.RLock()
-	if lm.running {
-		state := lm.netState
-		lm.mu.RUnlock()
-		return &state, nil
-	}
-	lm.mu.RUnlock()
-
-	lm.mu.Lock()
-	lm.ctx, lm.cancel = context.WithCancel(ctx)
-	lm.mu.Unlock()
-
-	// Ensure cleanup if Start fails midway before setting running = true
-	var success bool
-	defer func() {
-		if !success {
-			lm.Stop()
-		}
-	}()
-
+// start executes active lease requests, binds addresses, and spawns renewal loops.
+// Since lm is locally owned during initialization, no locks are needed until background routines spawn.
+func (lm *LeaseManager) start() (*networkv1.NodeNetworkState, error) {
 	var multiIP iface.MultiFamilyIPWithLease
 	var newState networkv1.NodeNetworkState
 
 	type ipTask struct {
-		isV4    bool
 		reqFunc func() error
 	}
 
 	v4Task := ipTask{
-		isV4: true,
 		reqFunc: func() error {
 			lease4, err := lm.client4.Request(lm.ctx)
 			if err != nil {
@@ -134,9 +142,7 @@ func (lm *LeaseManager) Start(ctx context.Context) (*networkv1.NodeNetworkState,
 			}
 			ip4, err := ipAddrFromLeaseV4(lease4)
 			if err != nil {
-				// If parsing/validation fails immediately after acquiring the lease,
-				// we use the original client to release it since the IP is not yet
-				// bound locally to the network interface.
+				// not booked yet, rollback won't touch it, try to release explicitly
 				_ = lm.client4.Release(lease4)
 				return err
 			}
@@ -149,15 +155,12 @@ func (lm *LeaseManager) Start(ctx context.Context) (*networkv1.NodeNetworkState,
 				newState.GatewayIPv4 = routers[0].String()
 			}
 
-			lm.mu.Lock()
 			lm.lease4 = lease4
-			lm.mu.Unlock()
 			return nil
 		},
 	}
 
 	v6Task := ipTask{
-		isV4: false,
 		reqFunc: func() error {
 			packet6, err := lm.initializeLeaseV6("lease start")
 			if err != nil {
@@ -174,10 +177,8 @@ func (lm *LeaseManager) Start(ctx context.Context) (*networkv1.NodeNetworkState,
 			multiIP.V6ValidLifetime = validLft
 			newState.IPv6 = ip6
 
-			lm.mu.Lock()
+			// Directly assign without locking
 			lm.lease6 = packet6
-			lm.mu.Unlock()
-
 			return nil
 		},
 	}
@@ -194,24 +195,20 @@ func (lm *LeaseManager) Start(ctx context.Context) (*networkv1.NodeNetworkState,
 		tasks = []ipTask{v4Task}
 	}
 
-	// 1. Execute tasks to populate multiIP and newState directly
 	for _, task := range tasks {
 		if err := task.reqFunc(); err != nil {
-			return nil, err // defer will trigger lm.Stop()
+			return nil, err
 		}
 	}
 
-	// 2. Apply both addresses atomically using the leased multi-family method
 	if err := lm.link.SetMultiFamilyIPAddresses(&multiIP, lm.vlanID); err != nil {
 		return nil, fmt.Errorf("failed to set leased multi-family IP addresses: %w", err)
 	}
 
-	lm.mu.Lock()
 	lm.netState = newState
 	lm.running = true
-	success = true // Mark as successfully started so defer doesn't rollback
-	lm.mu.Unlock()
 
+	// Now that background loops are about to be spawned, they need to use lock to operate lm's data
 	if lm.client4 != nil {
 		go lm.renewLoopV4()
 	}
@@ -420,22 +417,24 @@ func (lm *LeaseManager) renewLoopV6() {
 	}
 }
 
-func (lm *LeaseManager) Stop() {
+func (lm *LeaseManager) StopLease() {
 	if lm == nil {
 		return
 	}
 
 	lm.mu.Lock()
-	// If it's not running AND has no active context or leases, nothing to clean up.
-	if !lm.running && lm.cancel == nil && lm.lease4 == nil && lm.lease6 == nil {
+	if !lm.running {
 		lm.mu.Unlock()
 		return
 	}
 
+	lm.running = false
 	cancel := lm.cancel
 	lease4 := lm.lease4
+	client4 := lm.client4
+	client6 := lm.client6
 
-	lm.running = false
+	// Clear internal references under lock
 	lm.cancel = nil
 	lm.lease4 = nil
 	lm.lease6 = nil
@@ -446,7 +445,7 @@ func (lm *LeaseManager) Stop() {
 	if cancel != nil {
 		cancel()
 		// Give background goroutines a brief moment to unwind and release sockets
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(cancelSleepMillisecond * time.Millisecond)
 	}
 
 	// 2. Best-effort IPv4 unicast release using the dedicated temporary client.
@@ -457,13 +456,12 @@ func (lm *LeaseManager) Stop() {
 		}
 	}
 
-	// 3. Clean up the main long-lived DHCP clients/sockets
-	if lm.client4 != nil {
-		_ = lm.client4.Close()
+	// 3. Close sockets if present
+	if client4 != nil {
+		_ = client4.Close()
 	}
-	if lm.client6 != nil {
-		// Note: nclient6.Client does not have a native .Release() method.
-		_ = lm.client6.Close()
+	if client6 != nil {
+		_ = client6.Close()
 	}
 }
 
