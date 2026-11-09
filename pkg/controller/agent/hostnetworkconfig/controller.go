@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
@@ -30,21 +31,24 @@ const (
 	ControllerName = "harvester-network-hostnetworkconfig-controller"
 	IPModeDHCP     = "dhcp"
 	IPModeStatic   = "static"
+
+	controllerEnqueueSelfInterval = 1000 // ms
 )
 
 type Handler struct {
-	nodeName          string
-	nodeClient        ctlcorev1.NodeClient
-	nodeCache         ctlcorev1.NodeCache
-	hostNetworkClient ctlnetworkv1.HostNetworkConfigClient
-	hostNetworkCache  ctlnetworkv1.HostNetworkConfigCache
-	cnCache           ctlnetworkv1.ClusterNetworkCache
-	cnController      ctlnetworkv1.ClusterNetworkController
+	nodeName              string
+	nodeClient            ctlcorev1.NodeClient
+	nodeCache             ctlcorev1.NodeCache
+	hostNetworkClient     ctlnetworkv1.HostNetworkConfigClient
+	hostNetworkCache      ctlnetworkv1.HostNetworkConfigCache
+	hostNetworkController ctlnetworkv1.HostNetworkConfigController
+	cnCache               ctlnetworkv1.ClusterNetworkCache
+	cnController          ctlnetworkv1.ClusterNetworkController
 
 	mu            sync.Mutex
 	leaseManagers map[string]*LeaseManager
 	mgmtIntfName  string
-	ipFamily utils.IPFamilyPolicy
+	ipFamily      utils.IPFamilyPolicy
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -55,15 +59,16 @@ func Register(ctx context.Context, management *config.Management) error {
 	var err error
 
 	handler := &Handler{
-		nodeName:          management.Options.NodeName,
-		nodeClient:        nodes,
-		nodeCache:         nodes.Cache(),
-		hostNetworkClient: hns,
-		hostNetworkCache:  hns.Cache(),
-		cnCache:           cns.Cache(),
-		cnController:      cns,
-		leaseManagers:     make(map[string]*LeaseManager),
-		ipFamily:          management.Options.IPFamilyPolicy,
+		nodeName:              management.Options.NodeName,
+		nodeClient:            nodes,
+		nodeCache:             nodes.Cache(),
+		hostNetworkClient:     hns,
+		hostNetworkCache:      hns.Cache(),
+		hostNetworkController: hns,
+		cnCache:               cns.Cache(),
+		cnController:          cns,
+		leaseManagers:         make(map[string]*LeaseManager),
+		ipFamily:              management.Options.IPFamilyPolicy,
 	}
 
 	if mgmtIntf, err = iface.GetMgmtInterface(); err != nil {
@@ -122,7 +127,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 
 	intfName := utils.GetClusterNetworkBrVlanDevice(utils.GenerateBridgeName(hnc.Spec.ClusterNetwork), hnc.Spec.VlanID)
 
-	intfExists, intfUp, err := checkifHostNetworkInterfaceExists(hnc)
+	intfExists, _, err := checkifHostNetworkInterfaceExists(hnc)
 	if err != nil {
 		return nil, err
 	}
@@ -135,29 +140,6 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 
 		// always ensure the status is cleaned
 		err := h.removeHostNetworkPerNodeStatus(hnc)
-		if err != nil {
-			return nil, err
-		}
-		return hnc, nil
-	}
-
-	// For DHCP mode: Skip processing only if the interface exists, up AND the LeaseManager is running.
-	// For Static mode: Do NOT shortcut. Interface presence does not guarantee that IP/routes are applied
-	// or that spec changes (e.g., updating to a new IP) are handled. `findMatchingIPfromNode` could also fail.
-	//
-	// Mode transitions is also secured by the reduced shortcut scope:
-	// - DHCP to Static: Bypasses shortcut to ensure full reconciliation stops the LeaseManager.
-	// - Static to DHCP: Won't trigger shortcut because LeaseManager isn't running yet, ensuring
-	//   the new DHCP process starts properly.
-	if intfExists && intfUp && (hnc.Spec.Mode == IPModeDHCP && h.isLeaseManagerRunning(intfName)) {
-		logrus.Infof("hostnetwork config %s has been applied on this node already, update nodestatus,tunnel interface annotation and skip", hnc.Name)
-
-		// intf exists but there could be change in underlay, need to update node annotation with new interface if needed
-		if err := h.addNodeAnnotation(intfName, hnc.Spec.Underlay); err != nil {
-			return nil, fmt.Errorf("add node annotation to node %s for host network config %s failed, error: %w", h.nodeName, hnc.Name, err)
-		}
-
-		err := h.setHostNetworkPerNodeStatus(hnc, true, nil, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -196,6 +178,8 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 	}
 
 	var nns *networkv1.NodeNetworkState
+	// var err error
+	var ips *networkv1.MultiFamilyIP
 	switch hnc.Spec.Mode {
 	case IPModeDHCP:
 		nns, err = h.startLeaseManager(bridgelink, hnc)
@@ -209,15 +193,17 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		// stop lease manager if exists (previously in dhcp mode)
 		h.stopLeaseManager(intfName)
 
-		addr, err := findMatchingIPfromNode(h.nodeName, hnc)
+		ips, err = findMatchingIPfromNode(h.nodeName, hnc)
 		if err != nil {
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 		}
 
-		if err := bridgelink.SetMultiFamilyIPAddresses(iface.NewMultiFamilyIPWithLeaseFromStaticIPs(addr), hnc.Spec.VlanID); err != nil {
+		// if controller gets ErrCleanupIPFailed error, retry automatically
+		err := bridgelink.SetMultiFamilyIPAddresses(iface.NewMultiFamilyIPWithLeaseFromStaticIPs(ips), hnc.Spec.VlanID)
+		if err != nil {
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 		}
-		nns = ConvertMultiFamilyIPToNodeNetworkState(addr)
+		nns = ConvertMultiFamilyIPToNodeNetworkState(ips)
 	default:
 		err = fmt.Errorf("unsupported ip assignment mode %s for host network config %s", hnc.Spec.Mode, hnc.Name)
 		return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
@@ -232,6 +218,12 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 	// and set to default mgmt interface if underlay is not enabled
 	if err := h.addNodeAnnotation(intfName, hnc.Spec.Underlay); err != nil {
 		return nil, fmt.Errorf("add node annotation to node %s for host network config %s failed, error: %w", h.nodeName, hnc.Name, err)
+	}
+
+	if hnc.Spec.Mode == IPModeDHCP {
+		if h.cleanupStaleIP(intfName) {
+			h.hostNetworkController.EnqueueAfter(hnc.Name, controllerEnqueueSelfInterval*time.Millisecond)
+		}
 	}
 
 	return hnc, nil
@@ -514,7 +506,7 @@ func (h *Handler) startLeaseManager(bridgelink *iface.Link, hnc *networkv1.HostN
 	h.mu.Unlock()
 
 	// Not present, create and start atomically
-	lm, state, err := NewLeaseManager(vlanIntfName, bridgelink, hnc)
+	lm, state, err := NewLeaseManager(vlanIntfName, bridgelink, hnc, h.hostNetworkController)
 	if err != nil {
 		return nil, err
 	}
@@ -595,18 +587,6 @@ func (h *Handler) matchNode(nodeSelector *metav1.LabelSelector) (bool, error) {
 	return true, nil
 }
 
-func (h *Handler) isLeaseManagerRunning(vlanIntfName string) bool {
-	h.mu.Lock()
-	lm := h.leaseManagers[vlanIntfName]
-	h.mu.Unlock()
-
-	if lm == nil {
-		return false
-	}
-
-	return lm.IsRunning()
-}
-
 // ConvertMultiFamilyIPToNodeNetworkState converts a MultiFamilyIP configuration
 // into a NodeNetworkState containing the string representations of the IP addresses.
 func ConvertMultiFamilyIPToNodeNetworkState(mf *networkv1.MultiFamilyIP) *networkv1.NodeNetworkState {
@@ -626,4 +606,15 @@ func ConvertMultiFamilyIPToNodeNetworkState(mf *networkv1.MultiFamilyIP) *networ
 	}
 
 	return &nns
+}
+
+func (h *Handler) cleanupStaleIP(vlanIntfName string) bool {
+	h.mu.Lock()
+	lm := h.leaseManagers[vlanIntfName]
+	if lm == nil {
+		return false
+	}
+	h.mu.Unlock()
+
+	return lm.EnsureCleanup()
 }
