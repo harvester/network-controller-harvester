@@ -497,37 +497,29 @@ func (h *Handler) stopLeaseManager(vlanIntfName string) {
 	if lm == nil {
 		return
 	}
-	lm.Stop()
+	lm.StopLease()
 }
 
-func (h *Handler) startLeaseManager(bridgelink *iface.Link, hnc *networkv1.HostNetworkConfig) (ip *networkv1.NodeNetworkState, err error) {
+func (h *Handler) startLeaseManager(bridgelink *iface.Link, hnc *networkv1.HostNetworkConfig) (*networkv1.NodeNetworkState, error) {
 	vlanIntfName := utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID)
 
 	h.mu.Lock()
-	lm := h.leaseManagers[vlanIntfName]
+	if lm, exists := h.leaseManagers[vlanIntfName]; exists && lm != nil {
+		h.mu.Unlock()
+		state := lm.GetNetworkState()
+		return &state, nil
+	}
 	h.mu.Unlock()
 
-	created := false
-	if lm == nil {
-		lm, err = NewLeaseManager(vlanIntfName, bridgelink, hnc)
-		if err != nil {
-			return nil, err
-		}
-		created = true
-	}
-
-	// if failed in middle way, Start will call Stop automatically
-	state, err := lm.Start(context.Background())
+	// Not present, create and start atomically
+	lm, state, err := NewLeaseManager(vlanIntfName, bridgelink, hnc)
 	if err != nil {
 		return nil, err
 	}
 
-	// fully ready, add to map
-	if created {
-		h.mu.Lock()
-		defer h.mu.Unlock()
-		h.leaseManagers[vlanIntfName] = lm
-	}
+	h.mu.Lock()
+	h.leaseManagers[vlanIntfName] = lm
+	h.mu.Unlock()
 
 	return state, nil
 }
