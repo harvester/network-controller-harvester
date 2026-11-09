@@ -9,12 +9,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/harvester/harvester-network-controller/pkg/utils"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 )
+
+var ErrCleanupIPFailed = errors.New("failed to cleanup stale ip")
 
 // LeasedMultiFamilyIP wraps MultiFamilyIP with IPv6 lifetime metadata (if get from DHCP server)
 // to ensure the kernel natively manages address expiration and deprecation.
@@ -211,6 +215,8 @@ func (l *Link) SetMultiFamilyIPAddresses(ips *MultiFamilyIPWithLease, vid uint16
 	}
 
 	// --- Step 2: Apply valid IPv4 and IPv6 addresses ---
+	// IPv4 is intentionally applied first to establish a predictable primary
+	// address order on the interface for legacy or fallback-sensitive applications.
 	if desiredIPv4Addr != nil {
 		if err := netlink.AddrReplace(vlanLink, desiredIPv4Addr); err != nil {
 			return fmt.Errorf("set ipv4 address failed, error: %v, link: %s, ipNet: %v", err, linkName, desiredIPv4Addr)
@@ -219,20 +225,40 @@ func (l *Link) SetMultiFamilyIPAddresses(ips *MultiFamilyIPWithLease, vid uint16
 
 	if desiredIPv6Addr != nil {
 		if err := netlink.AddrReplace(vlanLink, desiredIPv6Addr); err != nil {
+			// Best-effort rollback: If IPv6 configuration fails after IPv4 was
+			// successfully bound, attempt to remove the newly applied IPv4 address
+			// to prevent leaving the interface in a partial, half-configured state.
+			if desiredIPv4Addr != nil {
+				if errDel := netlink.AddrDel(vlanLink, desiredIPv4Addr); errDel != nil {
+					logrus.Errorf("setup ipv6 failed (%v); best-effort rollback of IPv4 also failed (%v) on link %s", err, errDel, linkName)
+				}
+			}
+
 			return fmt.Errorf("set ipv6 address failed, error: %v, link: %s, ipNet: %v", err, linkName, desiredIPv6Addr)
 		}
 	}
 
 	// --- Step 3: Clear stale addresses using the member helper (skipped automatically if the desired IP is nil/empty) ---
+	// Note: If stale address cleanup fails, we intentionally avoid performing a complex
+	// rollback of the newly applied lease. DHCP acquisition and netlink replacement are
+	// expensive operations. Instead, we return a distinguishable cleanup error, allowing
+	// the parent controller to re-queue the reconciliation loop and eventually achieve
+	// convergence without discarding a valid, freshly acquired lease.
 	if err := l.syncFamilyIPs(vlanLink, netlink.FAMILY_V4, desiredIPv4, l.Attrs().Name); err != nil {
-		return err
+		return fmt.Errorf("%w v4: %v", ErrCleanupIPFailed, err)
 	}
 
 	if err := l.syncFamilyIPs(vlanLink, netlink.FAMILY_V6, desiredIPv6, l.Attrs().Name); err != nil {
-		return err
+		return fmt.Errorf("%w v6: %v", ErrCleanupIPFailed, err)
 	}
 
 	return nil
+}
+
+func NewMultiFamilyIP() *MultiFamilyIPWithLease {
+	return &MultiFamilyIPWithLease{
+		MultiFamilyIP: &networkv1.MultiFamilyIP{},
+	}
 }
 
 func NewMultiFamilyIPWithLeaseFromStaticIPs(ips *networkv1.MultiFamilyIP) *MultiFamilyIPWithLease {
