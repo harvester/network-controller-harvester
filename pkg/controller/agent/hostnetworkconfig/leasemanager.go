@@ -2,6 +2,7 @@ package hostnetworkconfig
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 
+	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
@@ -25,9 +27,13 @@ const (
 	// Brief pause to allow the kernel to assign the IPv6 link-local address on the newly created interface
 	ipv6SleepMillisecond   = 200
 	cancelSleepMillisecond = 100
+
+	renewEnqueueControllerInterval = 100
 )
 
 type LeaseManager struct {
+	hncName string // Name of the parent HostNetworkConfig object for controller enqueue
+
 	iface  string
 	link   *iface.Link
 	vlanID uint16
@@ -46,6 +52,14 @@ type LeaseManager struct {
 	netState networkv1.NodeNetworkState
 	running  bool
 
+	cleanupSignalV4  chan struct{}
+	cleanupSignalV6  chan struct{}
+	pendingCleanupV4 bool // when ErrCleanupIPFailed happens
+	pendingCleanupV6 bool
+
+	// controller enqueue callback
+	enqueueController func(name string)
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -55,7 +69,7 @@ type LeaseManager struct {
 // multi-family IP address application to the link, and background renewal loop spawning.
 // Follows an all-or-nothing transactional pattern: if any step fails, StopLease() is
 // automatically invoked via defer to clean up all allocated sockets and resources.
-func NewLeaseManager(iface string, link *iface.Link, hnc *networkv1.HostNetworkConfig) (*LeaseManager, *networkv1.NodeNetworkState, error) {
+func NewLeaseManager(iface string, link *iface.Link, hnc *networkv1.HostNetworkConfig, hncController ctlnetworkv1.HostNetworkConfigController) (*LeaseManager, *networkv1.NodeNetworkState, error) {
 	family := hnc.Spec.IPFamily
 	if family == "" {
 		family = networkv1.IPFamilyIPv4 // Default fallback
@@ -63,10 +77,16 @@ func NewLeaseManager(iface string, link *iface.Link, hnc *networkv1.HostNetworkC
 
 	ctx, cancel := context.WithCancel(context.Background())
 	lm := &LeaseManager{
-		iface:  iface,
-		link:   link,
-		vlanID: hnc.Spec.VlanID,
-		family: family,
+		hncName: hnc.Name,
+		iface:   iface,
+		link:    link,
+		vlanID:  hnc.Spec.VlanID,
+		family:  family,
+		enqueueController: func(name string) {
+			if hncController != nil {
+				hncController.EnqueueAfter(name, renewEnqueueControllerInterval*time.Millisecond)
+			}
+		},
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -80,38 +100,47 @@ func NewLeaseManager(iface string, link *iface.Link, hnc *networkv1.HostNetworkC
 		}
 	}()
 
+	initV4 := func() error {
+		var err error
+		lm.client4, err = nclient4.New(iface)
+		if err != nil {
+			return fmt.Errorf("failed to create DHCPv4 client: %w", err)
+		}
+		return nil
+	}
+
+	initV6 := func() error {
+		time.Sleep(ipv6SleepMillisecond * time.Millisecond)
+		if err := lm.initDUID(hnc); err != nil {
+			return err
+		}
+		var err error
+		lm.client6, err = nclient6.New(iface)
+		if err != nil {
+			return fmt.Errorf("failed to create DHCPv6 client: %w", err)
+		}
+		return nil
+	}
+
 	// 1. Initialize Network Clients based on IP family
 	var err error
 	switch family {
 	case networkv1.IPFamilyIPv4:
-		lm.client4, err = nclient4.New(iface)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create DHCPv4 client: %w", err)
-		}
+		err = initV4()
 	case networkv1.IPFamilyIPv6:
-		time.Sleep(ipv6SleepMillisecond * time.Millisecond)
-		if err := lm.initDUID(hnc); err != nil {
-			return nil, nil, err
-		}
-		lm.client6, err = nclient6.New(iface)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create DHCPv6 client: %w", err)
-		}
+		err = initV6()
 	case networkv1.IPFamilyDualIPv4First:
-		if err := lm.initDUID(hnc); err != nil {
+		if err = initV4(); err != nil {
 			return nil, nil, err
 		}
-		lm.client4, err = nclient4.New(iface)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create DHCPv4 client: %w", err)
-		}
 		time.Sleep(ipv6SleepMillisecond * time.Millisecond)
-		lm.client6, err = nclient6.New(iface)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create DHCPv6 client: %w", err)
-		}
+		err = initV6()
 	default:
-		return nil, nil, fmt.Errorf("unsupported network family %v", family)
+		err = fmt.Errorf("unsupported network family %v", family)
+	}
+
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// 2. Execute internal start logic: request leases, apply to link, and start background loops
@@ -127,7 +156,7 @@ func NewLeaseManager(iface string, link *iface.Link, hnc *networkv1.HostNetworkC
 // start executes active lease requests, binds addresses, and spawns renewal loops.
 // Since lm is locally owned during initialization, no locks are needed until background routines spawn.
 func (lm *LeaseManager) start() (*networkv1.NodeNetworkState, error) {
-	var multiIP iface.MultiFamilyIPWithLease
+	multiIP := iface.NewMultiFamilyIP()
 	var newState networkv1.NodeNetworkState
 
 	type ipTask struct {
@@ -201,12 +230,31 @@ func (lm *LeaseManager) start() (*networkv1.NodeNetworkState, error) {
 		}
 	}
 
-	if err := lm.link.SetMultiFamilyIPAddresses(&multiIP, lm.vlanID); err != nil {
-		return nil, fmt.Errorf("failed to set leased multi-family IP addresses: %w", err)
+	cleanupFailed := false
+	err := lm.link.SetMultiFamilyIPAddresses(multiIP, lm.vlanID)
+	if err != nil {
+		if !errors.Is(err, iface.ErrCleanupIPFailed) {
+			return nil, fmt.Errorf("failed to set leased multi-family IP addresses: %w", err)
+		}
+		cleanupFailed = true
 	}
 
 	lm.netState = newState
 	lm.running = true
+
+	// If setting the IPs succeeded but stale address removal encountered an error,
+	// mark pendingCleanup as true. This allows the newly acquired lease and interface
+	// configuration to remain active while letting the controller retry the cleanup
+	// asynchronously on subsequent reconciliation loops.
+	if cleanupFailed {
+		if lm.client4 != nil {
+			lm.pendingCleanupV4 = cleanupFailed
+		}
+		if lm.client6 != nil {
+			lm.pendingCleanupV6 = cleanupFailed
+		}
+		logrus.Warnf("lease is retrieved and set up interface, but failed to cleanup stale ips, will retry, error %v", err.Error())
+	}
 
 	// Now that background loops are about to be spawned, they need to use lock to operate lm's data
 	if lm.client4 != nil {
@@ -235,7 +283,6 @@ func (lm *LeaseManager) renewLoopV4() {
 	// Cache the interface name for clean, common usage across the loop
 	ifaceStr := lm.iface
 	var lease *nclient4.Lease
-	failedToApplyIP := false
 
 	// Handle a single renewal tick action
 	handleTick := func() {
@@ -252,6 +299,8 @@ func (lm *LeaseManager) renewLoopV4() {
 		ipStr, err := ipAddrFromLeaseV4(newLease)
 		if err != nil {
 			logrus.Errorf("Failed to parse IPv4 address from DHCPv4 lease on interface %s: %v", ifaceStr, err)
+			// Since we couldn't parse the IP, we should release the newly acquired lease to avoid leaks
+			_ = lm.client4.Release(newLease)
 			return
 		}
 
@@ -260,30 +309,65 @@ func (lm *LeaseManager) renewLoopV4() {
 			gwStr = routers[0].String()
 		}
 
-		// Update internal state and check if IP or gateway parameters changed
+		// Apply the IP configuration to the interface first before committing state
+		ipAddr := networkv1.IPAddr(ipStr)
+		cleanupFailed := false
+		if err := lm.link.SetMultiFamilyIPAddresses(iface.NewMultiFamilyIPWithLeaseFromIPv4(&ipAddr), lm.vlanID); err != nil {
+			if !errors.Is(err, iface.ErrCleanupIPFailed) {
+				logrus.Errorf("Failed to apply DHCPv4 lease for interface %s (IP: %s, Gateway: %s): %v", ifaceStr, ipStr, gwStr, err)
+				// Hard failure applying IP; release lease and abort updating state so next tick retries
+				_ = lm.client4.Release(newLease)
+				return
+			}
+			// Cleanup failed, but the IP address itself was successfully applied
+			cleanupFailed = true
+		}
+
+		// Only after the network state is successfully updated do we commit to LeaseManager struct
 		lm.mu.Lock()
-		leaseChanged := lm.netState.IPv4 != ipStr || lm.netState.GatewayIPv4 != gwStr
-		lm.lease4 = newLease // always updates it with latest lease
+		lm.lease4 = newLease
 		lm.netState.IPv4 = ipStr
 		lm.netState.GatewayIPv4 = gwStr
+		if cleanupFailed {
+			lm.pendingCleanupV4 = true
+			lm.mu.Unlock()
+			lm.enqueueController(lm.hncName)
+			logrus.Warnf("Applied DHCPv4 lease for interface %s, but stale IP cleanup failed (will retry via controller): %v", ifaceStr, err)
+		} else {
+			// If a previous cleanup was pending, a successful normal tick clears it out
+			lm.pendingCleanupV4 = false
+			lm.mu.Unlock()
+			logrus.Infof("Successfully applied DHCPv4 lease for interface %s (IP: %s, Gateway: %s)", ifaceStr, ipStr, gwStr)
+		}
+	}
+
+	// Handle controller-triggered retry for pending stale IP cleanups
+	handleCleanup := func() {
+		lm.mu.Lock()
+		// If the pending flag was already cleared by a successful renewal tick,
+		// we can skip redundant cleanup execution.
+		if !lm.pendingCleanupV4 {
+			lm.mu.Unlock()
+			return
+		}
+		ipStr := lm.netState.IPv4
 		lm.mu.Unlock()
 
-		// If the IP and gateway are unchanged, skip low-level kernel netlink manipulations to avoid unnecessary churn.
-		if !leaseChanged && !failedToApplyIP {
-			logrus.Infof("DHCPv4 lease for interface %s unchanged (IP: %s, Gateway: %s), skipping netlink re-application", ifaceStr, ipStr, gwStr)
+		if ipStr == "" {
 			return
 		}
 
-		// Reuse existing SetMultiFamilyIPAddresses, but only set IPv4 family IP
 		ipAddr := networkv1.IPAddr(ipStr)
 		if err := lm.link.SetMultiFamilyIPAddresses(iface.NewMultiFamilyIPWithLeaseFromIPv4(&ipAddr), lm.vlanID); err != nil {
-			logrus.Errorf("Failed to apply DHCPv4 lease for interface %s (IP: %s, Gateway: %s): %v", ifaceStr, ipStr, gwStr, err)
-			failedToApplyIP = true
-		} else {
-			logrus.Infof("Successfully applied DHCPv4 lease for interface %s (IP: %s, Gateway: %s)", ifaceStr, ipStr, gwStr)
-			failedToApplyIP = false
+			logrus.Errorf("Failed to clear stale IPv4 addresses for interface %s: %v", ifaceStr, err)
+			return
 		}
 
+		// Cleanup succeeded; clear the pending flag
+		lm.mu.Lock()
+		lm.pendingCleanupV4 = false
+		lm.mu.Unlock()
+		logrus.Infof("Successfully cleared pending stale IPv4 addresses for interface %s", ifaceStr)
 	}
 
 	for {
@@ -307,7 +391,10 @@ func (lm *LeaseManager) renewLoopV4() {
 		select {
 		case <-timer.C:
 			handleTick()
-			timer.Stop()
+		case <-lm.cleanupSignalV4:
+			// DO NOT stop the timer here! We only want to service the cleanup
+			// request and let the regular renewal countdown continue undisturbed.
+			handleCleanup()
 		case <-lm.ctx.Done():
 			timer.Stop()
 			return
@@ -379,18 +466,64 @@ func (lm *LeaseManager) renewLoopV6() {
 			return
 		}
 
-		// Update internal state and check if IPv6 parameter changed
-		lm.mu.Lock()
-		lm.lease6 = newPacket // always updates it with latest packet lease
-		lm.netState.IPv6 = ipStr
-		lm.mu.Unlock()
-
+		// Apply the IPv6 configuration to the interface first before committing state
 		ipAddr := networkv1.IPAddr(ipStr)
+		cleanupFailed := false
 		if err := lm.link.SetMultiFamilyIPAddresses(iface.NewMultiFamilyIPWithLeaseFromIPv6(&ipAddr, prefLft, validLft), lm.vlanID); err != nil {
-			logrus.Errorf("Failed to apply DHCPv6 lease for interface %s (IP: %s): %v", ifaceStr, ipStr, err)
+			if !errors.Is(err, iface.ErrCleanupIPFailed) {
+				logrus.Errorf("Failed to apply DHCPv6 lease for interface %s (IP: %s): %v", ifaceStr, ipStr, err)
+				// Hard failure applying IP; abort updating state so next tick/reconciliation retries
+				return
+			}
+			// Cleanup failed, but the IPv6 address itself was successfully applied
+			cleanupFailed = true
+		}
+
+		// Only after the network state is successfully updated do we commit to LeaseManager struct
+		lm.mu.Lock()
+		lm.lease6 = newPacket
+		lm.netState.IPv6 = ipStr
+		if cleanupFailed {
+			lm.pendingCleanupV6 = true
+			lm.mu.Unlock()
+			lm.enqueueController(lm.hncName)
+			logrus.Warnf("Applied DHCPv6 lease for interface %s, but stale IPv6 cleanup failed (will retry via controller): %v", ifaceStr, err)
 		} else {
+			// If a previous cleanup was pending, a successful normal tick clears it out
+			lm.pendingCleanupV6 = false
+			lm.mu.Unlock()
 			logrus.Infof("Successfully applied DHCPv6 lease for interface %s (IP: %s)", ifaceStr, ipStr)
 		}
+	}
+
+	// Handle controller-triggered retry for pending stale IPv6 cleanups
+	handleCleanupV6 := func() {
+		lm.mu.Lock()
+		// If the pending flag was already cleared by a successful renewal tick, skip
+		if !lm.pendingCleanupV6 {
+			lm.mu.Unlock()
+			return
+		}
+		ipStr := lm.netState.IPv6
+		lm.mu.Unlock()
+
+		if ipStr == "" {
+			return
+		}
+
+		ipAddr := networkv1.IPAddr(ipStr)
+		// Note: For cleanup retry, default/zero lifecycles or existing tracked lifecycles can be passed;
+		// using a standard multi-family sync via SetMultiFamilyIPAddresses
+		if err := lm.link.SetMultiFamilyIPAddresses(iface.NewMultiFamilyIPWithLeaseFromIPv6(&ipAddr, 0, 0), lm.vlanID); err != nil {
+			logrus.Errorf("Failed to clear stale IPv6 addresses for interface %s: %v", ifaceStr, err)
+			return
+		}
+
+		// Cleanup succeeded; clear the pending flag
+		lm.mu.Lock()
+		lm.pendingCleanupV6 = false
+		lm.mu.Unlock()
+		logrus.Infof("Successfully cleared pending stale IPv6 addresses for interface %s", ifaceStr)
 	}
 
 	for {
@@ -409,14 +542,15 @@ func (lm *LeaseManager) renewLoopV6() {
 		select {
 		case <-timer.C:
 			handleTickV6()
-			timer.Stop()
+		case <-lm.cleanupSignalV6:
+			// DO NOT stop the timer here! Service cleanup while renewal countdown continues.
+			handleCleanupV6()
 		case <-lm.ctx.Done():
 			timer.Stop()
 			return
 		}
 	}
 }
-
 func (lm *LeaseManager) StopLease() {
 	if lm == nil {
 		return
@@ -646,4 +780,38 @@ func (lm *LeaseManager) buildRenewPacketV6(lease dhcpv6.DHCPv6) (*dhcpv6.Message
 
 	renewMsg.MessageType = dhcpv6.MessageTypeRenew
 	return renewMsg, nil
+}
+
+// EnsureCleanup checks both IPv4 and IPv6 pending cleanup flags, fires non-blocking
+// signals to their respective renewal loops if running, and returns true if any
+// family still has a pending cleanup that requires a controller retry/requeue.
+func (lm *LeaseManager) EnsureCleanup() bool {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+
+	if !lm.running {
+		return false
+	}
+
+	hasPending := false
+
+	if lm.pendingCleanupV4 {
+		hasPending = true
+		select {
+		case lm.cleanupSignalV4 <- struct{}{}:
+		default:
+			// Signal already queued or loop busy; non-blocking fire-and-forget
+		}
+	}
+
+	if lm.pendingCleanupV6 {
+		hasPending = true
+		select {
+		case lm.cleanupSignalV6 <- struct{}{}:
+		default:
+			// Signal already queued or loop busy; non-blocking fire-and-forget
+		}
+	}
+
+	return hasPending
 }
