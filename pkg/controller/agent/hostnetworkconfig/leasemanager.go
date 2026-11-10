@@ -70,7 +70,7 @@ type LeaseManager struct {
 // NewLeaseManager atomically handles the entire lifecycle of lease acquisition.
 // It performs instance creation, socket/client initialization, DHCP lease requests,
 // multi-family IP address application to the link, and background renewal loop spawning.
-// Follows an all-or-nothing transactional pattern: if any step fails, StopLease() is
+// Follows an all-or-nothing transactional pattern: if any step fails, cleanup() is
 // automatically invoked via defer to clean up all allocated sockets and resources.
 func NewLeaseManager(iface string, link *iface.Link, vlanSubIndex int, hnc *networkv1.HostNetworkConfig, hncController ctlnetworkv1.HostNetworkConfigController) (*LeaseManager, *networkv1.NodeNetworkState, error) {
 	family := hnc.Spec.IPFamily
@@ -104,7 +104,7 @@ func NewLeaseManager(iface string, link *iface.Link, vlanSubIndex int, hnc *netw
 	var success bool
 	defer func() {
 		if !success {
-			lm.StopLease()
+			lm.cleanup()
 		}
 	}()
 
@@ -141,7 +141,6 @@ func NewLeaseManager(iface string, link *iface.Link, vlanSubIndex int, hnc *netw
 		if err = initV4(); err != nil {
 			return nil, nil, err
 		}
-		time.Sleep(ipv6SleepMillisecond * time.Millisecond)
 		err = initV6()
 	default:
 		err = fmt.Errorf("unsupported network family %v", family)
@@ -252,6 +251,10 @@ func (lm *LeaseManager) start() (*networkv1.NodeNetworkState, error) {
 			return nil, fmt.Errorf("failed to set leased multi-family IP addresses: %w", err)
 		}
 	}
+
+	// From now on, the LeaseManager initialization is considered fully successful.
+	// Initialization cleanup will no longer be triggered on exit. Any failures
+	// from this point onward are handled asynchronously by the background renewal loops.
 
 	lm.netState = newState
 	lm.running = true
@@ -561,6 +564,8 @@ func (lm *LeaseManager) renewLoopV6() {
 		}
 	}
 }
+
+// for controller to call
 func (lm *LeaseManager) StopLease() {
 	if lm == nil {
 		return
@@ -831,4 +836,38 @@ func (lm *LeaseManager) EnsureCleanup() bool {
 	}
 
 	return hasPending
+}
+
+// cleanup releases any partially acquired resources (clients, leases, context)
+// during failed initialization, where concurrent locks are not required.
+// dedicately for `NewLeaseManager` rollback, don't mix with StopLease
+func (lm *LeaseManager) cleanup() {
+	if lm == nil {
+		return
+	}
+
+	// 1. Cancel context if initialized
+	if lm.cancel != nil {
+		lm.cancel()
+	}
+
+	// 2. Release acquired IPv4 lease if any
+	if lm.lease4 != nil {
+		if err := lm.ReleaseIPv4Lease(lm.lease4); err != nil {
+			logrus.Warnf("Failed to release DHCPv4 lease during init cleanup: %v", err)
+		}
+		lm.lease4 = nil
+	}
+
+	// 3. Close DHCPv4 client socket if initialized
+	if lm.client4 != nil {
+		_ = lm.client4.Close()
+		lm.client4 = nil
+	}
+
+	// 4. Close DHCPv6 client socket if initialized
+	if lm.client6 != nil {
+		_ = lm.client6.Close()
+		lm.client6 = nil
+	}
 }
