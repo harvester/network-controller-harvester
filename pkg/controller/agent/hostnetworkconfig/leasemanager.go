@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/types"
 
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 
@@ -32,7 +33,8 @@ const (
 )
 
 type LeaseManager struct {
-	hncName string // Name of the parent HostNetworkConfig object for controller enqueue
+	hncName string    // Name of the parent HostNetworkConfig object for controller enqueue
+	hncUID  types.UID // UID of the parent HostNetworkConfig object to guard against quick recreation races
 
 	iface  string
 	link   *iface.Link
@@ -78,6 +80,7 @@ func NewLeaseManager(iface string, link *iface.Link, hnc *networkv1.HostNetworkC
 	ctx, cancel := context.WithCancel(context.Background())
 	lm := &LeaseManager{
 		hncName: hnc.Name,
+		hncUID:  hnc.UID, // Store UID to verify object incarnation
 		iface:   iface,
 		link:    link,
 		vlanID:  hnc.Spec.VlanID,

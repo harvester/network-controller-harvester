@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"sync"
 	"time"
 
@@ -80,37 +79,6 @@ func Register(ctx context.Context, management *config.Management) error {
 	return nil
 }
 
-func checkifHostNetworkInterfaceExists(hnc *networkv1.HostNetworkConfig) (exists bool, isUp bool, err error) {
-	v, err := vlan.GetVlan(hnc.Spec.ClusterNetwork)
-	if err != nil {
-		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			return false, false, nil
-		}
-		return false, false, err
-	}
-
-	bridgelink, err := v.GetBridgelink()
-	if err != nil {
-		return false, false, err
-	}
-
-	vlanIntf := utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID)
-	vlanlink, err := netlink.LinkByName(vlanIntf)
-	if err != nil {
-		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			return false, false, nil
-		}
-		return false, false, err
-	}
-
-	// Check if the interface has the UP flag set
-	if vlanlink.Attrs().Flags&net.FlagUp == 0 {
-		return true, false, nil
-	}
-
-	return true, true, nil
-}
-
 func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*networkv1.HostNetworkConfig, error) {
 	if hnc == nil || hnc.DeletionTimestamp != nil {
 		return nil, nil
@@ -125,35 +93,22 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 
 	intfName := utils.GetClusterNetworkBrVlanDevice(utils.GenerateBridgeName(hnc.Spec.ClusterNetwork), hnc.Spec.VlanID)
 
-	intfExists, _, err := checkifHostNetworkInterfaceExists(hnc)
-	if err != nil {
-		return nil, err
-	}
-
 	// node selector doesn't match, need to clean up the host network config if exists
 	if !matchNodeSet {
-		if intfExists {
-			return h.removeHostNetworkInterface(hnc, true)
-		}
-
-		// always ensure the status is cleaned
-		err := h.removeHostNetworkPerNodeStatus(hnc)
-		if err != nil {
-			return nil, err
-		}
-		return hnc, nil
+		return h.cleanupStaleHostNetworkConfig(hnc)
 	}
 
 	var bridgelink *iface.Link
 
+	// match this node, ensure everything from beginning
 	v, err := vlan.GetVlan(hnc.Spec.ClusterNetwork)
 	if err != nil {
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			logrus.Infof("cluster network %s is not set on this node, skip", hnc.Spec.ClusterNetwork)
+			logrus.Infof("cluster network %s is not set on this node, wait for it to be setup", hnc.Spec.ClusterNetwork)
 			//stop and delete all lease manaagers assosciated with the cluster network (if uplink removed due to vlanconfig changes/deletion)
 			h.stopLeaseManager(intfName)
-			return nil, nil
 		}
+		// retry anyway
 		return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 	}
 
@@ -176,7 +131,6 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 	}
 
 	var nns *networkv1.NodeNetworkState
-	// var err error
 	var ips *networkv1.MultiFamilyIP
 	switch hnc.Spec.Mode {
 	case IPModeDHCP:
@@ -207,21 +161,22 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 	}
 
-	//success case, update host network config status to ready
+	// success case, update host network config status to ready
 	if updateErr := h.updateHostNetworkReadyStatus(hnc, nil, nns); updateErr != nil {
 		return hnc, updateErr
+	}
+
+	// if dhcp mode fails on last step, some stale IPs are not cleaned, then trigger self to retry
+	if hnc.Spec.Mode == IPModeDHCP {
+		if h.cleanupStaleIP(intfName) {
+			h.hostNetworkController.EnqueueAfter(hnc.Name, controllerEnqueueSelfInterval*time.Millisecond)
+		}
 	}
 
 	// update node annotation to set the vlan sub interface to be used as underlay (if underlay is enabled)
 	// and set to default mgmt interface if underlay is not enabled
 	if err := h.addNodeAnnotation(intfName, hnc.Spec.Underlay); err != nil {
 		return nil, fmt.Errorf("add node annotation to node %s for host network config %s failed, error: %w", h.nodeName, hnc.Name, err)
-	}
-
-	if hnc.Spec.Mode == IPModeDHCP {
-		if h.cleanupStaleIP(intfName) {
-			h.hostNetworkController.EnqueueAfter(hnc.Name, controllerEnqueueSelfInterval*time.Millisecond)
-		}
 	}
 
 	return hnc, nil
@@ -239,49 +194,44 @@ func (h *Handler) updateHostNetworkReadyStatus(hnc *networkv1.HostNetworkConfig,
 	return nil
 }
 
-func (h *Handler) removeHostNetworkInterface(hnc *networkv1.HostNetworkConfig, onChange bool) (*networkv1.HostNetworkConfig, error) {
+func (h *Handler) removeHostNetworkInterface(hnc *networkv1.HostNetworkConfig) error {
 	v, err := vlan.GetVlan(hnc.Spec.ClusterNetwork)
 	if err != nil {
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			logrus.Debugf("cluster network %s is not set on this node, skip", hnc.Spec.ClusterNetwork)
-			return nil, nil
+			// stop anyway
+			h.stopLeaseManager(utils.GetClusterNetworkBrVlanDevice(utils.GenerateBridgeName(hnc.Spec.ClusterNetwork), hnc.Spec.VlanID))
+			return nil
 		}
-		return nil, err
+		return err
 	}
 
 	bridgelink, err := v.GetBridgelink()
 	if err != nil {
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			return nil, nil
+			h.stopLeaseManager(utils.GetClusterNetworkBrVlanDevice(utils.GenerateBridgeName(hnc.Spec.ClusterNetwork), hnc.Spec.VlanID))
+			return nil
 		} else {
-			return nil, fmt.Errorf("failed to get link for bridge %s, error: %w", v.Bridge().Name, err)
+			return fmt.Errorf("failed to get link for bridge %s, error: %w", v.Bridge().Name, err)
 		}
 	}
 
-	// Release the dhcp lease before tearing down the vlan
-	h.stopLeaseManager(utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID))
+	// the normal cleanup path, release the dhcp lease before tearing down the vlan
+	h.stopLeaseManager(utils.GetClusterNetworkBrVlanDevice(utils.GenerateBridgeName(hnc.Spec.ClusterNetwork), hnc.Spec.VlanID))
 
 	if err := bridgelink.DelBridgeVlanSelf(hnc.Spec.VlanID); err != nil {
-		return nil, fmt.Errorf("del bridge vlanconfig %d failed for %s, error: %w", hnc.Spec.VlanID, v.Bridge().Name, err)
+		return fmt.Errorf("del bridge vlanconfig %d failed for %s, error: %w", hnc.Spec.VlanID, v.Bridge().Name, err)
 	}
 
 	if err := bridgelink.DelVlanSubInterface(hnc.Spec.VlanID); err != nil {
-		return nil, fmt.Errorf("del vlan subinterface %d failed for %s, error: %w", hnc.Spec.VlanID, v.Bridge().Name, err)
+		return fmt.Errorf("del vlan subinterface %d failed for %s, error: %w", hnc.Spec.VlanID, v.Bridge().Name, err)
 	}
 
 	// reconcile cluster network to delete vid from the uplink(cluster-bo)
 	if err := h.wakeUpClusterNetwork(hnc.Spec.ClusterNetwork); err != nil {
-		return nil, fmt.Errorf("wake up cluster network %s failed, error: %w", hnc.Spec.ClusterNetwork, err)
+		return fmt.Errorf("wake up cluster network %s failed, error: %w", hnc.Spec.ClusterNetwork, err)
 	}
 
-	//update nodestatus when interface deleted due to node selector changes.
-	if onChange {
-		if err := h.removeHostNetworkPerNodeStatus(hnc); err != nil {
-			return nil, err
-		}
-	}
-
-	return hnc, nil
+	return nil
 }
 
 func (h *Handler) OnRemove(_ string, hnc *networkv1.HostNetworkConfig) (*networkv1.HostNetworkConfig, error) {
@@ -290,8 +240,11 @@ func (h *Handler) OnRemove(_ string, hnc *networkv1.HostNetworkConfig) (*network
 	}
 
 	logrus.Infof("hostnetwork config %s has been removed, spec: %+v", hnc.Name, hnc.Spec)
-
-	return h.removeHostNetworkInterface(hnc, false)
+	// OnRemove just clears up local object, but does not update CRD status due to it is vanishing
+	if err := h.removeHostNetworkInterface(hnc); err != nil {
+		return nil, err
+	}
+	return hnc, nil
 }
 
 // reconcile cluster network to add/delete vid to the uplink(cluster-bo) after hostnetworkconfig changes
@@ -325,13 +278,13 @@ func findMatchingIPfromNode(nodeName string, hnc *networkv1.HostNetworkConfig) (
 	return nil, fmt.Errorf("no matching multi-family IPs found for node %s", nodeName)
 }
 
-func (h *Handler) removeHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfig) error {
+func (h *Handler) removeHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfig) (*networkv1.HostNetworkConfig, error) {
 	if hnc.Status.NodeStatus == nil {
-		return nil
+		return hnc, nil
 	}
 
 	if _, exists := hnc.Status.NodeStatus[h.nodeName]; !exists {
-		return nil
+		return hnc, nil
 	}
 
 	patchPayload := map[string]interface{}{
@@ -344,7 +297,7 @@ func (h *Handler) removeHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfi
 
 	patchBytes, err := json.Marshal(patchPayload)
 	if err != nil {
-		return fmt.Errorf("failed to marshal patch: %w", err)
+		return nil, fmt.Errorf("failed to marshal patch: %w", err)
 	}
 
 	_, err = h.hostNetworkClient.Patch(
@@ -354,10 +307,10 @@ func (h *Handler) removeHostNetworkPerNodeStatus(hnc *networkv1.HostNetworkConfi
 		"status",
 	)
 	if err != nil {
-		return fmt.Errorf("failed to patch HostNetworkConfig status for node %s: %w", h.nodeName, err)
+		return nil, fmt.Errorf("failed to patch HostNetworkConfig status for node %s: %w", h.nodeName, err)
 	}
 
-	return nil
+	return hnc, nil
 }
 
 // setHostNetworkPerNodeStatus updates the node-specific status of the HostNetworkConfig.
@@ -496,14 +449,30 @@ func (h *Handler) startLeaseManager(bridgelink *iface.Link, hnc *networkv1.HostN
 	vlanIntfName := utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID)
 
 	h.mu.Lock()
-	if lm, exists := h.leaseManagers[vlanIntfName]; exists && lm != nil {
-		h.mu.Unlock()
-		state := lm.GetNetworkState()
-		return &state, nil
-	}
-	h.mu.Unlock()
 
-	// Not present, create and start atomically
+	if lm, exists := h.leaseManagers[vlanIntfName]; exists && lm != nil {
+		// If the HNC UID changed, the previous object was deleted and recreated quickly.
+		// Stop the stale LeaseManager and replace it.
+		if lm.hncUID != hnc.UID {
+			delete(h.leaseManagers, vlanIntfName)
+			h.mu.Unlock()
+
+			logrus.Infof("HNC UID change detected for interface %s (old UID: %s, new UID: %s). Replacing stale LeaseManager...",
+				vlanIntfName, lm.hncUID, hnc.UID)
+			lm.StopLease() // Cancel background renewal loops and cleanup contexts outside the lock
+
+		} else {
+			h.mu.Unlock()
+			// Existing LeaseManager is up-to-date; return its current state
+			state := lm.GetNetworkState()
+			return &state, nil
+		}
+	} else {
+		// If it didn't exist in the map, release the initial lock before creation
+		h.mu.Unlock()
+	}
+
+	// Create and start a new LeaseManager for this HNC incarnation (done outside the lock)
 	lm, state, err := NewLeaseManager(vlanIntfName, bridgelink, hnc, h.hostNetworkController)
 	if err != nil {
 		return nil, err
@@ -530,7 +499,7 @@ func (h *Handler) addNodeAnnotation(underlayIntfName string, underlay bool) erro
 		return nil
 	}
 
-	//set to default mgmt interface if underlay is not enabled
+	// set to default mgmt interface if underlay is not enabled
 	if !underlay {
 		underlayIntfName = h.mgmtIntfName
 	}
@@ -609,10 +578,19 @@ func ConvertMultiFamilyIPToNodeNetworkState(mf *networkv1.MultiFamilyIP) *networ
 func (h *Handler) cleanupStaleIP(vlanIntfName string) bool {
 	h.mu.Lock()
 	lm := h.leaseManagers[vlanIntfName]
+	h.mu.Unlock()
 	if lm == nil {
 		return false
 	}
-	h.mu.Unlock()
 
 	return lm.EnsureCleanup()
+}
+
+// cleanup potential stale hostnetworkconfig
+func (h *Handler) cleanupStaleHostNetworkConfig(hnc *networkv1.HostNetworkConfig) (*networkv1.HostNetworkConfig, error) {
+	if err := h.removeHostNetworkInterface(hnc); err != nil {
+		return nil, err
+	}
+	// always ensure the status is cleaned
+	return h.removeHostNetworkPerNodeStatus(hnc)
 }
