@@ -187,7 +187,7 @@ func (l *Link) SetMultiFamilyIPAddresses(ips *MultiFamilyIPWithLease, vid uint16
 		return fmt.Errorf("finding vlan subinterface failed, error: %v, link: %s, vid: %d", err, linkName, vid)
 	}
 
-	// --- Step 1: Parse both IPs first and validate before any 'write' actions ---
+	// --- Step 0: Parse both IPs first and validate before any 'write' actions ---
 	var desiredIPv4Addr, desiredIPv6Addr *netlink.Addr
 	var desiredIPv4, desiredIPv6 net.IP
 
@@ -218,13 +218,44 @@ func (l *Link) SetMultiFamilyIPAddresses(ips *MultiFamilyIPWithLease, vid uint16
 		desiredIPv6 = ipv6Addr.IP
 	}
 
+	var originalIPv4Addr *netlink.Addr
+	ipv4NeedsUpdate := false
+
+	// --- Step 1: Inspect existing IPv4 addresses only if we have a desired IPv4 ---
+	if desiredIPv4Addr != nil {
+		existingIPv4s, err := netlink.AddrList(vlanLink, netlink.FAMILY_V4)
+		if err != nil {
+			return fmt.Errorf("failed to list existing ipv4 addresses: %w", err)
+		}
+
+		// Default to true (needs addition) unless found and matched
+		ipv4NeedsUpdate = true
+		for _, addr := range existingIPv4s {
+			if addr.IP.Equal(desiredIPv4Addr.IP) {
+				existingCopy := addr
+				originalIPv4Addr = &existingCopy
+
+				// If both IP and mask match perfectly, no update is needed
+				if addr.Mask.String() == desiredIPv4Addr.Mask.String() {
+					ipv4NeedsUpdate = false
+				}
+				break
+			}
+		}
+	}
+
 	// --- Step 2: Apply valid IPv4 and IPv6 addresses ---
 	// IPv4 is intentionally applied first to establish a predictable primary
 	// address order on the interface for legacy or fallback-sensitive applications.
-	if desiredIPv4Addr != nil {
+
+	// Apply IPv4 only if it's new, missing, or has a mismatched netmask ---
+	if desiredIPv4Addr != nil && ipv4NeedsUpdate {
 		if err := netlink.AddrReplace(vlanLink, desiredIPv4Addr); err != nil {
 			return fmt.Errorf("set ipv4 address failed, error: %v, link: %s, ipNet: %v", err, linkName, desiredIPv4Addr)
 		}
+		logrus.Debugf("Applied/Updated IPv4 address %s on link %s", desiredIPv4Addr, linkName)
+	} else if desiredIPv4Addr != nil {
+		logrus.Debugf("IPv4 address %s with matching netmask already present on link %s, skipping", desiredIPv4Addr, linkName)
 	}
 
 	if desiredIPv6Addr != nil {
@@ -232,9 +263,20 @@ func (l *Link) SetMultiFamilyIPAddresses(ips *MultiFamilyIPWithLease, vid uint16
 			// Best-effort rollback: If IPv6 configuration fails after IPv4 was
 			// successfully bound, attempt to remove the newly applied IPv4 address
 			// to prevent leaving the interface in a partial, half-configured state.
-			if desiredIPv4Addr != nil {
-				if errDel := netlink.AddrDel(vlanLink, desiredIPv4Addr); errDel != nil {
-					logrus.Errorf("setup ipv6 failed (%v); best-effort rollback of IPv4 also failed (%v) on link %s", err, errDel, linkName)
+
+			if desiredIPv4Addr != nil && ipv4NeedsUpdate {
+				if originalIPv4Addr != nil {
+					// Restore exact prior state (including its original netmask)
+					if errRollback := netlink.AddrReplace(vlanLink, originalIPv4Addr); errRollback != nil {
+						logrus.Errorf("setup ipv6 failed (%v); rollback of IPv4 to its original state failed (%v) on link %s", err, errRollback, linkName)
+					} else {
+						logrus.Debugf("Successfully rolled back IPv4 to original state on link %s", linkName)
+					}
+				} else {
+					// It didn't exist prior to this run, so clean it up
+					if errDel := netlink.AddrDel(vlanLink, desiredIPv4Addr); errDel != nil {
+						logrus.Errorf("setup ipv6 failed (%v); deletion of newly added IPv4 failed (%v) on link %s", err, errDel, linkName)
+					}
 				}
 			}
 
