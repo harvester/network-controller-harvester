@@ -18,7 +18,11 @@ import (
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 )
 
-var ErrCleanupIPFailed = errors.New("failed to cleanup stale ip")
+var (
+	ErrCleanupIPv4   = errors.New("failed to cleanup stale ipv4")
+	ErrCleanupIPv6   = errors.New("failed to cleanup stale ipv6")
+	ErrCleanupIPv4v6 = errors.New("failed to cleanup stale ipv4 ipv6")
+)
 
 // LeasedMultiFamilyIP wraps MultiFamilyIP with IPv6 lifetime metadata (if get from DHCP server)
 // to ensure the kernel natively manages address expiration and deprecation.
@@ -245,11 +249,16 @@ func (l *Link) SetMultiFamilyIPAddresses(ips *MultiFamilyIPWithLease, vid uint16
 	// the parent controller to re-queue the reconciliation loop and eventually achieve
 	// convergence without discarding a valid, freshly acquired lease.
 	if err := l.syncFamilyIPs(vlanLink, netlink.FAMILY_V4, desiredIPv4, l.Attrs().Name); err != nil {
-		return fmt.Errorf("%w v4: %v", ErrCleanupIPFailed, err)
+		// book failure on cleanup dual
+		if desiredIPv6Addr != nil {
+			return fmt.Errorf("%w: %v", ErrCleanupIPv4v6, err)
+		}
+		// book failure on cleanup ipv4 only
+		return fmt.Errorf("%w: %v", ErrCleanupIPv4, err)
 	}
 
 	if err := l.syncFamilyIPs(vlanLink, netlink.FAMILY_V6, desiredIPv6, l.Attrs().Name); err != nil {
-		return fmt.Errorf("%w v6: %v", ErrCleanupIPFailed, err)
+		return fmt.Errorf("%w: %v", ErrCleanupIPv6, err)
 	}
 
 	return nil

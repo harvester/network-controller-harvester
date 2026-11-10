@@ -98,8 +98,6 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return h.cleanupStaleHostNetworkConfig(hnc)
 	}
 
-	var bridgelink *iface.Link
-
 	// match this node, ensure everything from beginning
 	v, err := vlan.GetVlan(hnc.Spec.ClusterNetwork)
 	if err != nil {
@@ -112,6 +110,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 	}
 
+	var bridgelink *iface.Link
 	bridgelink, err = v.GetBridgelink()
 	if err != nil {
 		return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
@@ -150,12 +149,19 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 		}
 
-		// if controller gets ErrCleanupIPFailed error, retry automatically
-		err := bridgelink.SetMultiFamilyIPAddresses(iface.NewMultiFamilyIPWithLeaseFromStaticIPs(ips), hnc.Spec.VlanID)
+		// if controller gets ErrCleanupIP* error, set CRD status as ready, but log & retry locally
+		err = bridgelink.SetMultiFamilyIPAddresses(iface.NewMultiFamilyIPWithLeaseFromStaticIPs(ips), hnc.Spec.VlanID)
 		if err != nil {
-			return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
+			switch err {
+			case iface.ErrCleanupIPv4, iface.ErrCleanupIPv6, iface.ErrCleanupIPv4v6:
+				logrus.Warnf("Static IP configuration for interface %s succeeded, but stale address cleanup failed (will retry): %v", intfName, err)
+				h.hostNetworkController.EnqueueAfter(hnc.Name, controllerEnqueueSelfInterval*time.Millisecond)
+			default:
+				return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
+			}
 		}
 		nns = ConvertMultiFamilyIPToNodeNetworkState(ips)
+
 	default:
 		err = fmt.Errorf("unsupported ip assignment mode %s for host network config %s", hnc.Spec.Mode, hnc.Name)
 		return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
