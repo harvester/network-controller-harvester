@@ -33,8 +33,9 @@ const (
 )
 
 type LeaseManager struct {
-	hncName string    // Name of the parent HostNetworkConfig object for controller enqueue
-	hncUID  types.UID // UID of the parent HostNetworkConfig object to guard against quick recreation races
+	hncName       string    // Name of the parent HostNetworkConfig object for controller enqueue
+	hncUID        types.UID // UID of the parent HostNetworkConfig object to guard against quick recreation races
+	vlanLinkIndex int       // Tracks the kernel's ifindex incarnation
 
 	iface  string
 	link   *iface.Link
@@ -71,7 +72,7 @@ type LeaseManager struct {
 // multi-family IP address application to the link, and background renewal loop spawning.
 // Follows an all-or-nothing transactional pattern: if any step fails, StopLease() is
 // automatically invoked via defer to clean up all allocated sockets and resources.
-func NewLeaseManager(iface string, link *iface.Link, hnc *networkv1.HostNetworkConfig, hncController ctlnetworkv1.HostNetworkConfigController) (*LeaseManager, *networkv1.NodeNetworkState, error) {
+func NewLeaseManager(iface string, link *iface.Link, vlanSubIndex int, hnc *networkv1.HostNetworkConfig, hncController ctlnetworkv1.HostNetworkConfigController) (*LeaseManager, *networkv1.NodeNetworkState, error) {
 	family := hnc.Spec.IPFamily
 	if family == "" {
 		family = networkv1.IPFamilyIPv4 // Default fallback
@@ -79,12 +80,16 @@ func NewLeaseManager(iface string, link *iface.Link, hnc *networkv1.HostNetworkC
 
 	ctx, cancel := context.WithCancel(context.Background())
 	lm := &LeaseManager{
-		hncName: hnc.Name,
-		hncUID:  hnc.UID, // Store UID to verify object incarnation
-		iface:   iface,
-		link:    link,
-		vlanID:  hnc.Spec.VlanID,
-		family:  family,
+		hncName:       hnc.Name,
+		hncUID:        hnc.UID,      // Store UID to verify object incarnation
+		vlanLinkIndex: vlanSubIndex, // Store vlan subinterface index to check if the interface is deleted & created by others
+		iface:         iface,
+		link:          link,
+		vlanID:        hnc.Spec.VlanID,
+		family:        family,
+		// Initialize cleanup signals with a capacity of 1 so retry triggers don't block
+		cleanupSignal4: make(chan struct{}, 1),
+		cleanupSignal6: make(chan struct{}, 1),
 		enqueueController: func(name string) {
 			if hncController != nil {
 				hncController.EnqueueAfter(name, renewEnqueueControllerInterval*time.Millisecond)
