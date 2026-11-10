@@ -235,12 +235,12 @@ func (lm *LeaseManager) start() (*networkv1.NodeNetworkState, error) {
 
 	err := lm.link.SetMultiFamilyIPAddresses(multiIP, lm.vlanID)
 	if err != nil {
-		switch err {
-		case iface.ErrCleanupIPv4:
+		switch {
+		case errors.Is(err, iface.ErrCleanupIPv4):
 			lm.pendingCleanup4 = true
-		case iface.ErrCleanupIPv6:
+		case errors.Is(err, iface.ErrCleanupIPv6):
 			lm.pendingCleanup6 = true
-		case iface.ErrCleanupIPv4v6:
+		case errors.Is(err, iface.ErrCleanupIPv4v6):
 			lm.pendingCleanup4 = true
 			lm.pendingCleanup6 = true
 		default:
@@ -316,6 +316,7 @@ func (lm *LeaseManager) renewLoopV4() {
 		ipAddr := networkv1.IPAddr(ipStr)
 		cleanupFailed := false
 		if err := lm.link.SetMultiFamilyIPAddresses(iface.NewMultiFamilyIPWithLeaseFromIPv4(&ipAddr), lm.vlanID); err != nil {
+			// only ErrCleanupIPv4 could be returned in set single-ipv4 case
 			if !errors.Is(err, iface.ErrCleanupIPv4) {
 				logrus.Errorf("Failed to apply DHCPv4 lease for interface %s (IP: %s, Gateway: %s): %v", ifaceStr, ipStr, gwStr, err)
 				// Hard failure applying IP; release lease and abort updating state so next tick retries

@@ -1,9 +1,11 @@
 package iface
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/containernetworking/plugins/pkg/netlinksafe"
 	"github.com/coreos/go-iptables/iptables"
@@ -60,6 +62,10 @@ func (l *Link) DelBridgeVlan(vid uint16) error {
 	}
 
 	if err := netlink.BridgeVlanDel(l, vid, false, false, false, true); err != nil {
+		// Ignore "not found" (ENOENT) errors so deletion is fully idempotent
+		if errors.Is(err, syscall.ENOENT) {
+			return nil
+		}
 		return fmt.Errorf("delete iface vlan failed, error: %v, link: %s, vid: %d", err, l.Attrs().Name, vid)
 	}
 

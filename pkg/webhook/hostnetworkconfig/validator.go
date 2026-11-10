@@ -225,7 +225,7 @@ func sameSubnet(cidrs []string, familyName string) error {
 		if isIPv4 && !prefix.Addr().Is4() {
 			return netip.Prefix{}, fmt.Errorf("expected IPv4 address for %s, got %q", familyName, cidr)
 		}
-		if !isIPv4 && !prefix.Addr().Is6() {
+		if !isIPv4 && (!prefix.Addr().Is6() || prefix.Addr().Is4In6()) {
 			return netip.Prefix{}, fmt.Errorf("expected IPv6 address for %s, got %q", familyName, cidr)
 		}
 		return prefix, nil
@@ -274,6 +274,9 @@ func validateStaticIPsForNodes(hnc *networkv1.HostNetworkConfig, nodes []*v1.Nod
 	// 1. Ensure every matched node has an entry in the map (map cannot have fewer entries than nodes,
 	// but it is allowed to contain extra placeholder/leftover records).
 	for _, node := range nodes {
+		if node.DeletionTimestamp != nil {
+			continue
+		}
 		if legacyMode {
 			if _, ok := hnc.Spec.HostIPs[node.Name]; !ok {
 				return fmt.Errorf("static IP not found for node %s", node.Name)

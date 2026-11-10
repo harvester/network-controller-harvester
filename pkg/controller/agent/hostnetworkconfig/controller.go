@@ -137,7 +137,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		if err != nil {
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 		} else {
-			logrus.Infof("hostnetwork config %s on node %s gets ip %v from dhcp server", hnc.Name, h.nodeName, nns)
+			logrus.Infof("hostnetwork config %s on node %s gets ip %v from dhcp server and sets to interface", hnc.Name, h.nodeName, nns)
 		}
 
 	case IPModeStatic:
@@ -152,8 +152,8 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 		// if controller gets ErrCleanupIP* error, set CRD status as ready, but log & retry locally
 		err = bridgelink.SetMultiFamilyIPAddresses(iface.NewMultiFamilyIPWithLeaseFromStaticIPs(ips), hnc.Spec.VlanID)
 		if err != nil {
-			switch err {
-			case iface.ErrCleanupIPv4, iface.ErrCleanupIPv6, iface.ErrCleanupIPv4v6:
+			switch {
+			case errors.Is(err, iface.ErrCleanupIPv4), errors.Is(err, iface.ErrCleanupIPv6), errors.Is(err, iface.ErrCleanupIPv4v6):
 				logrus.Warnf("Static IP configuration for interface %s succeeded, but stale address cleanup failed (will retry): %v", intfName, err)
 				h.hostNetworkController.EnqueueAfter(hnc.Name, controllerEnqueueSelfInterval*time.Millisecond)
 			default:
@@ -161,6 +161,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 			}
 		}
 		nns = ConvertMultiFamilyIPToNodeNetworkState(ips)
+		logrus.Infof("hostnetwork config %s on node %s gets ip %v from static config and sets to interface", hnc.Name, h.nodeName, nns)
 
 	default:
 		err = fmt.Errorf("unsupported ip assignment mode %s for host network config %s", hnc.Spec.Mode, hnc.Name)
