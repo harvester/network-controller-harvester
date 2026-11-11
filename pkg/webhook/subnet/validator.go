@@ -88,11 +88,11 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return err
 	}
 
-	if newSubnetSpec.Provider != oldSubnetSpec.Provider && oldSubnet.Status.V4UsingIPs != 0 {
+	if newSubnetSpec.Provider != oldSubnetSpec.Provider && (oldSubnet.Status.V4UsingIPs != 0 || oldSubnet.Status.V6UsingIPs != 0) {
 		return fmt.Errorf("cannot update provider %s for subnet %s as VMs are still using it", newSubnetSpec.Provider, oldSubnet.Name)
 	}
 
-	if newSubnetSpec.Vpc != oldSubnetSpec.Vpc && oldSubnet.Status.V4UsingIPs != 0 {
+	if newSubnetSpec.Vpc != oldSubnetSpec.Vpc && (oldSubnet.Status.V4UsingIPs != 0 || oldSubnet.Status.V6UsingIPs != 0) {
 		return fmt.Errorf("cannot update vpc %s for subnet %s as VMs are still using it", newSubnetSpec.Vpc, oldSubnet.Name)
 	}
 

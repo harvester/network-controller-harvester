@@ -369,6 +369,62 @@ func TestUpdateSubnet(t *testing.T) {
 			},
 		},
 		{
+			name:      "cannot update provider when VMs are using it (v4, v6), return error",
+			returnErr: true,
+			errKey:    "cannot update provider",
+			oldSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSubnetName,
+					Namespace: testSubnetNamespace,
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:      "test1",
+					Protocol: "Dual",
+					Provider: "vswitch1.default.ovn",
+				},
+				Status: kubeovnv1.SubnetStatus{V4UsingIPs: 1, V6UsingIPs: 1},
+			},
+			newSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSubnetName,
+					Namespace: testSubnetNamespace,
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:      "test1",
+					Protocol: "Dual",
+					Provider: "vswitch2.default.ovn",
+				},
+			},
+		},
+		{
+			name:      "cannot update provider when VMs are using it (v6), return error",
+			returnErr: true,
+			errKey:    "cannot update provider",
+			oldSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSubnetName,
+					Namespace: testSubnetNamespace,
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:      "test1",
+					Protocol: "IPv6",
+					Provider: "vswitch1.default.ovn",
+				},
+				Status: kubeovnv1.SubnetStatus{V6UsingIPs: 1},
+			},
+			newSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSubnetName,
+					Namespace: testSubnetNamespace,
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:      "test1",
+					Protocol: "IPv6",
+					Provider: "vswitch2.default.ovn",
+				},
+			},
+		},
+		{
 			name:      "cannot update vpc when VMs are using it, return error",
 			returnErr: true,
 			errKey:    "cannot update vpc",
@@ -397,6 +453,62 @@ func TestUpdateSubnet(t *testing.T) {
 					Provider:  "vswitch1.default.ovn",
 					CIDRBlock: "172.20.0.0/24",
 					Gateway:   "172.20.0.1",
+				},
+			},
+		},
+		{
+			name:      "cannot update vpc when VMs are using it (v4, v6), return error",
+			returnErr: true,
+			errKey:    "cannot update vpc",
+			oldSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSubnetName,
+					Namespace: testSubnetNamespace,
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:      "test1",
+					Protocol: "Dual",
+					Provider: "vswitch1.default.ovn",
+				},
+				Status: kubeovnv1.SubnetStatus{V4UsingIPs: 1, V6UsingIPs: 1},
+			},
+			newSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSubnetName,
+					Namespace: testSubnetNamespace,
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:      "test2",
+					Protocol: "Dual",
+					Provider: "vswitch1.default.ovn",
+				},
+			},
+		},
+		{
+			name:      "cannot update vpc when VMs are using it (v6), return error",
+			returnErr: true,
+			errKey:    "cannot update vpc",
+			oldSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSubnetName,
+					Namespace: testSubnetNamespace,
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:      "test1",
+					Protocol: "IPv6",
+					Provider: "vswitch1.default.ovn",
+				},
+				Status: kubeovnv1.SubnetStatus{V6UsingIPs: 1},
+			},
+			newSubnet: &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSubnetName,
+					Namespace: testSubnetNamespace,
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:      "test2",
+					Protocol: "IPv6",
+					Provider: "vswitch1.default.ovn",
 				},
 			},
 		},
