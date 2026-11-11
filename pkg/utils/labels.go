@@ -39,6 +39,9 @@ const (
 	RWXNetworkAnnotation             = "rwx-network.settings.harvesterhci.io"
 	RWXNetworkNetAttachDefPrefix     = "rwx-network-"
 	ExclusiveVlanStorageNetworkLabel = StorageNetworkAnnotation + "/exclusivevlan"
+
+	// K8s well known annotation, RKE2 annotates the Harvester node
+	K8sNodeProvidedIP = "alpha.kubernetes.io/provided-node-ip"
 )
 
 func GetLabelKeyOfClusterNetwork(clusterNetwork string) string {

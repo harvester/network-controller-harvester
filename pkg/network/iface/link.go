@@ -2,6 +2,8 @@ package iface
 
 import (
 	"fmt"
+	"net"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -299,41 +301,117 @@ func GetManuallyConfiguredVlans(cnName string) ([]uint16, error) {
 	return getManuallyConfiguredVlans(cnName, links), nil
 }
 
+// mgmt must have at least one valid v4 or v6 addr no matter which family
 func addrExists(link netlink.Link) (bool, error) {
-	addrs, err := netlink.AddrList(link, netlink.FAMILY_V4)
+	addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
 		return false, err
 	}
-	if len(addrs) != 0 {
-		return true, nil
+
+	for _, addr := range addrs {
+		ip := addr.IP
+		if ip == nil || ip.IsLoopback() {
+			continue
+		}
+
+		// Check IPv4 addresses (exclude link-local APIPA 169.254.x.x)
+		if ip.To4() != nil {
+			if !ip.IsLinkLocalUnicast() {
+				return true, nil
+			}
+			continue
+		}
+
+		// Check IPv6 addresses (exclude link-local fe80::/10 and multicast)
+		if !ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast() && !ip.IsMulticast() {
+			return true, nil
+		}
 	}
 
 	return false, nil
 }
 
-func GetMgmtInterface() (vlanSubInterface string, err error) {
-	links, err := netlink.LinkList()
+// GetMgmtInterface detects the management interface using a two-tier strategy:
+// 1. Tier 1: If pivotIP is provided, it searches for an exact match using givenAddrExists.
+// 2. Tier 2: If pivotIP is empty, it falls back to first-hit validation via addrExists.
+func GetMgmtInterface(pivotIP string, family int) (string, error) {
+	candidates, err := GetFilteredAndSortedMgmtLinks()
 	if err != nil {
 		return "", err
 	}
 
-	for _, link := range links {
-		if utils.HasMgmtClusterNetworkVlanDevicePrefix(link.Attrs().Name) {
-			//check if the link mgmt-br.vlan-id has ip address configured
-			if exists, err := addrExists(link); err != nil {
-				return "", err
-			} else if exists {
-				return link.Attrs().Name, nil
-			}
-		} else if utils.HasMgmtClusterNetworkBridgePrefix(link.Attrs().Name) {
-			//check if the link mgmt-br has ip address configured
-			if exists, err := addrExists(link); err != nil {
-				return "", err
-			} else if exists {
-				return link.Attrs().Name, nil
-			}
+	for _, link := range candidates {
+		name := link.Attrs().Name
+		var matched bool
+		if pivotIP != "" {
+			matched, err = givenAddrExists(link, pivotIP, family)
+		} else {
+			matched, err = addrExists(link)
+		}
+
+		if err != nil {
+			return "", fmt.Errorf("failed to check address for interface %s: %w", name, err)
+		}
+		if matched {
+			return name, nil
 		}
 	}
 
-	return "", fmt.Errorf("no management interface found")
+	if pivotIP != "" {
+		return "", fmt.Errorf("no management interface found matching pivot IP %s", pivotIP)
+	}
+	return "", fmt.Errorf("no management interface found with a valid IP address")
+}
+
+// GetFilteredAndSortedMgmtLinks retrieves all netlink interfaces, filters them
+// to keep only management bridge and VLAN subinterface prefixes, and sorts
+// them deterministically by interface index (ifindex).
+//
+// Design rationale:
+//  1. The Linux kernel assigns monotonically increasing interface indices (ifindex) upon
+//     creation, providing a stable chronological ordering.
+//  2. Since NetworkManager provisions management interfaces at the very beginning of node
+//     initialization, sorting by ifindex allows us to safely rely on a deterministic
+//     "first-hit" match for valid IP binding prior to persisting this state in CRDs.
+func GetFilteredAndSortedMgmtLinks() ([]netlink.Link, error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list netlink devices: %w", err)
+	}
+
+	var candidates []netlink.Link
+	for _, link := range links {
+		name := link.Attrs().Name
+		if utils.HasMgmtClusterNetworkVlanDevicePrefix(name) || utils.HasMgmtClusterNetworkBridgePrefix(name) {
+			candidates = append(candidates, link)
+		}
+	}
+
+	// Sort deterministically by ifindex ascending.
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Attrs().Index < candidates[j].Attrs().Index
+	})
+
+	return candidates, nil
+}
+
+// givenAddrExists checks if the link contains an exact match for the specified pivot IP and family.
+func givenAddrExists(link netlink.Link, pivotIP string, family int) (bool, error) {
+	parsedPivot := net.ParseIP(pivotIP)
+	if parsedPivot == nil {
+		return false, fmt.Errorf("invalid pivot IP: %s", pivotIP)
+	}
+
+	addrs, err := netlink.AddrList(link, family)
+	if err != nil {
+		return false, err
+	}
+
+	for _, addr := range addrs {
+		if addr.IP.Equal(parsedPivot) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
