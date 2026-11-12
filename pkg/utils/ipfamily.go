@@ -72,3 +72,7 @@ func (p IPFamilyPolicy) IsV6Enabled() bool {
 func (p IPFamilyPolicy) IsDualStack() bool {
 	return p == IPFamilyPolicyPreferDualStack
 }
+
+func (p IPFamilyPolicy) String() string {
+	return string(p)
+}
