@@ -25,6 +25,7 @@ import (
 	ctlcni "github.com/harvester/harvester-network-controller/pkg/generated/controllers/k8s.cni.cncf.io"
 	kubeovncni "github.com/harvester/harvester-network-controller/pkg/generated/controllers/kubeovn.io"
 	ctlnetwork "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io"
+	"github.com/harvester/harvester-network-controller/pkg/utils"
 	networkcrd "github.com/harvester/harvester-network-controller/pkg/utils/crd"
 )
 
@@ -44,9 +45,10 @@ func init() {
 type RegisterFunc func(context.Context, *Management) error
 
 type Options struct {
-	Namespace   string
-	HelperImage string
-	NodeName    string
+	Namespace      string
+	HelperImage    string
+	NodeName       string
+	IPFamilyPolicy utils.IPFamilyPolicy // share globally across controller runtime
 }
 
 type Management struct {
