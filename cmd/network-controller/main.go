@@ -83,6 +83,11 @@ func main() {
 			Usage:  "The image of harvester network helper, defaults to rancher/harvester-network-helper.",
 		},
 	}
+	// Note: IP family policy is intentionally propagated and parsed exclusively via
+	// the environment variable (EnvIPFamilyPolicy) rather than a CLI flag. This ensures
+	// the controller runtime strictly adheres to the underlying Linux host OS network
+	// stack established at cluster installation, preventing accidental runtime overrides
+	// or configuration drift.
 
 	app.Commands = []cli.Command{
 		{
@@ -144,9 +149,10 @@ func run(c *cli.Context, registerFuncList []config.RegisterFunc, leaderelection 
 	}
 
 	options := &config.Options{
-		Namespace:   namespace,
-		NodeName:    nodeName,
-		HelperImage: helperImage,
+		Namespace:      namespace,
+		NodeName:       nodeName,
+		HelperImage:    helperImage,
+		IPFamilyPolicy: utils.GetIPFamilyPolicy(),
 	}
 
 	management, err := config.SetupManagement(ctx, cfg, options)
