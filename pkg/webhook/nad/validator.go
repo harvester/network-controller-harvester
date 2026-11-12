@@ -34,6 +34,8 @@ type Validator struct {
 	subnetEnabled bool
 	hncCache      ctlnetworkv1.HostNetworkConfigCache
 	nadCache      ctlcniv1.NetworkAttachmentDefinitionCache
+
+	ipFamily utils.IPFamilyPolicy
 }
 
 var _ admission.Validator = &Validator{}
@@ -48,6 +50,7 @@ func NewNadValidator(vmCache ctlkubevirtv1.VirtualMachineCache, vmiCache ctlkube
 		subnetEnabled: subnetEnabled,
 		hncCache:      hncCache,
 		nadCache:      nadCache,
+		ipFamily:      utils.GetIPFamilyPolicy(),
 	}
 }
 
