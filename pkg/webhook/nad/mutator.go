@@ -25,6 +25,8 @@ type Mutator struct {
 	cnCache   ctlnetworkv1.ClusterNetworkCache
 	vcCache   ctlnetworkv1.VlanConfigCache
 	nodeCache ctlcorev1.NodeCache
+
+	ipFamily utils.IPFamilyPolicy
 }
 
 func NewNadMutator(cnCache ctlnetworkv1.ClusterNetworkCache,
@@ -33,6 +35,7 @@ func NewNadMutator(cnCache ctlnetworkv1.ClusterNetworkCache,
 		cnCache:   cnCache,
 		vcCache:   vcCache,
 		nodeCache: nodeCache,
+		ipFamily:  utils.GetIPFamilyPolicy(),
 	}
 }
 

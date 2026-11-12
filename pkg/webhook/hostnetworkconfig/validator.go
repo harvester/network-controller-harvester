@@ -50,6 +50,8 @@ type Validator struct {
 	vsCache   ctlnetworkv1.VlanStatusCache
 	nodeCache ctlcorev1.NodeCache
 	vmCache   ctlkubevirtv1.VirtualMachineCache
+
+	ipFamily utils.IPFamilyPolicy
 }
 
 func NewHostNetworkConfigValidator(
@@ -69,6 +71,7 @@ func NewHostNetworkConfigValidator(
 		vsCache:   vsCache,
 		nodeCache: nodeCache,
 		vmCache:   vmCache,
+		ipFamily:  utils.GetIPFamilyPolicy(),
 	}
 }
 
