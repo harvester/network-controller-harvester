@@ -26,7 +26,7 @@ replace (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc => go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.44.0
 	go.opentelemetry.io/otel/metric => go.opentelemetry.io/otel/metric v1.44.0
 	go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.44.0
-	go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v1.44.0
+	go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v1.47.0
 	go.opentelemetry.io/proto/otlp => go.opentelemetry.io/proto/otlp v1.10.0
 	golang.org/x/net => golang.org/x/net v0.62.0
 	google.golang.org/grpc => google.golang.org/grpc v1.83.2
