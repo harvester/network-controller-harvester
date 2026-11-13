@@ -102,10 +102,14 @@ func (h Handler) ensureClusterNetwork(vc *networkv1.VlanConfig) error {
 	}
 	targetMTU := fmt.Sprintf("%v", MTU)
 
-	// check if the configured VC MTU value is updated to ClusterNetwork annotations
+	// the webhook keeps all VlanConfigs of a cluster network on the same uplink mode, so any of them is representative
+	isolated := vc.Spec.Uplink.IsIsolated()
+
+	// check if the configured VC MTU value and uplink mode are updated to the ClusterNetwork
 	if curCn != nil {
 		curMTU := curCn.Annotations[utils.KeyUplinkMTU]
-		if curMTU == targetMTU {
+		curIsolated := curCn.Labels[utils.KeyUplinkModeLabel] == string(networkv1.UplinkModeIsolated)
+		if curMTU == targetMTU && curIsolated == isolated {
 			// do not compare KeyMTUSourceVlanConfig, which is only used for reference
 			return nil
 		}
@@ -117,11 +121,12 @@ func (h Handler) ensureClusterNetwork(vc *networkv1.VlanConfig) error {
 		}
 		cnCopy.Annotations[utils.KeyUplinkMTU] = targetMTU
 		cnCopy.Annotations[utils.KeyMTUSourceVlanConfig] = vc.Name
+		setUplinkModeLabel(cnCopy, isolated)
 		if _, err := h.cnClient.Update(cnCopy); err != nil {
 			return fmt.Errorf("failed to update cluster network %s annotation %s with MTU %s: %w", name, utils.KeyUplinkMTU, targetMTU, err)
 		}
 
-		logrus.Infof("update cluster network %s annotation %s to %s", name, utils.KeyUplinkMTU, targetMTU)
+		logrus.Infof("update cluster network %s annotation %s to %s, isolated uplinks: %v", name, utils.KeyUplinkMTU, targetMTU, isolated)
 		return nil
 	}
 
@@ -135,6 +140,7 @@ func (h Handler) ensureClusterNetwork(vc *networkv1.VlanConfig) error {
 			},
 		},
 	}
+	setUplinkModeLabel(cn, isolated)
 	if _, err := h.cnClient.Create(cn); err != nil {
 		return err
 	}
@@ -266,6 +272,7 @@ func (h Handler) OnVlanConfigRemove(_ string, vc *networkv1.VlanConfig) (*networ
 		// future.
 		cnCopy.Annotations[utils.KeyUplinkMTU] = fmt.Sprintf("%v", mtu)
 		cnCopy.Annotations[utils.KeyMTUSourceVlanConfig] = vcCandidate.Name
+		setUplinkModeLabel(cnCopy, vcCandidate.Spec.Uplink.IsIsolated())
 		if _, err := h.cnClient.Update(cnCopy); err != nil {
 			return nil, fmt.Errorf("failed to update cluster network %s after deleting source vlan config %s: %w", cnName, vc.Name, err)
 		}
@@ -274,13 +281,26 @@ func (h Handler) OnVlanConfigRemove(_ string, vc *networkv1.VlanConfig) (*networ
 		return nil, nil
 	}
 
-	// No candidate found, remove the annotations.
+	// No candidate found, remove the annotations and the uplink mode label.
 	delete(cnCopy.Annotations, utils.KeyMTUSourceVlanConfig)
 	delete(cnCopy.Annotations, utils.KeyUplinkMTU)
+	setUplinkModeLabel(cnCopy, false)
 	if _, err := h.cnClient.Update(cnCopy); err != nil {
 		return nil, fmt.Errorf("failed to clear cluster network %s MTU annotations after deleting source vlan config %s: %w", cnName, vc.Name, err)
 	}
 
 	logrus.Infof("Cluster network %s MTU source vlan config %s removed as no remaining vlan config found", cnName, vc.Name)
 	return nil, nil
+}
+
+// setUplinkModeLabel marks a cluster network whose uplinks are isolated bridge ports (switchless mesh)
+func setUplinkModeLabel(cn *networkv1.ClusterNetwork, isolated bool) {
+	if !isolated {
+		delete(cn.Labels, utils.KeyUplinkModeLabel)
+		return
+	}
+	if cn.Labels == nil {
+		cn.Labels = make(map[string]string, 1)
+	}
+	cn.Labels[utils.KeyUplinkModeLabel] = string(networkv1.UplinkModeIsolated)
 }
