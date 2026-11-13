@@ -2,6 +2,7 @@ package hostnetworkconfig
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -74,8 +75,12 @@ func NewHostNetworkConfigValidator(
 
 var _ admission.Validator = &Validator{}
 
-func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
+func (v *Validator) Create(req *admission.Request, newObj runtime.Object) error {
 	hnc := newObj.(*networkv1.HostNetworkConfig)
+
+	if err := checkRWXManaged(req, hnc); err != nil {
+		return fmt.Errorf(createErr, hnc.Name, err)
+	}
 
 	if _, err := utils.IsClusterNetworkNameValid(hnc.Spec.ClusterNetwork); err != nil {
 		return fmt.Errorf(createErr, hnc.Name, err)
@@ -118,9 +123,14 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 	return nil
 }
 
-func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) error {
+func (v *Validator) Update(req *admission.Request, oldObj, newObj runtime.Object) error {
 	oldhnc := oldObj.(*networkv1.HostNetworkConfig)
 	newhnc := newObj.(*networkv1.HostNetworkConfig)
+
+	// check before the spec comparison below, label and metadata changes are also protected
+	if err := checkRWXManaged(req, oldhnc, newhnc); err != nil {
+		return fmt.Errorf(updateErr, newhnc.Name, err)
+	}
 
 	// skip the update if the config has not changed
 	if reflect.DeepEqual(newhnc.Spec, oldhnc.Spec) {
@@ -162,10 +172,14 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 	return nil
 }
 
-func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
+func (v *Validator) Delete(req *admission.Request, oldObj runtime.Object) error {
 	hnc, ok := oldObj.(*networkv1.HostNetworkConfig)
 	if !ok || hnc == nil {
 		return nil
+	}
+
+	if err := checkRWXManaged(req, hnc); err != nil {
+		return fmt.Errorf(deleteErr, hnc.Name, err)
 	}
 
 	//since ovn is already using the interface as underlay, user should disable it first in hostnetworkconfig before deleting it.
@@ -174,6 +188,28 @@ func (v *Validator) Delete(_ *admission.Request, oldObj runtime.Object) error {
 	}
 
 	return nil
+}
+
+// checkRWXManaged rejects any change to a HostNetworkConfig labeled as RWX-managed unless the request comes
+// from the Harvester controller, which owns it, or from the network controller, which manages its finalizer
+// and annotations. Status updates go through the status subresource and are not intercepted by this webhook.
+func checkRWXManaged(req *admission.Request, hncs ...*networkv1.HostNetworkConfig) error {
+	managed := false
+	for _, hnc := range hncs {
+		if utils.HasRWXNetworkManagedLabelKey(hnc.Labels) {
+			managed = true
+			break
+		}
+	}
+	if !managed {
+		return nil
+	}
+
+	if req != nil && (req.Username() == utils.HarvesterControllerUsername || req.IsFromController()) {
+		return nil
+	}
+
+	return errors.New("it is managed by Harvester for the rwx-network setting, change the setting instead")
 }
 
 func (v *Validator) checkVM(nad *nadv1.NetworkAttachmentDefinition) error {
