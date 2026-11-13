@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 
 	"github.com/sirupsen/logrus"
@@ -62,10 +63,16 @@ func Register(ctx context.Context, management *config.Management) error {
 		leaseManagers:     make(map[string]*LeaseManager),
 	}
 
-	if mgmtIntf, err = iface.GetMgmtInterface(); err != nil {
-		return fmt.Errorf("failed to get management interface for node %s, error: %w", handler.nodeName, err)
+	// The mgmt vlan ID is not stored on any K8s object
+	// Get node primary IP to ensure deterministic management interface detection
+	nodeIP, family := handler.getNodePrimaryIP()
+	mgmtIntf, err = iface.GetMgmtInterface(nodeIP, family)
+	if err != nil {
+		return fmt.Errorf("failed to get management interface (primary ip %v family %d) for node %s, error: %w", nodeIP, family, handler.nodeName, err)
 	}
 	handler.mgmtIntfName = mgmtIntf
+
+	logrus.Infof("%s starts on node %s with mgmt interface %s (primary ip %v family %d)", ControllerName, handler.nodeName, mgmtIntf, nodeIP, family)
 
 	hns.OnChange(ctx, ControllerName, handler.OnChange)
 	hns.OnRemove(ctx, ControllerName, handler.OnRemove)
@@ -538,4 +545,38 @@ func (h *Handler) isLeaseManagerRunning(vlanIntfName string) bool {
 	}
 
 	return lm.IsRunning()
+}
+
+// getNodePrimaryIP fetches the current node from the cache and extracts
+// the first valid IP from RKE2's alpha.kubernetes.io/provided-node-ip annotation,
+// returning both the IP string and its netlink family.
+func (h *Handler) getNodePrimaryIP() (string, int) {
+	// Use direct client Get since informer cache is not yet synced during Register()
+	node, err := h.nodeClient.Get(h.nodeName, metav1.GetOptions{})
+	if err != nil {
+		logrus.Warnf("failed to get node %s from API server: %v", h.nodeName, err)
+		return "", 0
+	}
+
+	annotationVal, exists := node.Annotations[utils.K8sNodeProvidedIP]
+	if !exists {
+		logrus.Warnf("node %s is missing annotation alpha.kubernetes.io/provided-node-ip", h.nodeName)
+		return "", 0
+	}
+
+	for _, part := range strings.Split(annotationVal, ",") {
+		trimmed := strings.TrimSpace(part)
+		parsed := net.ParseIP(trimmed)
+		if parsed == nil {
+			continue
+		}
+
+		if parsed.To4() != nil {
+			return parsed.String(), netlink.FAMILY_V4
+		}
+		return parsed.String(), netlink.FAMILY_V6
+	}
+
+	logrus.Warnf("no valid node IP found in annotation alpha.kubernetes.io/provided-node-ip for node %s: %s", h.nodeName, annotationVal)
+	return "", 0
 }
