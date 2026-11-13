@@ -59,6 +59,14 @@ func (v *Validator) Create(_ *admission.Request, newObj runtime.Object) error {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
 
+	// bridge/VLAN/cluster network checks only apply to Harvester-managed NADs
+	if !conf.IsHarvesterManagedCNI() {
+		if err := v.checkRoute(nad.Annotations[utils.KeyNetworkRoute]); err != nil {
+			return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
+		}
+		return nil
+	}
+
 	if err := v.checkVlanOverlapWithSN(nad, conf); err != nil {
 		return fmt.Errorf(createErr, nad.Namespace, nad.Name, err)
 	}
@@ -108,20 +116,23 @@ func (v *Validator) Update(_ *admission.Request, oldObj, newObj runtime.Object) 
 		return nil
 	}
 
-	if err := v.checkVlanOverlapWithSN(newNad, newConf); err != nil {
-		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
-	}
-
 	if err := v.checkNadTypes(oldConf, newConf); err != nil {
 		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
 	}
 
-	if err := v.checkNadConfigBridgeName(oldConf, newConf); err != nil {
-		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
-	}
+	// bridge/VLAN/cluster network checks only apply to Harvester-managed NADs
+	if newConf.IsHarvesterManagedCNI() {
+		if err := v.checkVlanOverlapWithSN(newNad, newConf); err != nil {
+			return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+		}
 
-	if err := v.checkNadConfig(newConf, newNad); err != nil {
-		return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+		if err := v.checkNadConfigBridgeName(oldConf, newConf); err != nil {
+			return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+		}
+
+		if err := v.checkNadConfig(newConf, newNad); err != nil {
+			return fmt.Errorf(updateErr, newNad.Namespace, newNad.Name, err)
+		}
 	}
 
 	if err := v.checkVmi(newNad); err != nil {
