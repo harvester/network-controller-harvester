@@ -81,7 +81,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	}
 	handler.mgmtIntfName = mgmtIntf
 
-	logrus.Infof("%s starts on node %s with mgmt interface %s (primary ip %v family %d)", ControllerName, handler.nodeName, mgmtIntf, nodeIP, family)
+	logrus.Infof("%s starts on node %s with mgmt interface %s (primary ip %v family %d), host os network stack %s", ControllerName, handler.nodeName, mgmtIntf, nodeIP, family, handler.ipFamily.String())
 
 	hns.OnChange(ctx, ControllerName, handler.OnChange)
 	hns.OnRemove(ctx, ControllerName, handler.OnRemove)
@@ -626,11 +626,6 @@ func (h *Handler) getNodePrimaryIP() (string, int) {
 	node, err := h.nodeClient.Get(h.nodeName, metav1.GetOptions{})
 	if err != nil {
 		logrus.Warnf("failed to get node %s from API server: %v", h.nodeName, err)
-		return "", 0
-	}
-
-	if node == nil {
-		logrus.Warnf("node %s retrieved from cache is nil", h.nodeName)
 		return "", 0
 	}
 
