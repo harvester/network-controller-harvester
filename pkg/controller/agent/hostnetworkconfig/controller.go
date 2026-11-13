@@ -558,11 +558,6 @@ func (h *Handler) getNodePrimaryIP() (string, int) {
 		return "", 0
 	}
 
-	if node == nil {
-		logrus.Warnf("node %s retrieved from cache is nil", h.nodeName)
-		return "", 0
-	}
-
 	annotationVal, exists := node.Annotations[utils.K8sNodeProvidedIP]
 	if !exists {
 		logrus.Warnf("node %s is missing annotation alpha.kubernetes.io/provided-node-ip", h.nodeName)
