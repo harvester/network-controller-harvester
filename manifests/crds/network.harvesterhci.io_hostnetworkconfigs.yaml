@@ -46,14 +46,48 @@ spec:
                 type: string
               description:
                 type: string
+              hostMultiFamilyIPs:
+                additionalProperties:
+                  description: MultiFamilyIP holds multi-family IP configurations
+                    per host.
+                  properties:
+                    ipv4:
+                      description: Optional unique IPv4 address and subnet mask for
+                        this node
+                      maxLength: 64
+                      type: string
+                      x-kubernetes-validations:
+                      - message: Invalid CIDR format
+                        rule: isCIDR(self)
+                    ipv6:
+                      description: Optional unique IPv6 address and subnet mask for
+                        this node
+                      maxLength: 64
+                      type: string
+                      x-kubernetes-validations:
+                      - message: Invalid CIDR format
+                        rule: isCIDR(self)
+                  type: object
+                description: Optional structured per-node configuration (Supports
+                  multi-family)
+                maxProperties: 500
+                type: object
+              ipFamily:
+                default: ipv4
+                description: IP Family configuration (defaults to ipv4 if omitted)
+                enum:
+                - ipv4
+                - ipv6
+                - dual-ipv4-ipv6
+                type: string
               ips:
                 additionalProperties:
-                  maxLength: 50
+                  maxLength: 64
                   type: string
                   x-kubernetes-validations:
                   - message: Invalid CIDR format
                     rule: isCIDR(self)
-                description: Optional map, validated if mode=static
+                description: Optional map, validated if mode=static (Legacy IPv4-only)
                 maxProperties: 500
                 type: object
               mode:
@@ -123,9 +157,6 @@ spec:
             - mode
             - vlanID
             type: object
-            x-kubernetes-validations:
-            - message: spec.ips must be specified and non-empty when mode is static
-              rule: self.mode != 'static' || (has(self.ips) && size(self.ips) > 0)
           status:
             properties:
               conditions:
@@ -160,9 +191,6 @@ spec:
               nodeStatus:
                 additionalProperties:
                   properties:
-                    clusterNetwork:
-                      description: cluster network
-                      type: string
                     conditions:
                       description: Node-specific conditions
                       items:
@@ -193,16 +221,36 @@ spec:
                         - type
                         type: object
                       type: array
-                    mode:
-                      description: mode static or dhcp
+                    ipFamily:
+                      description: Applied IP family. If empty (e.g., on upgrade paths),
+                        fallback to spec.ipFamily.
+                      enum:
+                      - ipv4
+                      - ipv6
+                      - dual-ipv4-ipv6
                       type: string
-                    vlanID:
-                      description: vlan id
-                      type: integer
-                  required:
-                  - clusterNetwork
-                  - mode
-                  - vlanID
+                    mode:
+                      description: Mode static or dhcp. If empty (e.g., on upgrade
+                        paths), fallback to spec.mode.
+                      type: string
+                    network:
+                      description: Observed and active network configuration (records
+                        static config or active DHCP lease)
+                      properties:
+                        dhcpServerIPv4:
+                          description: DHCPv4 Server IP address
+                          type: string
+                        gatewayIPv4:
+                          description: Active IPv4 gateway (Configured from DHCPv4
+                            Option 3)
+                          type: string
+                        ipv4:
+                          description: Active IPv4 address (Reported by controller/agent)
+                          type: string
+                        ipv6:
+                          description: Active IPv6 address (Reported by controller/agent)
+                          type: string
+                      type: object
                   type: object
                 description: |-
                   Per-node observed state
@@ -212,6 +260,22 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: Fields 'ips' and 'hostMultiFamilyIPs' are mutually exclusive; use
+            'hostMultiFamilyIPs' for advanced configurations.
+          rule: '!(has(self.spec.ips) && has(self.spec.hostMultiFamilyIPs))'
+        - message: Either 'ips' or 'hostMultiFamilyIPs' must be specified and non-empty
+            when mode is static
+          rule: self.spec.mode != 'static' || (has(self.spec.ips) && size(self.spec.ips)
+            > 0) || (has(self.spec.hostMultiFamilyIPs) && size(self.spec.hostMultiFamilyIPs)
+            > 0)
+        - message: spec.ipFamily is immutable after creation
+          rule: '(has(oldSelf.spec.ipFamily) ? oldSelf.spec.ipFamily : ''ipv4-only'')
+            == (has(self.spec.ipFamily) ? self.spec.ipFamily : ''ipv4-only'')'
+        - message: spec.vlanID is immutable after creation
+          rule: oldSelf.spec.vlanID == self.spec.vlanID
+        - message: spec.clusterNetwork is immutable after creation
+          rule: oldSelf.spec.clusterNetwork == self.spec.clusterNetwork
     served: true
     storage: true
     subresources:

@@ -9,19 +9,37 @@ import (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=hnc;hncs,scope=Cluster
 // +kubebuilder:subresource:status
+// +kubebuilder:validation:XValidation:rule="!(has(self.spec.ips) && has(self.spec.hostMultiFamilyIPs))",message="Fields 'ips' and 'hostMultiFamilyIPs' are mutually exclusive; use 'hostMultiFamilyIPs' for advanced configurations."
+// +kubebuilder:validation:XValidation:rule="self.spec.mode != 'static' || (has(self.spec.ips) && size(self.spec.ips) > 0) || (has(self.spec.hostMultiFamilyIPs) && size(self.spec.hostMultiFamilyIPs) > 0)",message="Either 'ips' or 'hostMultiFamilyIPs' must be specified and non-empty when mode is static"
+// +kubebuilder:validation:XValidation:rule="(has(oldSelf.spec.ipFamily) ? oldSelf.spec.ipFamily : 'ipv4-only') == (has(self.spec.ipFamily) ? self.spec.ipFamily : 'ipv4-only')",message="spec.ipFamily is immutable after creation"
+// +kubebuilder:validation:XValidation:rule="oldSelf.spec.vlanID == self.spec.vlanID",message="spec.vlanID is immutable after creation"
+// +kubebuilder:validation:XValidation:rule="oldSelf.spec.clusterNetwork == self.spec.clusterNetwork",message="spec.clusterNetwork is immutable after creation"
 
 type HostNetworkConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// +kubebuilder:validation:XValidation:rule="self.mode != 'static' || (has(self.ips) && size(self.ips) > 0)",message="spec.ips must be specified and non-empty when mode is static"
-	Spec HostNetworkConfigSpec `json:"spec"`
+	Spec              HostNetworkConfigSpec `json:"spec"`
 	// +optional
 	Status HostNetworkConfigStatus `json:"status,omitempty"`
 }
 
-// +kubebuilder:validation:MaxLength=50
+// +kubebuilder:validation:MaxLength=64
 // +kubebuilder:validation:XValidation:rule="isCIDR(self)",message="Invalid CIDR format"
 type IPAddr string
+
+// String returns the string representation of IPAddr.
+func (ip IPAddr) String() string {
+	return string(ip)
+}
+
+// +kubebuilder:validation:Enum=ipv4;ipv6;dual-ipv4-ipv6
+type IPFamily string
+
+const (
+	IPFamilyIPv4          IPFamily = "ipv4"
+	IPFamilyIPv6          IPFamily = "ipv6"
+	IPFamilyDualIPv4First IPFamily = "dual-ipv4-ipv6"
+)
 
 type HostNetworkConfigSpec struct {
 	// +optional
@@ -48,16 +66,38 @@ type HostNetworkConfigSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	Mode string `json:"mode"`
 
-	// Optional map, validated if mode=static
+	// IP Family configuration (defaults to ipv4 if omitted)
+	// +optional
+	// +kubebuilder:default=ipv4
+	IPFamily IPFamily `json:"ipFamily,omitempty"`
+
+	// Optional map, validated if mode=static (Legacy IPv4-only)
 	// +optional
 	// +kubebuilder:validation:MaxProperties=500
 	HostIPs map[string]IPAddr `json:"ips,omitempty"`
+
+	// Optional structured per-node configuration (Supports multi-family)
+	// +optional
+	// +kubebuilder:validation:MaxProperties=500
+	HostMultiFamilyIPs map[string]MultiFamilyIP `json:"hostMultiFamilyIPs,omitempty"`
+}
+
+// MultiFamilyIP holds multi-family IP configurations per host.
+type MultiFamilyIP struct {
+	// Optional unique IPv4 address and subnet mask for this node
+	// +optional
+	IPv4 *IPAddr `json:"ipv4,omitempty"`
+
+	// Optional unique IPv6 address and subnet mask for this node
+	// +optional
+	IPv6 *IPAddr `json:"ipv6,omitempty"`
 }
 
 type HostNetworkConfigStatus struct {
-	//global observed state
+	// global observed state
 	// +optional
 	Conditions []Condition `json:"conditions,omitempty"`
+
 	// Per-node observed state
 	// key = node name
 	// +optional
@@ -65,15 +105,36 @@ type HostNetworkConfigStatus struct {
 }
 
 type HostNetworkConfigNodeStatus struct {
-	//cluster network
-	ClusterNetwork string `json:"clusterNetwork"`
+	// Mode static or dhcp. If empty (e.g., on upgrade paths), fallback to spec.mode.
+	// +optional
+	Mode string `json:"mode,omitempty"`
 
-	//vlan id
-	VlanID uint16 `json:"vlanID"`
+	// Applied IP family. If empty (e.g., on upgrade paths), fallback to spec.ipFamily.
+	// +optional
+	IPFamily IPFamily `json:"ipFamily,omitempty"`
 
-	//mode static or dhcp
-	Mode string `json:"mode"`
+	// Observed and active network configuration (records static config or active DHCP lease)
+	// +optional
+	Network *NodeNetworkState `json:"network,omitempty"`
 
 	// Node-specific conditions
 	Conditions []Condition `json:"conditions,omitempty"`
+}
+
+type NodeNetworkState struct {
+	// Active IPv4 address (Reported by controller/agent)
+	// +optional
+	IPv4 string `json:"ipv4,omitempty"`
+
+	// Active IPv6 address (Reported by controller/agent)
+	// +optional
+	IPv6 string `json:"ipv6,omitempty"`
+
+	// Active IPv4 gateway (Configured from DHCPv4 Option 3)
+	// +optional
+	GatewayIPv4 string `json:"gatewayIPv4,omitempty"`
+
+	// DHCPv4 Server IP address
+	// +optional
+	DHCPServerIPv4 string `json:"dhcpServerIPv4,omitempty"`
 }

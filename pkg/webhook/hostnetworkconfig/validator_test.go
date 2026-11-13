@@ -188,7 +188,7 @@ func TestCreateHostNetworkConfig(t *testing.T) {
 		{
 			name:      "static ips not in same subnet",
 			returnErr: true,
-			errKey:    "static IPs are not in the same subnet",
+			errKey:    "are not in the same subnet",
 			currentCN: &networkv1.ClusterNetwork{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        testCnName,
@@ -1488,64 +1488,652 @@ func TestDeleteHostNetworkConfig_NoPanic(t *testing.T) {
 
 func TestSameSubnet(t *testing.T) {
 	tests := []struct {
-		name    string
-		cidrs   []string
-		wantOK  bool
-		wantErr bool
+		name       string
+		cidrs      []string
+		familyName string
+		wantErr    bool
 	}{
 		{
-			name:    "empty slice",
-			cidrs:   []string{},
-			wantOK:  true,
-			wantErr: false,
+			name:       "empty slice",
+			cidrs:      []string{},
+			familyName: "IPv4",
+			wantErr:    false,
 		},
 		{
-			name:    "single valid cidr",
-			cidrs:   []string{"192.168.1.0/24"},
-			wantOK:  true,
-			wantErr: false,
+			name:       "single valid ipv4 cidr",
+			cidrs:      []string{"192.168.1.0/24"},
+			familyName: "IPv4",
+			wantErr:    false,
 		},
 		{
-			name:    "identical cidrs",
-			cidrs:   []string{"10.0.0.0/16", "10.0.0.0/16"},
-			wantOK:  true,
-			wantErr: false,
+			name:       "identical ipv4 cidrs",
+			cidrs:      []string{"10.0.0.0/16", "10.0.0.0/16"},
+			familyName: "IPv4",
+			wantErr:    false,
 		},
 		{
-			name:    "different masks",
-			cidrs:   []string{"192.168.1.0/24", "192.168.1.0/16"},
-			wantOK:  false,
-			wantErr: false,
+			name:       "different ipv4 masks",
+			cidrs:      []string{"192.168.1.0/24", "192.168.1.0/16"},
+			familyName: "IPv4",
+			wantErr:    true,
 		},
 		{
-			name:    "different networks",
-			cidrs:   []string{"192.168.1.0/24", "192.168.2.0/24"},
-			wantOK:  false,
-			wantErr: false,
+			name:       "different ipv4 networks",
+			cidrs:      []string{"192.168.1.0/24", "192.168.2.0/24"},
+			familyName: "IPv4",
+			wantErr:    true,
 		},
 		{
-			name:    "invalid first cidr",
-			cidrs:   []string{"not-a-cidr"},
-			wantOK:  false,
-			wantErr: true,
+			name:       "single valid ipv6 cidr",
+			cidrs:      []string{"2001:db8::/64"},
+			familyName: "IPv6",
+			wantErr:    false,
 		},
 		{
-			name:    "invalid second cidr",
-			cidrs:   []string{"10.0.0.0/8", "invalid"},
-			wantOK:  false,
-			wantErr: true,
+			name:       "identical ipv6 cidrs",
+			cidrs:      []string{"2001:db8:1::/64", "2001:db8:1::/64"},
+			familyName: "IPv6",
+			wantErr:    false,
+		},
+		{
+			name:       "different ipv6 networks",
+			cidrs:      []string{"2001:db8:1::/64", "2001:db8:2::/64"},
+			familyName: "IPv6",
+			wantErr:    true,
+		},
+		{
+			name:       "different ipv6 prefix lengths",
+			cidrs:      []string{"2001:db8:1::/64", "2001:db8:1::/48"},
+			familyName: "IPv6",
+			wantErr:    true,
+		},
+		{
+			name:       "invalid first cidr",
+			cidrs:      []string{"not-a-cidr"},
+			familyName: "IPv4",
+			wantErr:    true,
+		},
+		{
+			name:       "invalid second cidr",
+			cidrs:      []string{"2001:db8::/64", "invalid-ipv6"},
+			familyName: "IPv6",
+			wantErr:    true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ok, err := sameSubnet(tc.cidrs)
+			err := sameSubnet(tc.cidrs, tc.familyName)
 			if tc.wantErr {
-				assert.Error(t, err, "expected error for cidrs=%v", tc.cidrs)
+				assert.Error(t, err, "expected error for cidrs=%v family=%s", tc.cidrs, tc.familyName)
 			} else {
-				assert.NoError(t, err, "expected no error for cidrs=%v", tc.cidrs)
+				assert.NoError(t, err, "expected no error for cidrs=%v family=%s", tc.cidrs, tc.familyName)
 			}
-			assert.Equal(t, tc.wantOK, ok, "expected sameSubnet to return %v for cidrs=%v, got %v", tc.wantOK, tc.cidrs, ok)
+		})
+	}
+}
+
+func TestValidateIPFamilyAndIP(t *testing.T) {
+	ptrIPAddr := func(s string) *networkv1.IPAddr {
+		addr := networkv1.IPAddr(s)
+		return &addr
+	}
+
+	tests := []struct {
+		name        string
+		hnc         *networkv1.HostNetworkConfig
+		expectError bool
+	}{
+		{
+			name: "Valid: Default IPFamily (empty, defaults to IPv4) with legacy HostIPs",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: "",
+					HostIPs:  map[string]networkv1.IPAddr{"node1": "192.168.1.10/24"},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Valid: IPv4 family with HostMultiFamilyIPs",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {IPv4: ptrIPAddr("192.168.1.10/24")},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Valid: IPv6 family with HostMultiFamilyIPs",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {IPv6: ptrIPAddr("2001:db8::1/64")},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Valid: Dual-stack family with HostMultiFamilyIPs",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyDualIPv4First,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv4: ptrIPAddr("192.168.1.10/24"),
+							IPv6: ptrIPAddr("2001:db8::1/64"),
+						},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Invalid: Both legacy HostIPs and HostMultiFamilyIPs specified",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostIPs:  map[string]networkv1.IPAddr{"node1": "192.168.1.10/24"},
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {IPv4: ptrIPAddr("192.168.1.10/24")},
+					},
+				},
+			},
+			expectError: true,
+		},
+		{
+			name: "Invalid: Legacy HostIPs used under IPv6 family",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+					HostIPs:  map[string]networkv1.IPAddr{"node1": "192.168.1.10/24"},
+				},
+			},
+			expectError: true,
+		},
+		{
+			name: "Invalid: Missing HostMultiFamilyIPs under IPv6 family",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+				},
+			},
+			expectError: true,
+		},
+		{
+			name: "Invalid: Unsupported IP family",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: "UnsupportedFamily",
+				},
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateIPFamilyAndIP(tc.hnc)
+			if (err != nil) != tc.expectError {
+				t.Errorf("validateIPFamilyAndIP() error = %v, expectError %v", err, tc.expectError)
+			}
+		})
+	}
+}
+
+func TestValidateStaticIPs(t *testing.T) {
+	ptrIPAddr := func(s string) *networkv1.IPAddr {
+		addr := networkv1.IPAddr(s)
+		return &addr
+	}
+
+	node1 := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "node1",
+			Labels: map[string]string{"kubernetes.io/hostname": "node1"},
+		},
+	}
+	node2 := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "node2",
+			Labels: map[string]string{"kubernetes.io/hostname": "node2"},
+		},
+	}
+
+	tests := []struct {
+		name         string
+		nodes        []*v1.Node
+		hnc          *networkv1.HostNetworkConfig
+		expectError  bool
+		errSubstring string
+	}{
+		{
+			name:  "Valid: standard legacy IPv4 static IPs matching nodes",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostIPs: map[string]networkv1.IPAddr{
+						"node1": "192.168.1.10/24",
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name:  "Valid: standard dual-stack static IPs matching nodes",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyDualIPv4First,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv4: ptrIPAddr("192.168.1.10/24"),
+							IPv6: ptrIPAddr("2001:db8::1/64"),
+						},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name:  "Valid: standard IPv6 static IPs matching nodes",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv6: ptrIPAddr("2001:db8::1/64"),
+						},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name:  "Valid: maximum length (64 chars) valid IPv6 CIDR",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							// Length of "2001:0db8:85a3:0000:0000:8a2e:0370:7334/64" is exactly 43 chars.
+							// To test max length of 64, we can pad or use a full-length representation:
+							// "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff/64" -> 41 chars
+							// Let's use a fully expanded 39-char IPv6 address + "/128" (total 43 chars),
+							// or max length standard format:
+							IPv6: ptrIPAddr("2001:0db8:0000:0000:0000:0000:0000:0001/64"), // 43 chars
+						},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name:  "Invalid: Mutual exclusivity (both HostIPs and HostMultiFamilyIPs specified)",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostIPs:  map[string]networkv1.IPAddr{"node1": "192.168.1.10/24"},
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {IPv4: ptrIPAddr("192.168.1.10/24")},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "cannot specify both",
+		},
+		{
+			name:  "Invalid: Malformed IPv4 CIDR format",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostIPs:  map[string]networkv1.IPAddr{"node1": "192.168.1.300/24"},
+				},
+			},
+			expectError:  true,
+			errSubstring: "invalid IPv4 CIDR format",
+		},
+		{
+			name:  "Invalid: IPv4 CIDR is explicitly an empty string",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv4: ptrIPAddr(""), // non-nil pointer to empty string
+						},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "invalid IPv4 CIDR format",
+		},
+		{
+			name:  "Invalid: IPv4 field contains an IPv6 address string",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv4: ptrIPAddr("2001:db8::1/64"), // IPv6 address assigned to the IPv4 field
+						},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "expected IPv4 address for IPv4",
+		},
+		{
+			name:  "Invalid: IPv6 field contains an IPv4 address string",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv6: ptrIPAddr("192.168.1.10/24"), // IPv4 address assigned to the IPv6 field
+						},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "expected IPv6 address for IPv6",
+		},
+		{
+			name:  "Invalid: Malformed IPv6 CIDR format",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {IPv6: ptrIPAddr("2001:db8:::1/64")},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "invalid IPv6 CIDR format",
+		},
+		{
+			name:  "Invalid: completely empty IP maps (refused upfront as zombie prevention)",
+			nodes: []*v1.Node{},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostIPs:  map[string]networkv1.IPAddr{},
+				},
+			},
+			expectError:  true,
+			errSubstring: "at least one static IP configuration must be provided",
+		},
+		{
+			name:  "Invalid: node matched but missing from IP map",
+			nodes: []*v1.Node{node1, node2},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostIPs: map[string]networkv1.IPAddr{
+						"node1": "192.168.1.10/24",
+						// node2 missing
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "static IP not found for node node2",
+		},
+		{
+			name:  "Invalid: node matched but missing from multi-family IP map",
+			nodes: []*v1.Node{node1, node2},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv4: ptrIPAddr("192.168.1.10/24"),
+						},
+						// node2 missing from HostMultiFamilyIPs
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "static IP configuration not found for node",
+		},
+		{
+			name:  "Invalid: IPv4-family node config missing IPv4 address",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv4: nil, // Missing IPv4 under IPv4 family
+						},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "IPv4 address is required for node node1 under ipv4 family",
+		},
+		{
+			name:  "Invalid: IPv6-family node config missing IPv6 address",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv6: nil, // Missing IPv6 under IPv6 family
+						},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "IPv6 address is required for node node1 under ipv6 family",
+		},
+		{
+			name:  "Invalid: Unsupported IP family encountered during node check",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: "BustedFamily", // Passes early enum check if bypassed or modified, hits node-level switch default
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv4: ptrIPAddr("192.168.1.10/24"),
+						},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "unsupported IP family: BustedFamily",
+		},
+		{
+			name:  "Invalid: IPv4 family configuration containing stray IPv6 address",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv4: ptrIPAddr("192.168.1.10/24"),
+							IPv6: ptrIPAddr("2001:db8::1/64"), // forbidden under IPv4 family
+						},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "IPv6 addresses are not allowed when IP family is IPv4",
+		},
+		{
+			name:  "Invalid: IPv6-only family configuration containing stray IPv4 address",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv4: ptrIPAddr("192.168.1.10/24"), // forbidden under IPv6-only family
+							IPv6: ptrIPAddr("2001:db8::1/64"),
+						},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "IPv4 addresses are not allowed when IP family is IPv6",
+		},
+		{
+			name:  "Invalid: Dual-stack IPv4/IPv6 count mismatch via extra map record",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyDualIPv4First,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv4: ptrIPAddr("192.168.1.10/24"),
+							IPv6: ptrIPAddr("2001:db8::1/64"),
+						},
+						"nodeX": { // Extra map record with only IPv4 (causes count mismatch)
+							IPv4: ptrIPAddr("192.168.1.99/24"),
+						},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "both IPv4 and IPv6 addresses are required",
+		},
+		{
+			name:  "Invalid: Subnet inconsistency across node entries",
+			nodes: []*v1.Node{node1, node2},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostIPs: map[string]networkv1.IPAddr{
+						"node1": "192.168.1.10/24",
+						"node2": "192.168.2.10/24", // different subnet
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "not in the same subnet",
+		},
+		{
+			name:  "Valid: Extra placeholder/leftover records present, but all entries share the same subnet",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostIPs: map[string]networkv1.IPAddr{
+						"node1": "192.168.1.10/24",
+						"nodeX": "192.168.1.99/24", // placeholder record allowed
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name:  "Invalid: Dual-stack node missing IPv6 (fails at node level validation)",
+			nodes: []*v1.Node{node1},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyDualIPv4First,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv4: ptrIPAddr("192.168.1.10/24"),
+							// IPv6 omitted -> caught by node-level completeness check before count mismatch
+						},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "both IPv4 and IPv6 addresses are required for node node1 under dual-stack family",
+		},
+		{
+			name:  "Invalid: legacy IPv4 duplicate assignment",
+			nodes: []*v1.Node{node1, node2},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostIPs: map[string]networkv1.IPAddr{
+						"node1": "192.168.1.10/24",
+						"node2": "192.168.1.10/24",
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "duplicate static IPv4",
+		},
+		{
+			name:  "Invalid: multi-family IPv4 duplicate assignment",
+			nodes: []*v1.Node{node1, node2},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv4: ptrIPAddr("192.168.1.10/24"),
+						},
+						"node2": {
+							IPv4: ptrIPAddr("192.168.1.10/24"),
+						},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "duplicate static IPv4",
+		},
+		{
+			name:  "Invalid: multi-family IPv6 duplicate assignment",
+			nodes: []*v1.Node{node1, node2},
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+					HostMultiFamilyIPs: map[string]networkv1.MultiFamilyIP{
+						"node1": {
+							IPv6: ptrIPAddr("2001:db8::10/64"),
+						},
+						"node2": {
+							IPv6: ptrIPAddr("2001:db8::10/64"),
+						},
+					},
+				},
+			},
+			expectError:  true,
+			errSubstring: "duplicate static IPv6",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			nchclientset := fake.NewSimpleClientset()
+			nodeClient := fakeclients.NodeClient(nchclientset.CoreV1().Nodes)
+			nodeCache := fakeclients.NodeCache(nchclientset.CoreV1().Nodes)
+
+			for _, node := range tc.nodes {
+				_, err := nodeClient.Create(node)
+				assert.NoError(t, err)
+			}
+
+			validator := NewHostNetworkConfigValidator(nil, nil, nil, nil, nil, nodeCache, nil)
+
+			err := validator.validateStaticIPs(tc.hnc)
+			if tc.expectError {
+				assert.Error(t, err)
+				if tc.errSubstring != "" {
+					assert.True(t, strings.Contains(err.Error(), tc.errSubstring), "expected error to contain %q, got %v", tc.errSubstring, err)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
