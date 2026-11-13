@@ -98,6 +98,11 @@ func main() {
 			Value:       "system:serviceaccount:kube-system:generic-garbage-collector",
 		},
 	}
+	// Note: IP family policy is intentionally propagated and parsed exclusively via
+	// the environment variable (EnvIPFamilyPolicy) rather than a CLI flag. This ensures
+	// the controller runtime strictly adheres to the underlying Linux host OS network
+	// stack established at cluster installation, preventing accidental runtime overrides
+	// or configuration drift.
 
 	logrus.Infof("Starting %v version %v", name, VERSION)
 

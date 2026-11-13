@@ -42,6 +42,7 @@ type Handler struct {
 	mu            sync.Mutex
 	leaseManagers map[string]*LeaseManager
 	mgmtIntfName  string
+	ipFamily utils.IPFamilyPolicy
 }
 
 func Register(ctx context.Context, management *config.Management) error {
@@ -60,6 +61,7 @@ func Register(ctx context.Context, management *config.Management) error {
 		cnCache:           cns.Cache(),
 		cnController:      cns,
 		leaseManagers:     make(map[string]*LeaseManager),
+		ipFamily:          management.Options.IPFamilyPolicy,
 	}
 
 	if mgmtIntf, err = iface.GetMgmtInterface(); err != nil {

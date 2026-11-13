@@ -59,6 +59,7 @@ type checkMap struct {
 type Handler struct {
 	namespace   string
 	helperImage string
+	ipFamily    utils.IPFamilyPolicy
 
 	jobClient ctlbatchv1.JobClient
 	jobCache  ctlbatchv1.JobCache
@@ -78,6 +79,7 @@ func Register(ctx context.Context, management *config.Management) error {
 	handler := &Handler{
 		namespace:   management.Options.Namespace,
 		helperImage: management.Options.HelperImage,
+		ipFamily:    management.Options.IPFamilyPolicy,
 		jobClient:   jobs,
 		jobCache:    jobs.Cache(),
 		nadClient:   nads,
@@ -436,7 +438,7 @@ func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition, l2net
 		}
 
 		// create job
-		job, err = constructJob(nil, h.namespace, h.helperImage, nad, l2netconf, l3netconf)
+		job, err = h.constructJob(nil, nad, l2netconf, l3netconf)
 		if err != nil {
 			return err
 		}
@@ -453,7 +455,7 @@ func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition, l2net
 	}
 
 	// is already existing, update if some fields are invalid
-	jobCopy, err := constructJob(job, h.namespace, h.helperImage, nad, l2netconf, l3netconf)
+	jobCopy, err := h.constructJob(job, nad, l2netconf, l3netconf)
 	if err != nil {
 		return err
 	}
@@ -470,13 +472,13 @@ func (h Handler) createOrUpdateJob(nad *cniv1.NetworkAttachmentDefinition, l2net
 	return nil
 }
 
-func constructJob(cur *batchv1.Job, namespace, image string, nad *cniv1.NetworkAttachmentDefinition, netconf *utils.NetConf, l3netconf *utils.Layer3NetworkConf) (*batchv1.Job, error) {
+func (h Handler) constructJob(cur *batchv1.Job, nad *cniv1.NetworkAttachmentDefinition, netconf *utils.NetConf, l3netconf *utils.Layer3NetworkConf) (*batchv1.Job, error) {
 	job := &batchv1.Job{}
 	if cur != nil {
 		job = cur.DeepCopy()
 	} else {
 		job.Name = utils.Name(nad.Namespace, nad.Name)
-		job.Namespace = namespace
+		job.Namespace = h.namespace
 	}
 
 	if netconf != nil {
@@ -518,6 +520,10 @@ func constructJob(cur *batchv1.Job, namespace, image string, nad *cniv1.NetworkA
 				Name:  JobEnvDHCPServer,
 				Value: l3netconf.GetDHCPServerIPAddr(),
 			},
+			{
+				Name:  utils.EnvIPFamilyPolicy,
+				Value: h.ipFamily.String(),
+			},
 		}
 
 		// Only inject non-default log levels during initialization.
@@ -537,7 +543,7 @@ func constructJob(cur *batchv1.Job, namespace, image string, nad *cniv1.NetworkA
 		job.Spec.Template.Spec.Containers = []corev1.Container{
 			{
 				Name:            jobContainerName,
-				Image:           image,
+				Image:           h.helperImage,
 				Env:             getEnv(),
 				ImagePullPolicy: corev1.PullIfNotPresent,
 			},
