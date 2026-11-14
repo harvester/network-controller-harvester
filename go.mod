@@ -23,7 +23,7 @@ replace (
 	go.opentelemetry.io/otel => go.opentelemetry.io/otel v1.33.0
 	go.opentelemetry.io/otel/exporters/otlp => go.opentelemetry.io/otel/exporters/otlp v0.20.1
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace => go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.45.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc => go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.27.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc => go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.45.0
 	go.opentelemetry.io/otel/metric => go.opentelemetry.io/otel/metric v1.33.0
 	go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.31.0
 	go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v1.33.0
