@@ -11,9 +11,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/vishvananda/netlink"
+
 	networkv1 "github.com/harvester/harvester-network-controller/pkg/apis/network.harvesterhci.io/v1beta1"
 
 	ctlnetworkv1 "github.com/harvester/harvester-network-controller/pkg/generated/controllers/network.harvesterhci.io/v1beta1"
+	networkdhcpv6 "github.com/harvester/harvester-network-controller/pkg/network/dhcpv6"
 	"github.com/harvester/harvester-network-controller/pkg/network/iface"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
@@ -37,8 +40,8 @@ type LeaseManager struct {
 	hncUID        types.UID // UID of the parent HostNetworkConfig object to guard against quick recreation races
 	vlanLinkIndex int       // Tracks the kernel's ifindex incarnation
 
-	iface  string
-	link   *iface.Link
+	iface  string      // the vlan sub-interface name e.g. cn2-br.100 (lease works on it)
+	link   *iface.Link // parent bridge link e.g. cn2-br
 	vlanID uint16
 	family networkv1.IPFamily
 
@@ -67,12 +70,12 @@ type LeaseManager struct {
 	cancel context.CancelFunc
 }
 
-// NewLeaseManager atomically handles the entire lifecycle of lease acquisition.
+// newLeaseManager atomically handles the entire lifecycle of lease acquisition.
 // It performs instance creation, socket/client initialization, DHCP lease requests,
 // multi-family IP address application to the link, and background renewal loop spawning.
 // Follows an all-or-nothing transactional pattern: if any step fails, cleanup() is
 // automatically invoked via defer to clean up all allocated sockets and resources.
-func NewLeaseManager(iface string, link *iface.Link, vlanSubIndex int, hnc *networkv1.HostNetworkConfig, hncController ctlnetworkv1.HostNetworkConfigController) (*LeaseManager, *networkv1.NodeNetworkState, error) {
+func newLeaseManager(iface string, link *iface.Link, vlanSubLink netlink.Link, hnc *networkv1.HostNetworkConfig, hncController ctlnetworkv1.HostNetworkConfigController) (*LeaseManager, *networkv1.NodeNetworkState, error) {
 	family := hnc.Spec.IPFamily
 	if family == "" {
 		family = networkv1.IPFamilyIPv4 // Default fallback
@@ -81,8 +84,8 @@ func NewLeaseManager(iface string, link *iface.Link, vlanSubIndex int, hnc *netw
 	ctx, cancel := context.WithCancel(context.Background())
 	lm := &LeaseManager{
 		hncName:       hnc.Name,
-		hncUID:        hnc.UID,      // Store UID to verify object incarnation
-		vlanLinkIndex: vlanSubIndex, // Store vlan subinterface index to check if the interface is deleted & created by others
+		hncUID:        hnc.UID,                   // Store UID to verify object incarnation
+		vlanLinkIndex: vlanSubLink.Attrs().Index, // Store vlan subinterface index to check if the interface is deleted & created by others
 		iface:         iface,
 		link:          link,
 		vlanID:        hnc.Spec.VlanID,
@@ -123,7 +126,10 @@ func NewLeaseManager(iface string, link *iface.Link, vlanSubIndex int, hnc *netw
 			return err
 		}
 		var err error
-		lm.client6, err = nclient6.New(iface)
+		// Pass the pre-resolved link directly to networkdhcpv6.NewClient.
+		// This extracts both the hardware address and numeric interface index directly,
+		// bypassing name-based zoneCache lookups and preventing "bind: no such device" errors.
+		lm.client6, err = networkdhcpv6.NewClient(vlanSubLink)
 		if err != nil {
 			return fmt.Errorf("failed to create DHCPv6 client: %w", err)
 		}
@@ -605,12 +611,16 @@ func (lm *LeaseManager) StopLease() {
 		}
 	}
 
-	// 3. Close sockets if present
+	// 3. Close sockets in a best-effort manner and log any warnings if closure fails
 	if client4 != nil {
-		_ = client4.Close()
+		if err := client4.Close(); err != nil {
+			logrus.Warnf("Failed to close DHCPv4 client socket (proceeding anyway): %v", err)
+		}
 	}
 	if client6 != nil {
-		_ = client6.Close()
+		if err := client6.Close(); err != nil {
+			logrus.Warnf("Failed to close DHCPv6 client socket (proceeding anyway): %v", err)
+		}
 	}
 }
 
@@ -859,15 +869,29 @@ func (lm *LeaseManager) cleanup() {
 		lm.lease4 = nil
 	}
 
-	// 3. Close DHCPv4 client socket if initialized
+	// 3. Close DHCPv4 client socket in a best-effort manner and log any warnings if closure fails
 	if lm.client4 != nil {
-		_ = lm.client4.Close()
+		if err := lm.client4.Close(); err != nil {
+			logrus.Warnf("Failed to close DHCPv4 client socket during cleanup (proceeding anyway): %v", err)
+		}
 		lm.client4 = nil
 	}
 
-	// 4. Close DHCPv6 client socket if initialized
+	// 4. Close DHCPv6 client socket in a best-effort manner and log any warnings if closure fails
 	if lm.client6 != nil {
-		_ = lm.client6.Close()
+		if err := lm.client6.Close(); err != nil {
+			logrus.Warnf("Failed to close DHCPv6 client socket during cleanup (proceeding anyway): %v", err)
+		}
 		lm.client6 = nil
 	}
+}
+
+// isStale checks whether the existing LeaseManager is outdated based on the current HNC UID or link index.
+func (lm *LeaseManager) isStale(hnc *networkv1.HostNetworkConfig, vlanSubLink netlink.Link) bool {
+	if lm == nil {
+		return true
+	}
+
+	// Returns true if either the HNC UID or the network interface link index has changed
+	return lm.hncUID != hnc.UID || lm.vlanLinkIndex != vlanSubLink.Attrs().Index
 }
