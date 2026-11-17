@@ -131,7 +131,6 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 	if err != nil {
 		return hnc, h.updateHostNetworkReadyStatus(hnc, fmt.Errorf("failed to lookup vlan subinterface %s: %w", intfName, err), nil)
 	}
-	vlanSubIndex := vlanSubLink.Attrs().Index
 
 	// reconcile cluster network to add vid to the uplink(cluster-bo)
 	if err := h.wakeUpClusterNetwork(hnc.Spec.ClusterNetwork); err != nil {
@@ -142,7 +141,7 @@ func (h *Handler) OnChange(_ string, hnc *networkv1.HostNetworkConfig) (*network
 	var ips *networkv1.MultiFamilyIP
 	switch hnc.Spec.Mode {
 	case IPModeDHCP:
-		nns, err = h.startLeaseManager(bridgelink, vlanSubIndex, hnc)
+		nns, err = h.startLeaseManager(bridgelink, vlanSubLink, hnc)
 		if err != nil {
 			return hnc, h.updateHostNetworkReadyStatus(hnc, err, nil)
 		} else {
@@ -461,35 +460,35 @@ func (h *Handler) stopLeaseManager(vlanIntfName string) {
 	lm.StopLease()
 }
 
-func (h *Handler) startLeaseManager(bridgelink *iface.Link, vlanSubIndex int, hnc *networkv1.HostNetworkConfig) (*networkv1.NodeNetworkState, error) {
+func (h *Handler) startLeaseManager(bridgelink *iface.Link, vlanSubLink netlink.Link, hnc *networkv1.HostNetworkConfig) (*networkv1.NodeNetworkState, error) {
 	vlanIntfName := utils.GetClusterNetworkBrVlanDevice(bridgelink.Attrs().Name, hnc.Spec.VlanID)
 
 	h.mu.Lock()
 
 	if lm, exists := h.leaseManagers[vlanIntfName]; exists && lm != nil {
-		// If the HNC UID, or vlanLinkIndex changed, the previous object was deleted and recreated quickly.
-		// Stop the stale LeaseManager and replace it.
-		if lm.hncUID != hnc.UID || lm.vlanLinkIndex != vlanSubIndex {
-			delete(h.leaseManagers, vlanIntfName)
-			h.mu.Unlock()
-
-			logrus.Infof("HNC UID change detected for interface %s (old UID: %s, new UID: %s), index (od %v, new %v). Replacing stale LeaseManager...",
-				vlanIntfName, lm.hncUID, hnc.UID, lm.vlanLinkIndex, vlanSubIndex)
-			lm.StopLease() // Cancel background renewal loops and cleanup contexts outside the lock
-
-		} else {
+		// active, valid lease manager
+		if !lm.isStale(hnc, vlanSubLink) {
 			h.mu.Unlock()
 			// Existing LeaseManager is up-to-date; return its current state
 			state := lm.GetNetworkState()
 			return &state, nil
 		}
+
+		// If the HNC UID, or vlanLinkIndex changed, the previous object was deleted and recreated quickly.
+		// Stop the stale LeaseManager and replace it.
+		delete(h.leaseManagers, vlanIntfName)
+		h.mu.Unlock()
+
+		logrus.Infof("HNC UID change detected for interface %s (old UID: %s, new UID: %s), index (od %v, new %v). Replacing stale LeaseManager...",
+			vlanIntfName, lm.hncUID, hnc.UID, lm.vlanLinkIndex, vlanSubLink.Attrs().Index)
+		lm.StopLease() // Cancel background renewal loops and cleanup contexts outside the lock
 	} else {
 		// If it didn't exist in the map, release the initial lock before creation
 		h.mu.Unlock()
 	}
 
 	// Create and start a new LeaseManager for this HNC incarnation (done outside the lock)
-	lm, state, err := NewLeaseManager(vlanIntfName, bridgelink, vlanSubIndex, hnc, h.hostNetworkController)
+	lm, state, err := newLeaseManager(vlanIntfName, bridgelink, vlanSubLink, hnc, h.hostNetworkController)
 	if err != nil {
 		return nil, err
 	}
