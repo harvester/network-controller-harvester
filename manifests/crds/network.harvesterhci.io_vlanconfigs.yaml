@@ -94,6 +94,18 @@ spec:
                         minimum: -1
                         type: integer
                     type: object
+                  mode:
+                    description: |-
+                      Mode selects how the NICs are attached to the cluster network bridge.
+                      "" or "bond" (default): the NICs are enslaved to the bond <cn>-bo, which is the only bridge port.
+                      "isolated": every NIC is attached to the bridge directly as an isolated bridge port and no bond is created.
+                      The bridge never forwards between isolated ports, which suits a switchless full mesh where each NIC is
+                      cabled to a different peer. BondOptions are ignored in this mode.
+                    enum:
+                    - ""
+                    - bond
+                    - isolated
+                    type: string
                   nics:
                     items:
                       type: string

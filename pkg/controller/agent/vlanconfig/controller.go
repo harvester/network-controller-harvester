@@ -193,22 +193,14 @@ func matchClusterNetwork(vc *networkv1.VlanConfig, vs *networkv1.VlanStatus) boo
 
 // only sets up uplink & vlan bridge, vids are added by clusternetwork controller
 func (h Handler) setupVLAN(vc *networkv1.VlanConfig) error {
-	var v *vlan.Vlan
 	var setupErr error
-	var uplink *iface.Link
 
-	// construct uplink
-	uplink, setupErr = setUplink(vc)
-	if setupErr != nil {
-		goto updateStatus
-	}
-	// set up VLAN bridge
-	v = vlan.NewVlan(vc.Spec.ClusterNetwork)
-	if setupErr = v.Setup(uplink); setupErr != nil {
-		goto updateStatus
+	if vc.Spec.Uplink.IsIsolated() {
+		setupErr = setupIsolatedVLAN(vc)
+	} else {
+		setupErr = setupBondVLAN(vc)
 	}
 
-updateStatus:
 	// Update status and still return setup error if not nil
 	if err := h.updateStatus(vc, setupErr); err != nil {
 		return fmt.Errorf("update status into vlanstatus %s failed, error: %w, setup error: %v",
@@ -274,9 +266,9 @@ func (h Handler) removeVLAN(vs *networkv1.VlanStatus) error {
 	v, teardownErr = vlan.GetVlan(vs.Status.ClusterNetwork)
 	// We take it granted that `LinkNotFound` means the VLAN has been torn down.
 	if teardownErr != nil {
-		// ignore the LinkNotFound error
+		// ignore the LinkNotFound error, but delete a bridge that is left without any uplink
 		if errors.As(teardownErr, &netlink.LinkNotFoundError{}) {
-			teardownErr = nil
+			teardownErr = vlan.RemoveBridge(vs.Status.ClusterNetwork)
 		}
 		goto updateStatus
 	}
@@ -299,6 +291,73 @@ updateStatus:
 	//reconcile hostnetworkconfig to stop DHCP lease managers associated with the removed uplink
 	if err := h.reconcileHostNetwork(vs.Status.ClusterNetwork); err != nil {
 		return fmt.Errorf("reconcile hostnetwork %s for vlanconfig %s failed, error: %w", vs.Status.ClusterNetwork, vs.Status.VlanConfig, err)
+	}
+
+	return nil
+}
+
+// setupBondVLAN builds the bond <cn>-bo from the NICs and attaches it to the bridge as its only uplink
+func setupBondVLAN(vc *networkv1.VlanConfig) error {
+	// NICs left attached directly to the bridge by a previous isolated-mode config must be released before bonding
+	if err := detachIsolatedNICs(vc.Spec.ClusterNetwork, vc.Spec.Uplink.NICs); err != nil {
+		return err
+	}
+
+	uplink, err := setUplink(vc)
+	if err != nil {
+		return err
+	}
+
+	return vlan.NewVlan(vc.Spec.ClusterNetwork).Setup(uplink)
+}
+
+// setupIsolatedVLAN attaches every NIC directly to the bridge as an isolated port, with no bond
+func setupIsolatedVLAN(vc *networkv1.VlanConfig) error {
+	// a bond left by a previous bond-mode config holds the NICs; delete it first
+	bond, err := netlink.LinkByName(vc.Spec.ClusterNetwork + utils.BondSuffix)
+	if err == nil {
+		logrus.Infof("vlanconfig %s switched to isolated mode, deleting bond %s", vc.Name, bond.Attrs().Name)
+		if err := iface.NewLink(bond).Remove(); err != nil {
+			return fmt.Errorf("delete bond %s failed, error: %w", bond.Attrs().Name, err)
+		}
+	} else if !errors.As(err, &netlink.LinkNotFoundError{}) {
+		return err
+	}
+
+	// an unset MTU means the default MTU, as for a bond uplink, so a NIC doesn't keep an MTU from an earlier config
+	attrs := &iface.UplinkAttrs{MTU: utils.MTUDefaultTo(0), TxQLen: -1}
+	if la := vc.Spec.Uplink.LinkAttrs; la != nil {
+		attrs.MTU = utils.MTUDefaultTo(la.MTU)
+		attrs.TxQLen = la.TxQLen
+	}
+
+	return vlan.NewVlan(vc.Spec.ClusterNetwork).SetupIsolated(vc.Spec.Uplink.NICs, attrs)
+}
+
+// detachIsolatedNICs releases the given NICs if they are attached directly to the bridge. Other ports, e.g. a device
+// attached by hand, are left alone.
+func detachIsolatedNICs(clusterNetwork string, nicNames []string) error {
+	br := iface.NewBridge(utils.GenerateBridgeName(clusterNetwork))
+	if err := br.Fetch(); err != nil {
+		// no bridge yet, nothing to detach
+		return nil
+	}
+
+	wanted := make(map[string]bool, len(nicNames))
+	for _, n := range nicNames {
+		wanted[n] = true
+	}
+	nics, err := iface.ListBridgePorts(br.Index, iface.TypeDevice)
+	if err != nil {
+		return err
+	}
+	for _, nic := range nics {
+		if !wanted[nic.Attrs().Name] {
+			continue
+		}
+		if err := nic.SetNoMaster(); err != nil {
+			return fmt.Errorf("detach %s from %s failed, error: %w", nic.Attrs().Name, br.Name, err)
+		}
 	}
 
 	return nil

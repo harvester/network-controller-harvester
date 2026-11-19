@@ -34,6 +34,26 @@ type Uplink struct {
 	LinkAttrs *LinkAttrs `json:"linkAttributes,omitempty"`
 	// +optional
 	BondOptions *BondOptions `json:"bondOptions,omitempty"`
+	// Mode selects how the NICs are attached to the cluster network bridge.
+	// "" or "bond" (default): the NICs are enslaved to the bond <cn>-bo, which is the only bridge port.
+	// "isolated": every NIC is attached to the bridge directly as an isolated bridge port and no bond is created.
+	// The bridge never forwards between isolated ports, which suits a switchless full mesh where each NIC is
+	// cabled to a different peer. BondOptions are ignored in this mode.
+	// +optional
+	Mode UplinkMode `json:"mode,omitempty"`
+}
+
+// +kubebuilder:validation:Enum={"","bond","isolated"}
+
+type UplinkMode string
+
+const (
+	UplinkModeBond     UplinkMode = "bond"
+	UplinkModeIsolated UplinkMode = "isolated"
+)
+
+func (u *Uplink) IsIsolated() bool {
+	return u.Mode == UplinkModeIsolated
 }
 
 type LinkAttrs struct {
