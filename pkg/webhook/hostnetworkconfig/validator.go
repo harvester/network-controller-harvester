@@ -381,6 +381,13 @@ func (v *Validator) validateStaticIPs(hnc *networkv1.HostNetworkConfig) error {
 }
 
 func (v *Validator) validateHostNetworkConfig(newhnc *networkv1.HostNetworkConfig, op ValidateOp) (err error) {
+	// IPFamily is immutable, only check it in create case
+	if op == ValidateCreate {
+		if err := validateIPFamily(newhnc, v.ipFamily); err != nil {
+			return err
+		}
+	}
+
 	hostnetworkconfigs, err := v.hncCache.List(labels.Everything())
 	if err != nil {
 		return err
@@ -670,4 +677,50 @@ func validateUniqueIPs(cidrs []string, familyName string) error {
 		}
 	}
 	return nil
+}
+
+func validateIPFamily(hnc *networkv1.HostNetworkConfig, ipFamilyPolicy utils.IPFamilyPolicy) error {
+	if hnc == nil {
+		return fmt.Errorf("host network config must not be nil")
+	}
+
+	family := hnc.Spec.IPFamily
+	if family == "" {
+		family = networkv1.IPFamilyIPv4
+	}
+
+	switch family {
+	case networkv1.IPFamilyIPv4:
+		if !ipFamilyPolicy.IsV4Enabled() {
+			return fmt.Errorf(
+				"ipFamily %q is not allowed when ipFamilyPolicy is %q",
+				family,
+				ipFamilyPolicy.String(),
+			)
+		}
+		return nil
+
+	case networkv1.IPFamilyIPv6:
+		if !ipFamilyPolicy.IsV6Enabled() {
+			return fmt.Errorf(
+				"ipFamily %q is not allowed when ipFamilyPolicy is %q",
+				family,
+				ipFamilyPolicy.String(),
+			)
+		}
+		return nil
+
+	case networkv1.IPFamilyDualIPv4First:
+		if !ipFamilyPolicy.IsDualStack() {
+			return fmt.Errorf(
+				"ipFamily %q requires dual-stack support, but ipFamilyPolicy is %q",
+				family,
+				ipFamilyPolicy.String(),
+			)
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported ipFamily %q", family)
+	}
 }
