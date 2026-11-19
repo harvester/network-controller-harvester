@@ -2137,3 +2137,164 @@ func TestValidateStaticIPs(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateIPFamily(t *testing.T) {
+	tests := []struct {
+		name         string
+		hnc          *networkv1.HostNetworkConfig
+		policy       utils.IPFamilyPolicy
+		expectError  bool
+		errSubstring string
+	}{
+		{
+			name:         "Invalid: nil HostNetworkConfig",
+			hnc:          nil,
+			policy:       utils.IPFamilyPolicyPreferDualStack,
+			expectError:  true,
+			errSubstring: "must not be nil",
+		},
+		{
+			name: "Valid: omitted ipFamily defaults to IPv4 under PreferDualStack",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{},
+			},
+			policy:      utils.IPFamilyPolicyPreferDualStack,
+			expectError: false,
+		},
+		{
+			name: "Valid: omitted ipFamily defaults to IPv4 under SingleStack",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{},
+			},
+			policy:      utils.IPFamilyPolicySingleStack,
+			expectError: false,
+		},
+		{
+			name: "Valid: omitted ipFamily defaults to IPv4 under empty policy (fallback IPv4-only)",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{},
+			},
+			policy:      utils.IPFamilyPolicy(""),
+			expectError: false,
+		},
+		{
+			name: "Valid: explicit IPv4 allowed under PreferDualStack",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+				},
+			},
+			policy:      utils.IPFamilyPolicyPreferDualStack,
+			expectError: false,
+		},
+		{
+			name: "Valid: explicit IPv4 allowed under SingleStack",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+				},
+			},
+			policy:      utils.IPFamilyPolicySingleStack,
+			expectError: false,
+		},
+		{
+			name: "Valid: explicit IPv4 allowed under empty policy (fallback IPv4-only)",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv4,
+				},
+			},
+			policy:      utils.IPFamilyPolicy(""),
+			expectError: false,
+		},
+		{
+			name: "Valid: explicit IPv6 allowed under PreferDualStack",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+				},
+			},
+			policy:      utils.IPFamilyPolicyPreferDualStack,
+			expectError: false,
+		},
+		{
+			name: "Invalid: explicit IPv6 rejected under SingleStack",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+				},
+			},
+			policy:       utils.IPFamilyPolicySingleStack,
+			expectError:  true,
+			errSubstring: "not allowed",
+		},
+		{
+			name: "Invalid: explicit IPv6 rejected under empty policy (fallback IPv4-only)",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyIPv6,
+				},
+			},
+			policy:       utils.IPFamilyPolicy(""),
+			expectError:  true,
+			errSubstring: "not allowed",
+		},
+		{
+			name: "Valid: dual-ipv4-ipv6 allowed under PreferDualStack",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyDualIPv4First,
+				},
+			},
+			policy:      utils.IPFamilyPolicyPreferDualStack,
+			expectError: false,
+		},
+		{
+			name: "Invalid: dual-ipv4-ipv6 rejected under SingleStack",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyDualIPv4First,
+				},
+			},
+			policy:       utils.IPFamilyPolicySingleStack,
+			expectError:  true,
+			errSubstring: "dual-stack",
+		},
+		{
+			name: "Invalid: dual-ipv4-ipv6 rejected under empty policy (fallback IPv4-only)",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamilyDualIPv4First,
+				},
+			},
+			policy:       utils.IPFamilyPolicy(""),
+			expectError:  true,
+			errSubstring: "dual-stack",
+		},
+		{
+			name: "Invalid: unsupported ipFamily value",
+			hnc: &networkv1.HostNetworkConfig{
+				Spec: networkv1.HostNetworkConfigSpec{
+					IPFamily: networkv1.IPFamily("dual-ipv6-ipv4"),
+				},
+			},
+			policy:       utils.IPFamilyPolicyPreferDualStack,
+			expectError:  true,
+			errSubstring: "unsupported ipFamily",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateIPFamily(tc.hnc, tc.policy)
+			if tc.expectError {
+				assert.Error(t, err)
+				if tc.errSubstring != "" {
+					assert.True(t, strings.Contains(err.Error(), tc.errSubstring), "expected error to contain %q, got %v", tc.errSubstring, err)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
